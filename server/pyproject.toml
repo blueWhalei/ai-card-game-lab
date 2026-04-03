@@ -1,0 +1,69 @@
+[tool.poetry]
+name = "ai-card-game-lab"
+version = "0.1.0"
+description = "AI 卡牌游戏实验数据采集与训练平台"
+authors = ["blueWhalei"]
+package-mode = false
+
+[tool.poetry.dependencies]
+python = "^3.11"
+fastapi = ">=0.115.0"
+uvicorn = {extras = ["standard"], version = ">=0.34.0"}
+pydantic-settings = ">=2.7.0"
+aiosqlite = ">=0.20.0"
+structlog = ">=24.0.0"
+pyyaml = ">=6.0"
+
+[tool.poetry.group.dev.dependencies]
+ruff = ">=0.8.0"
+mypy = ">=1.13.0"
+pytest = ">=8.0.0"
+pytest-asyncio = ">=0.24.0"
+httpx = ">=0.27.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+# ── Ruff ──────────────────────────────────────────────
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "SIM",  # flake8-simplify
+    "TCH",  # flake8-type-checking
+    "RUF",  # ruff-specific
+]
+ignore = [
+    "RUF002",  # 中文文档中允许使用全角标点
+    "B008",    # FastAPI Depends pattern is standard
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+# ── mypy ──────────────────────────────────────────────
+[tool.mypy]
+python_version = "3.11"
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+
+# ── pytest ────────────────────────────────────────────
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

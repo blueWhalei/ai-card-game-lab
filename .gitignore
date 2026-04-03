@@ -1,0 +1,69 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Poetry
+poetry.lock
+
+# mypy
+.mypy_cache/
+
+# Ruff
+.ruff_cache/
+
+# pytest
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ===== Node / Frontend =====
+node_modules/
+web/dist/
+*.local
+
+# ===== IDE =====
+.vscode/
+!.vscode/settings.json
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ===== 环境变量 =====
+.env
+.env.local
+.env.*.local
+
+# ===== 运行时数据 =====
+data/
+models/
+*.db
+
+# ===== 日志 =====
+logs/
+*.log
+
+# ===== 临时文件 =====
+tmp/
+temp/
+*.stackdump
+
+# ===== Claude Code =====
+.claude/
+.plans/
+plans/

@@ -1,0 +1,55 @@
+:root {
+  /* ── Apple HIG Color System ── */
+  --el-color-primary: #0071e3;
+  --el-color-primary-light-3: #4da3ff;
+  --el-color-primary-light-5: #80bfff;
+  --el-color-primary-light-7: #b3d9ff;
+  --el-color-primary-light-9: #e6f2ff;
+  --el-color-primary-dark-2: #005bb5;
+  --el-color-success: #34c759;
+  --el-color-warning: #ff9f0a;
+  --el-color-danger: #ff3b30;
+  --el-color-info: #86868b;
+
+  /* ── Typography ── */
+  --el-font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Helvetica Neue', 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  --el-font-size-base: 14px;
+
+  /* ── Border & Radius ── */
+  --el-border-color: transparent;
+  --el-border-color-light: rgba(0, 0, 0, 0.06);
+  --el-border-color-lighter: rgba(0, 0, 0, 0.04);
+  --el-border-radius-base: 12px;
+  --el-border-radius-small: 8px;
+  --el-border-radius-round: 980px;
+
+  /* ── Card ── */
+  --el-card-border-color: transparent;
+  --el-card-border-radius: 16px;
+  --el-card-padding: 24px;
+
+  /* ── Dialog ── */
+  --el-dialog-border-radius: 20px;
+
+  /* ── Background ── */
+  --el-bg-color: #ffffff;
+  --el-bg-color-page: #f5f5f7;
+  --el-fill-color-blank: #ffffff;
+
+  /* ── Text ── */
+  --el-text-color-primary: #1d1d1f;
+  --el-text-color-regular: #424245;
+  --el-text-color-secondary: #86868b;
+  --el-text-color-placeholder: #aeaeb2;
+
+  /* ── Tag ── */
+  --el-tag-border-radius: 980px;
+
+  /* ── Table ── */
+  --el-table-border-color: rgba(0, 0, 0, 0.06);
+  --el-table-header-bg-color: #fafafa;
+
+  /* ── Button ── */
+  --el-button-border-radius: 980px;
+}

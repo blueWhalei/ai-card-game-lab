@@ -1,0 +1,37 @@
+# AI 角色配置
+# 定义不同决策风格的 AI 玩家
+# 注意：当前使用 deepseek-chat（快速响应），数据采集阶段可切换为 deepseek-reasoner
+
+players:
+  - id: "aggressive_tiger"
+    name: "激进虎"
+    description: "偏好主动出击，率先出牌，追求速赢"
+    avatar: "🐯"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-chat"
+      temperature: 0.9
+      top_p: 0.95
+      max_tokens: 1024
+
+  - id: "cautious_fox"
+    name: "谨慎狐"
+    description: "保守出牌，观察对手策略后再做决定"
+    avatar: "🦊"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-chat"
+      temperature: 0.6
+      top_p: 0.9
+      max_tokens: 1024
+
+  - id: "random_panda"
+    name: "随机熊猫"
+    description: "随机策略基线玩家，用于对比测试"
+    avatar: "🐼"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-chat"
+      temperature: 1.2
+      top_p: 1.0
+      max_tokens: 1024

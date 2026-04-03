@@ -1,0 +1,70 @@
+@layer components {
+  .page-container {
+    @apply mx-auto max-w-6xl px-10 py-8;
+  }
+
+  .page-title {
+    @apply text-2xl font-semibold tracking-tight text-[#1d1d1f];
+  }
+
+  .page-subtitle {
+    @apply mt-1 text-sm text-[#86868b];
+  }
+
+  .apple-card {
+    @apply rounded-2xl bg-white p-6 shadow-sm transition-all duration-300;
+  }
+
+  .apple-card-hover {
+    @apply rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md;
+  }
+
+  .apple-btn {
+    @apply inline-flex items-center justify-center rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[#0077ed];
+  }
+
+  .apple-btn-secondary {
+    @apply inline-flex items-center justify-center rounded-full bg-[#f5f5f7] px-5 py-2 text-sm font-medium text-[#1d1d1f] transition-all duration-200 hover:bg-[#e8e8ed];
+  }
+
+  .apple-input {
+    @apply rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2.5 text-sm outline-none transition-all duration-200 focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20;
+  }
+
+  .apple-segmented {
+    @apply inline-flex rounded-lg bg-[#e8e8ed] p-0.5;
+  }
+
+  .apple-segmented-item {
+    @apply rounded-md px-4 py-1.5 text-sm font-medium text-[#86868b] transition-all duration-200;
+  }
+
+  .apple-segmented-item-active {
+    @apply rounded-md bg-white px-4 py-1.5 text-sm font-medium text-[#1d1d1f] shadow-sm ring-2 ring-[#e8e8ed];
+  }
+
+  .apple-divider {
+    @apply border-t border-[rgba(0,0,0,0.06)];
+  }
+
+  .apple-label {
+    @apply text-sm font-medium text-[#86868b];
+  }
+
+  .apple-value {
+    @apply text-sm text-[#1d1d1f];
+  }
+
+  .apple-stat-number {
+    @apply text-3xl font-semibold tracking-tight text-[#1d1d1f];
+  }
+
+  /* Element Plus switch - make visible on white background */
+  :deep(.el-switch) {
+    --el-switch-off-color: #d1d5db;
+    --el-switch-bg-color: #e8e8ed;
+  }
+  :deep(.el-switch.is-checked) {
+    --el-switch-on-color: #0071e3;
+  }
+}
