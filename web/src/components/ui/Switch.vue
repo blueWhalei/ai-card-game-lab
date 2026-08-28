@@ -18,12 +18,18 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
 }>()
+
+function onUpdate(v: boolean): void {
+  emit('update:modelValue', v === true)
+}
 </script>
 
 <template>
   <SwitchRoot
     :id="id"
-    :checked="modelValue"
+    :model-value="modelValue"
+    :true-value="true"
+    :false-value="false"
     :disabled="disabled"
     :class="
       cn(
@@ -31,10 +37,10 @@ const emit = defineEmits<{
         props.class,
       )
     "
-    @update:checked="(v: boolean) => emit('update:modelValue', v)"
+    @update:model-value="onUpdate"
   >
     <SwitchThumb
-      class="pointer-events-none block h-4 w-4 translate-x-0.5 rounded-full bg-white shadow-[var(--ink-shadow)] transition-transform data-[state=checked]:translate-x-[18px]"
+      class="pointer-events-none block h-4 w-4 translate-x-0.5 rounded-full bg-ink-surface shadow-[var(--ink-shadow)] transition-transform data-[state=checked]:translate-x-[18px]"
     />
   </SwitchRoot>
 </template>
