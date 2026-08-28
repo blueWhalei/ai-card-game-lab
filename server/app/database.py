@@ -150,16 +150,33 @@ CREATE INDEX IF NOT EXISTS idx_decision_points_player  ON decision_points(player
 CREATE INDEX IF NOT EXISTS idx_decision_points_quality ON decision_points(quality_score);
 CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable ON decision_points(train_usable);
 
-CREATE TABLE IF NOT EXISTS ai_players (
+CREATE TABLE IF NOT EXISTS experiment_configs (
     id            TEXT PRIMARY KEY,
     name          TEXT    NOT NULL,
-    description   TEXT    NOT NULL DEFAULT '',
-    avatar        TEXT    NOT NULL DEFAULT '',
+    notes         TEXT    NOT NULL DEFAULT '',
     model_config  TEXT    NOT NULL,
     created_at    TEXT    NOT NULL,
     updated_at    TEXT    NOT NULL
 );
 """
+
+
+async def _migrate_ai_players_to_experiment_configs(db: aiosqlite.Connection) -> None:
+    cur = await db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_players'"
+    )
+    if not await cur.fetchone():
+        return
+    await db.execute(
+        """
+        INSERT OR IGNORE INTO experiment_configs (id, name, notes, model_config, created_at, updated_at)
+        SELECT id, name, COALESCE(description, ''), model_config, created_at, updated_at
+        FROM ai_players
+        """
+    )
+    await db.execute("DROP TABLE ai_players")
+    await db.commit()
+    logger.info("migrated_ai_players_to_experiment_configs")
 
 
 async def init_db(sqlite_path: str) -> None:
@@ -190,6 +207,7 @@ async def init_db(sqlite_path: str) -> None:
             )
         except aiosqlite.OperationalError:
             pass
+        await _migrate_ai_players_to_experiment_configs(db)
         await db.commit()
 
     logger.info("database_initialized", path=sqlite_path)
