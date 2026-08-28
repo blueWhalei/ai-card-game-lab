@@ -258,6 +258,10 @@ onMounted(async () => {
     }
     if (typeof cfg.data.training_use_mock === 'boolean') {
       createForm.value.use_mock = cfg.data.training_use_mock
+      if (!cfg.data.training_use_mock) {
+        createForm.value.base_model = CPU_SMOKE_BASE_MODEL
+        createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
+      }
     }
     trainingDepsAvailable.value = cfg.data.training_deps_available === true
   } catch {
