@@ -138,3 +138,18 @@ class TrainingTaskNotFoundError(AppError):
             code="TRAINING_TASK_NOT_FOUND",
             status_code=404,
         )
+
+
+class TrainingGuardError(AppError):
+    """Raised when a training task is rejected by an environment guard.
+
+    Covers: missing training deps, insufficient RAM for CPU smoke, etc.
+    Maps to HTTP 400 via the global ``AppError`` handler.
+    """
+
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            message=detail,
+            code="TRAINING_GUARD_FAILED",
+            status_code=400,
+        )

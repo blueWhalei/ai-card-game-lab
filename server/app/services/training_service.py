@@ -48,6 +48,7 @@ class TrainingService:
         self._training_use_mock = training_use_mock
         self._ollama_base_url = ollama_base_url
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
+        self._cancel_flags: dict[str, dict[str, bool]] = {}
 
     @classmethod
     def from_settings(cls, settings: Settings) -> TrainingService:
@@ -90,6 +91,17 @@ class TrainingService:
         task_id = generate_id("train")
         now = datetime.now(tz=timezone.utc).isoformat()
 
+        # ── Guards: resolve use_mock, then enforce CPU smoke safety ──
+        cfg = dict(request.config.model_dump())
+        use_mock = cfg.get("use_mock")
+        if use_mock is None:
+            use_mock = self._training_use_mock
+        if use_mock:
+            cfg["use_mock"] = True
+        else:
+            cfg = self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
+            cfg["use_mock"] = False
+
         # Validate dataset exists
         async with self._get_bg_db() as db:
             ds_repo = DatasetRepository(db)
@@ -98,31 +110,87 @@ class TrainingService:
             except KeyError as exc:
                 raise DatasetNotFoundError(request.dataset_id) from exc
 
-        # Persist task
+        # Per-task cancel flag, threaded into the LoRA path so cancel_task
+        # can cooperatively interrupt the Trainer loop.
+        cancel_flag: dict[str, bool] = {"cancel": False}
+        self._cancel_flags[task_id] = cancel_flag
+
+        # Persist task with the (possibly clamped) config
         async with self._get_bg_db() as db:
             repo = TrainingTaskRepository(db)
-            task = await repo.create({
-                "id": task_id,
-                "name": request.name,
-                "dataset_id": request.dataset_id,
-                "base_model": request.base_model,
-                "training_type": request.training_type,
-                "config": request.config.model_dump(),
-                "status": "pending",
-                "progress": 0,
-                "created_at": now,
-            })
+            task = await repo.create(
+                {
+                    "id": task_id,
+                    "name": request.name,
+                    "dataset_id": request.dataset_id,
+                    "base_model": request.base_model,
+                    "training_type": request.training_type,
+                    "config": cfg,
+                    "status": "pending",
+                    "progress": 0,
+                    "created_at": now,
+                }
+            )
 
         # Launch background pipeline
-        bg = asyncio.create_task(self._run_pipeline(task_id, dataset))
+        bg = asyncio.create_task(self._run_pipeline(task_id, dataset, cancel_flag))
         self._running_tasks[task_id] = bg
         return task
+
+    def _apply_cpu_smoke_guards(self, cfg: dict[str, Any], *, base_model: str) -> dict[str, Any]:
+        """Enforce non-mock CPU safety: deps present, RAM ≥ 8GB, clamped config.
+
+        Raises ``ValueError`` (mapped to HTTP 400 by the API layer) when the
+        environment is unsafe. Returns the (possibly clamped) config dict.
+        """
+        from app.core.training.sft import training_deps_available
+
+        if not training_deps_available():
+            raise ValueError("Training deps missing: poetry install --with training")
+
+        cuda = False
+        try:
+            import torch
+
+            cuda = bool(torch.cuda.is_available())
+        except ImportError:
+            # deps check passed but torch import failed — treat as CPU smoke.
+            cuda = False
+
+        if not cuda:
+            from app.core.training.cpu_smoke import (
+                assert_memory_available_for_smoke,
+                clamp_cpu_smoke_config,
+            )
+            from app.core.training.runtime_stats import get_runtime_stats
+
+            assert_memory_available_for_smoke(float(get_runtime_stats()["memory_available_mb"]))
+            cfg = clamp_cpu_smoke_config(cfg, base_model=base_model)
+            # still allow non-whitelist base_model but keep clamps; FE already warned
+        return cfg
+
+    async def cancel_task(self, task_id: str) -> dict[str, Any]:
+        """Cooperatively cancel a running training task.
+
+        Sets the per-task cancel flag (the LoRA Trainer loop checks it each
+        step) and cancels the background asyncio task. Then marks the task
+        ``cancelled`` in the DB and returns the refreshed task row.
+        """
+        flag = self._cancel_flags.get(task_id)
+        if flag is not None:
+            flag["cancel"] = True
+        bg = self._running_tasks.get(task_id)
+        if bg and not bg.done():
+            bg.cancel()
+        await self._update(task_id, "cancelled")
+        return await self.get_task(task_id)
 
     async def delete_task(self, task_id: str) -> None:
         # Cancel if running
         bg = self._running_tasks.pop(task_id, None)
         if bg and not bg.done():
             bg.cancel()
+        self._cancel_flags.pop(task_id, None)
         async with self._get_bg_db() as db:
             repo = TrainingTaskRepository(db)
             await repo.delete(task_id)
@@ -166,6 +234,19 @@ class TrainingService:
             raise ValueError("Task has no model_path; train to completion first")
         if task.get("status") != "completed":
             raise ValueError(f"Task status is {task.get('status')}, expected completed")
+        # Refuse mock placeholders: a mock run writes model.bin and never
+        # produces a real LoRA adapter directory, so there is nothing to merge
+        # or quantize into a deploy bundle.
+        result = task.get("result")
+        is_mock = (
+            str(model_path).endswith("model.bin")
+            or (isinstance(result, dict) and result.get("mock"))
+            or not Path(str(model_path)).is_dir()
+        )
+        if is_mock:
+            raise ValueError(
+                "Mock model cannot export deploy bundle; run CPU smoke or GPU LoRA first"
+            )
 
         return await asyncio.to_thread(
             export_deploy_bundle,
@@ -301,7 +382,12 @@ class TrainingService:
 
     # ── Background pipeline ──────────────────────────────
 
-    async def _run_pipeline(self, task_id: str, dataset: dict[str, Any]) -> None:
+    async def _run_pipeline(
+        self,
+        task_id: str,
+        dataset: dict[str, Any],
+        cancel_flag: dict[str, bool] | None = None,
+    ) -> None:
         """Background: export → train → complete."""
         try:
             # Phase 1: Export
@@ -319,7 +405,8 @@ class TrainingService:
 
             if sample_count == 0:
                 await self._update(
-                    task_id, "failed",
+                    task_id,
+                    "failed",
                     result={"error": "No training samples exported from dataset"},
                 )
                 return
@@ -343,13 +430,15 @@ class TrainingService:
                 config=config,
                 on_progress=on_progress,
                 default_use_mock=self._training_use_mock,
+                cancel_flag=cancel_flag,
             )
 
             # Phase 3: Complete — prefer adapter dir for real LoRA
             model_path = str(result.get("adapter_path") or (model_dir / "model.bin"))
             now = datetime.now(tz=timezone.utc).isoformat()
             await self._update(
-                task_id, "completed",
+                task_id,
+                "completed",
                 progress=1.0,
                 model_path=model_path,
                 result=result,
@@ -366,6 +455,7 @@ class TrainingService:
             )
         finally:
             self._running_tasks.pop(task_id, None)
+            self._cancel_flags.pop(task_id, None)
 
     async def _update(self, task_id: str, status: str, **kwargs: Any) -> None:
         """Helper to update task status via a fresh DB connection."""

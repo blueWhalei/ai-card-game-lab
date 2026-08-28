@@ -14,7 +14,11 @@ from app.schemas.training import (
     VerifyModelRequest,
 )
 from app.services.training_service import TrainingService
-from app.utils.exceptions import AppError, TrainingTaskNotFoundError
+from app.utils.exceptions import (
+    AppError,
+    TrainingGuardError,
+    TrainingTaskNotFoundError,
+)
 
 router = APIRouter()
 
@@ -42,7 +46,10 @@ async def create_training_task(
     body: CreateTrainingTaskRequest,
     service: TrainingService = Depends(get_training_service),
 ) -> ApiResponse[dict[str, Any]]:
-    task = await service.create_task(body)
+    try:
+        task = await service.create_task(body)
+    except ValueError as exc:
+        raise TrainingGuardError(str(exc)) from exc
     return ApiResponse(data=task)
 
 
@@ -62,6 +69,19 @@ async def delete_training_task(
 ) -> ApiResponse[dict[str, str]]:
     await service.delete_task(task_id)
     return ApiResponse(data={"status": "deleted"})
+
+
+@router.post("/training/tasks/{task_id}/cancel")
+async def cancel_training_task(
+    task_id: str,
+    service: TrainingService = Depends(get_training_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Cooperatively cancel a running training task."""
+    try:
+        task = await service.cancel_task(task_id)
+    except ValueError as exc:
+        raise TrainingGuardError(str(exc)) from exc
+    return ApiResponse(data=task)
 
 
 @router.get("/models")
