@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
+import sys
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -26,6 +28,41 @@ class ProgressCallback(Protocol):
     """Callback to report training progress."""
 
     async def __call__(self, progress: float, **kwargs: Any) -> None: ...
+
+
+def truncate_texts(texts: list[str], max_samples: int | None) -> list[str]:
+    """Cap a list of training texts to ``max_samples`` items.
+
+    ``None`` or ``0`` means no cap (preserve all samples). Negative values are
+    treated as no cap as well, mirroring ``config.get("max_samples") or len``.
+    """
+    if max_samples is None:
+        return texts
+    n = int(max_samples)
+    if n <= 0:
+        return texts
+    return texts[:n]
+
+
+def should_cancel(cancel_flag: dict[str, bool] | None) -> bool:
+    """Pure check used by the cancel TrainerCallback and tests."""
+    return bool(cancel_flag is not None and cancel_flag.get("cancel"))
+
+
+def lower_process_priority() -> None:
+    """Drop process priority so CPU smoke training does not freeze the host.
+
+    Best-effort: any failure is logged and swallowed so training still runs.
+    """
+    try:
+        if sys.platform == "win32":
+            import psutil
+
+            psutil.Process().nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+        else:
+            os.nice(5)
+    except Exception as exc:  # priority is best-effort
+        logger.warning("lower_process_priority_failed", error=str(exc))
 
 
 def training_deps_available() -> bool:
@@ -115,6 +152,7 @@ def _run_lora_sft_sync(
     output_dir: str,
     config: dict[str, Any],
     progress_state: dict[str, float],
+    cancel_flag: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Blocking PEFT LoRA SFT (intended to run via asyncio.to_thread)."""
     import torch
@@ -129,12 +167,20 @@ def _run_lora_sft_sync(
         TrainingArguments,
     )
 
+    if config.get("cpu_smoke"):
+        from app.core.training.cpu_smoke import clamp_cpu_smoke_config
+
+        config = clamp_cpu_smoke_config(config, base_model=base_model)
+
+    lower_process_priority()
+
     logger.info(
         "lora_sft_start",
         task_id=task_id,
         base_model=base_model,
         sft_data_path=sft_data_path,
         output_dir=output_dir,
+        cpu_smoke=bool(config.get("cpu_smoke")),
     )
 
     tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
@@ -144,6 +190,7 @@ def _run_lora_sft_sync(
     texts = _load_chatml_texts(sft_data_path, tokenizer)
     if not texts:
         raise ValueError(f"No usable ChatML samples in {sft_data_path}")
+    texts = truncate_texts(texts, config.get("max_samples"))
 
     max_seq_length = int(config.get("max_seq_length", 512))
 
@@ -181,23 +228,34 @@ def _run_lora_sft_sync(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
 
-    args = TrainingArguments(
-        output_dir=str(out / "checkpoints"),
-        num_train_epochs=float(config.get("num_epochs", 3)),
-        per_device_train_batch_size=int(config.get("batch_size", 1)),
-        gradient_accumulation_steps=int(config.get("gradient_accumulation_steps", 1)),
-        learning_rate=float(config.get("learning_rate", 2e-5)),
-        logging_steps=1,
-        save_strategy="no",
-        report_to=[],
-        remove_unused_columns=False,
-        fp16=torch.cuda.is_available(),
-    )
+    max_steps = int(config.get("max_steps") or 0)
+    ta_kwargs: dict[str, Any] = {
+        "output_dir": str(out / "checkpoints"),
+        "num_train_epochs": float(config.get("num_epochs", 3)),
+        "per_device_train_batch_size": int(config.get("batch_size", 1)),
+        "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
+        "learning_rate": float(config.get("learning_rate", 2e-5)),
+        "logging_steps": 1,
+        "save_strategy": "no",
+        "report_to": [],
+        "remove_unused_columns": False,
+        "fp16": torch.cuda.is_available(),
+        "gradient_checkpointing": bool(config.get("gradient_checkpointing", False)),
+    }
+    if max_steps > 0:
+        ta_kwargs["max_steps"] = max_steps
+    args = TrainingArguments(**ta_kwargs)
 
     class _ProgressCallback(TrainerCallback):
         def on_log(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
-            max_steps = max(int(getattr(state, "max_steps", 0) or 0), 1)
-            progress_state["p"] = min(1.0, float(state.global_step) / max_steps)
+            max_steps_cb = max(int(getattr(state, "max_steps", 0) or 0), 1)
+            progress_state["p"] = min(1.0, float(state.global_step) / max_steps_cb)
+
+    class _CancelCallback(TrainerCallback):
+        def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> Any:
+            if should_cancel(cancel_flag):
+                control.should_training_stop = True
+            return control
 
     data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
     trainer = Trainer(
@@ -205,7 +263,7 @@ def _run_lora_sft_sync(
         args=args,
         train_dataset=dataset,
         data_collator=data_collator,
-        callbacks=[_ProgressCallback()],
+        callbacks=[_ProgressCallback(), _CancelCallback()],
     )
     train_result = trainer.train()
     progress_state["p"] = 1.0
@@ -237,6 +295,8 @@ async def run_lora_sft(
     output_dir: str,
     config: dict[str, Any],
     on_progress: ProgressCallback,
+    *,
+    cancel_flag: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Run PEFT LoRA SFT in a worker thread while reporting progress."""
     if not training_deps_available():
@@ -256,6 +316,7 @@ async def run_lora_sft(
             output_dir=output_dir,
             config=config,
             progress_state=progress_state,
+            cancel_flag=cancel_flag,
         )
     )
 
@@ -279,6 +340,7 @@ async def run_sft_training(
     on_progress: ProgressCallback,
     *,
     default_use_mock: bool = True,
+    cancel_flag: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     """Dispatch to LoRA or mock based on config and dependency availability.
 
@@ -307,4 +369,5 @@ async def run_sft_training(
         output_dir=output_dir,
         config=config,
         on_progress=on_progress,
+        cancel_flag=cancel_flag,
     )

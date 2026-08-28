@@ -15,6 +15,12 @@ class TrainingConfig(BaseModel):
     lora_dropout: float = Field(default=0.05, ge=0.0, le=0.5)
     max_seq_length: int = Field(default=512, ge=64, le=4096)
     gradient_accumulation_steps: int = Field(default=1, ge=1, le=64)
+    # None = no cap (use all samples); only honored by real LoRA path.
+    max_steps: int | None = Field(default=None, ge=1, le=100000)
+    max_samples: int | None = Field(default=None, ge=1, le=100000)
+    # None = follow server default; True forces CPU smoke clamps; False disables.
+    cpu_smoke: bool | None = None
+    gradient_checkpointing: bool | None = None
 
 
 class CreateTrainingTaskRequest(BaseModel):
