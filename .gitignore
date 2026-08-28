@@ -67,3 +67,7 @@ temp/
 .claude/
 .plans/
 plans/
+
+# ===== Superpowers / agent scratch (local only; not for open source) =====
+.superpowers/
+docs/superpowers/
