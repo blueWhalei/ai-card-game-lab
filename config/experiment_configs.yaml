@@ -1,0 +1,29 @@
+# 实验配置（仅空库 seed；运行时以 SQLite 为准）
+configs:
+  - id: "cfg_temp_09"
+    name: "Temp 0.9"
+    notes: "较高 temperature 对照"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-v4-flash"
+      temperature: 0.9
+      top_p: 0.95
+      max_tokens: 1024
+  - id: "cfg_temp_06"
+    name: "Temp 0.6"
+    notes: "较低 temperature 对照"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-v4-flash"
+      temperature: 0.6
+      top_p: 0.9
+      max_tokens: 1024
+  - id: "cfg_temp_12"
+    name: "Temp 1.2"
+    notes: "高 temperature 基线"
+    model_config:
+      provider: "deepseek"
+      model_name: "deepseek-v4-flash"
+      temperature: 1.2
+      top_p: 1.0
+      max_tokens: 1024

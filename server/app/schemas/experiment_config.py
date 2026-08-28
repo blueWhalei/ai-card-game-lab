@@ -1,4 +1,4 @@
-"""Pydantic models for AI player management endpoints."""
+"""Pydantic models for experiment config management endpoints."""
 
 from pydantic import BaseModel
 
@@ -11,16 +11,14 @@ class ModelConfig(BaseModel):
     max_tokens: int = 1024
 
 
-class CreateAIPlayerRequest(BaseModel):
+class CreateExperimentConfigRequest(BaseModel):
     id: str
     name: str
-    description: str = ""
-    avatar: str = ""
+    notes: str = ""
     model_config_data: ModelConfig
 
 
-class UpdateAIPlayerRequest(BaseModel):
+class UpdateExperimentConfigRequest(BaseModel):
     name: str | None = None
-    description: str | None = None
-    avatar: str | None = None
+    notes: str | None = None
     model_config_data: ModelConfig | None = None
