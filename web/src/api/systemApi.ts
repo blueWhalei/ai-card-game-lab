@@ -22,7 +22,16 @@ export type SystemConfig = {
   prompt_ab_test_enabled?: boolean
   prompt_ab_test_ratio?: number
   training_use_mock?: boolean
+  training_deps_available?: boolean
   default_base_models?: string[]
+}
+
+export type RuntimeStats = {
+  cpu_percent: number
+  memory_total_mb: number
+  memory_used_mb: number
+  memory_available_mb: number
+  training_active?: boolean
 }
 
 export const systemApi = {
@@ -34,6 +43,9 @@ export const systemApi = {
 
   getConfig: () =>
     apiClient.get<never, ApiResponse<SystemConfig>>('/api/v1/system/config'),
+
+  getRuntimeStats: () =>
+    apiClient.get<never, ApiResponse<RuntimeStats>>('/api/v1/system/runtime-stats'),
 }
 
 export function gameTypeLabel(id: string): string {

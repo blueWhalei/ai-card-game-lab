@@ -21,12 +21,18 @@ import UiEmpty from '@/components/ui/Empty.vue'
 import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import { systemApi } from '@/api/systemApi'
+import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
 
 const store = useTrainingStore()
 const datasets = ref<DatasetItem[]>([])
 const showCreateDialog = ref(false)
 const activeTab = ref<'tasks' | 'models'>('tasks')
+const trainingDepsAvailable = ref(false)
+const cancelling = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const CPU_SMOKE_BASE_MODEL = 'Qwen/Qwen2.5-0.5B'
+const CPU_SMOKE_MAX_STEPS = 20
 
 const createForm = ref({
   name: '',
@@ -38,12 +44,14 @@ const createForm = ref({
   num_epochs: 1,
   use_mock: true,
   lora_r: 8,
+  max_steps: 0,
 })
 
 const baseModelOptions = ref([
   { label: 'Qwen2.5-1.5B', value: 'Qwen/Qwen2.5-1.5B' },
   { label: 'Qwen2.5-7B', value: 'Qwen/Qwen2.5-7B' },
   { label: 'Llama-3.2-3B', value: 'meta-llama/Llama-3.2-3B' },
+  { label: 'Qwen2.5-0.5B (CPU 冒烟)', value: CPU_SMOKE_BASE_MODEL },
 ])
 
 const datasetOptions = computed(() =>
@@ -94,9 +102,18 @@ function openCreateDialog() {
     num_epochs: 1,
     use_mock: true,
     lora_r: 8,
+    max_steps: 0,
   }
   showCreateDialog.value = true
   fetchDatasets()
+}
+
+function onUseMockChange(checked: boolean) {
+  if (!checked) {
+    // Switching off Mock → CPU smoke defaults
+    createForm.value.base_model = CPU_SMOKE_BASE_MODEL
+    createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
+  }
 }
 
 async function handleCreate() {
@@ -107,6 +124,22 @@ async function handleCreate() {
   if (!createForm.value.dataset_id) {
     toast.warning('请选择数据集')
     return
+  }
+  if (!createForm.value.use_mock) {
+    if (!trainingDepsAvailable.value) {
+      toast.warning(
+        '未安装训练依赖，无法运行真实训练。请先执行：poetry install --with training',
+      )
+      return
+    }
+    const ok = await confirmDialog({
+      title: '确认 CPU 冒烟训练',
+      message:
+        '将以 CPU 冒烟模式运行（约数分钟、不为牌力）。可用内存不足会拒绝启动。',
+      confirmText: '开始训练',
+      cancelText: '取消',
+    })
+    if (!ok) return
   }
   try {
     await store.createTask({
@@ -121,12 +154,25 @@ async function handleCreate() {
         output_format: 'pytorch',
         use_mock: createForm.value.use_mock,
         lora_r: createForm.value.lora_r,
+        max_steps: createForm.value.use_mock ? 0 : createForm.value.max_steps,
       },
     })
     toast.success('训练任务已创建')
     showCreateDialog.value = false
   } catch (e: unknown) {
     showApiError(e, '创建失败')
+  }
+}
+
+async function handleCancelTask(id: string) {
+  cancelling.value = true
+  try {
+    await store.cancelTask(id)
+    toast.success('已请求取消训练任务')
+  } catch (e: unknown) {
+    showApiError(e, '取消失败')
+  } finally {
+    cancelling.value = false
   }
 }
 
@@ -213,6 +259,7 @@ onMounted(async () => {
     if (typeof cfg.data.training_use_mock === 'boolean') {
       createForm.value.use_mock = cfg.data.training_use_mock
     }
+    trainingDepsAvailable.value = cfg.data.training_deps_available === true
   } catch {
     /* keep fallbacks */
   }
@@ -266,6 +313,12 @@ onUnmounted(() => {
         模型仓库
       </button>
     </div>
+
+    <TrainingLivePanel
+      :tasks="store.tasks"
+      :cancelling="cancelling"
+      @cancel="handleCancelTask"
+    />
 
     <div v-if="activeTab === 'tasks'" class="relative">
       <UiSpinner v-if="store.isLoading" overlay label="加载中…" />
@@ -427,7 +480,16 @@ onUnmounted(() => {
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">LoRA / 模式</label>
           <div class="flex flex-wrap items-center gap-4">
-            <UiCheckbox v-model="createForm.use_mock" label="使用 Mock（不跑真实训练）" />
+            <UiCheckbox
+              :model-value="createForm.use_mock"
+              label="使用 Mock（不跑真实训练）"
+              @update:model-value="
+                (v) => {
+                  createForm.use_mock = v
+                  onUseMockChange(v)
+                }
+              "
+            />
             <div v-if="!createForm.use_mock" class="flex items-center gap-2">
               <span class="text-xs text-ink-text-muted">LoRA r</span>
               <UiInputNumber
@@ -436,6 +498,16 @@ onUnmounted(() => {
                 :max="64"
                 class="w-24"
                 @update:model-value="(v) => (createForm.lora_r = v ?? 8)"
+              />
+            </div>
+            <div v-if="!createForm.use_mock" class="flex items-center gap-2">
+              <span class="text-xs text-ink-text-muted">Max Steps</span>
+              <UiInputNumber
+                :model-value="createForm.max_steps"
+                :min="1"
+                :max="1000"
+                class="w-28"
+                @update:model-value="(v) => (createForm.max_steps = v ?? CPU_SMOKE_MAX_STEPS)"
               />
             </div>
           </div>

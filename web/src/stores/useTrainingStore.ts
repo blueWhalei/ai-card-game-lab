@@ -43,6 +43,16 @@ export const useTrainingStore = defineStore('training', () => {
     total.value = Math.max(0, total.value - 1)
   }
 
+  async function cancelTask(id: string): Promise<TrainingTask> {
+    const res = await trainingApi.cancelTask(id)
+    const updated = res.data
+    const idx = tasks.value.findIndex((t) => t.id === id)
+    if (idx >= 0) {
+      tasks.value = [...tasks.value.slice(0, idx), updated, ...tasks.value.slice(idx + 1)]
+    }
+    return updated
+  }
+
   async function fetchModels(): Promise<void> {
     isLoading.value = true
     try {
@@ -84,6 +94,7 @@ export const useTrainingStore = defineStore('training', () => {
     fetchTask,
     createTask,
     deleteTask,
+    cancelTask,
     fetchModels,
     deleteModel,
     exportModel,

@@ -11,6 +11,7 @@ export interface TrainingConfig {
   lora_alpha?: number
   lora_dropout?: number
   max_seq_length?: number
+  max_steps?: number
   gradient_accumulation_steps?: number
 }
 
@@ -61,6 +62,11 @@ export const trainingApi = {
   deleteTask: (id: string) =>
     apiClient.delete<never, ApiResponse<Record<string, string>>>(
       `/api/v1/training/tasks/${id}`,
+    ),
+
+  cancelTask: (id: string) =>
+    apiClient.post<never, ApiResponse<TrainingTask>>(
+      `/api/v1/training/tasks/${id}/cancel`,
     ),
 
   listModels: () => apiClient.get<never, ApiResponse<ModelItem[]>>('/api/v1/models'),
