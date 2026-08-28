@@ -33,6 +33,19 @@ logger = structlog.get_logger()
 _TERMINAL_STATUSES: frozenset[str] = frozenset(
     {"completed", "failed", "cancelled"}
 )
+
+
+def _count_jsonl_lines(path: str) -> int:
+    """Count non-empty lines in a JSONL file (best-effort sample count)."""
+    p = Path(path)
+    if not p.exists():
+        return 0
+    count = 0
+    with p.open("r", encoding="utf-8") as fin:
+        for line in fin:
+            if line.strip():
+                count += 1
+    return count
 _ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "exporting", "training"})
 
 
@@ -364,9 +377,9 @@ class TrainingService:
         player_ids: list[str] | None,
     ) -> dict[str, Any]:
         """Create and start one doudizhu game using three Ollama-backed players."""
-        from app.dependencies import get_ai_player_service, get_game_service
+        from app.dependencies import get_experiment_config_service, get_game_service
 
-        ai_players = get_ai_player_service()
+        configs = get_experiment_config_service()
         game_service = get_game_service()
 
         ids = player_ids or [f"verify_p{i}" for i in range(1, 4)]
@@ -380,19 +393,18 @@ class TrainingService:
                 "top_p": 0.9,
                 "max_tokens": 256,
             }
-            existing = ai_players.get_player(pid)
+            existing = configs.get_config(pid)
             if existing is None:
-                await ai_players.create_player(
+                await configs.create_config(
                     {
                         "id": pid,
                         "name": f"Verify-{i + 1}",
-                        "description": "M3 local verify player",
-                        "avatar": "🧪",
+                        "notes": "",
                         "model_config": model_config,
                     }
                 )
             else:
-                await ai_players.update_player(pid, {"model_config": model_config})
+                await configs.update_config(pid, {"model_config": model_config})
 
         game = await game_service.create_game(
             game_type="doudizhu",
@@ -428,18 +440,38 @@ class TrainingService:
     ) -> None:
         """Background: export → train → complete."""
         try:
-            # Phase 1: Export
+            # Phase 1: Export (or use pre-built ChatML from decisions)
             await self._update(task_id, "exporting", progress=0.0)
             source_path = str(Path(self._data_dir) / dataset["file_path"])
-            sft_path = str(Path(self._data_dir) / "datasets" / f"{task_id}_sft.jsonl")
-            sample_count = await asyncio.to_thread(
-                export_sft_dataset,
-                source_path,
-                sft_path,
-                None,
-                False,  # include_thinking: default off for cleaner BC data
-            )
-            logger.info("pipeline_export_done", task_id=task_id, samples=sample_count)
+            filters = dataset.get("filters") or {}
+            if isinstance(filters, str):
+                try:
+                    filters = json.loads(filters)
+                except json.JSONDecodeError:
+                    filters = {}
+            is_chatml = isinstance(filters, dict) and filters.get("format") == "chatml"
+            if is_chatml:
+                sft_path = source_path
+                sample_count = int(dataset.get("sample_count") or 0)
+                if sample_count <= 0:
+                    # Count lines if DB count missing
+                    sample_count = await asyncio.to_thread(_count_jsonl_lines, sft_path)
+                logger.info(
+                    "pipeline_chatml_dataset",
+                    task_id=task_id,
+                    samples=sample_count,
+                    path=sft_path,
+                )
+            else:
+                sft_path = str(Path(self._data_dir) / "datasets" / f"{task_id}_sft.jsonl")
+                sample_count = await asyncio.to_thread(
+                    export_sft_dataset,
+                    source_path,
+                    sft_path,
+                    None,
+                    False,  # include_thinking: default off for cleaner BC data
+                )
+                logger.info("pipeline_export_done", task_id=task_id, samples=sample_count)
 
             if sample_count == 0:
                 await self._update(

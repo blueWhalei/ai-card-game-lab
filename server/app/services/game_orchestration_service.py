@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from app.core.collector.jsonl_writer import JsonlWriter
     from app.core.engine.base import GameState
     from app.core.engine.registry import GameEngineRegistry
-    from app.services.ai_player_service import AIPlayerService
+    from app.services.experiment_config_service import ExperimentConfigService
     from app.services.ai_service import AIService
     from app.services.decision_service import DecisionService
     from app.services.trace_service import TraceService
@@ -45,7 +45,7 @@ class GameOrchestrationService:
         engine_registry: GameEngineRegistry,
         collector: JsonlWriter,
         ai_service: AIService,
-        ai_player_service: AIPlayerService,
+        experiment_config_service: ExperimentConfigService,
         sqlite_path: str,
         event_bus: EventBus,
         decision_service: DecisionService | None = None,
@@ -54,7 +54,7 @@ class GameOrchestrationService:
         self._engine_registry = engine_registry
         self._collector = collector
         self._ai_service = ai_service
-        self._ai_player_service = ai_player_service
+        self._experiment_config_service = experiment_config_service
         self._sqlite_path = sqlite_path
         self._event_bus = event_bus
         self._decision_service = decision_service
@@ -146,15 +146,53 @@ class GameOrchestrationService:
                 await self._finish_game(game_id, state, engine, bg_game_repo)
             except asyncio.CancelledError:
                 logger.info("game_loop_cancelled", game_id=game_id)
+                await self._abort_game(
+                    game_id,
+                    bg_game_repo,
+                    status="cancelled",
+                    message="对局已取消",
+                )
+                raise
             except Exception as exc:
                 logger.exception("game_loop_error", game_id=game_id)
-                await ws_manager.broadcast(game_id, {
-                    "type": "error",
+                await self._abort_game(
+                    game_id,
+                    bg_game_repo,
+                    status="failed",
+                    message=f"对局循环出错: {type(exc).__name__}: {exc}",
+                )
+
+    async def _abort_game(
+        self,
+        game_id: str,
+        game_repo: GameRepository,
+        *,
+        status: str,
+        message: str,
+    ) -> None:
+        """Mark game terminal in DB, broadcast, and clear in-memory state."""
+        try:
+            await game_repo.update_status(game_id, status)
+        except Exception:
+            logger.warning("game_abort_status_failed", game_id=game_id, status=status, exc_info=True)
+        try:
+            await ws_manager.broadcast(
+                game_id,
+                {
+                    "type": "error" if status == "failed" else "game_ended",
                     "game_id": game_id,
                     "data": {
-                        "message": f"对局循环出错: {type(exc).__name__}: {exc}",
+                        "message": message,
+                        "status": status,
                     },
-                })
+                },
+            )
+        except Exception:
+            logger.warning("game_abort_broadcast_failed", game_id=game_id, exc_info=True)
+        self._states.pop(game_id, None)
+        self._tasks.pop(game_id, None)
+        self._pause_events.pop(game_id, None)
+        logger.info("game_aborted", game_id=game_id, status=status)
 
     async def _run_round(
         self,
@@ -165,7 +203,7 @@ class GameOrchestrationService:
     ) -> GameState:
         """Execute a single round of gameplay."""
         current_player = engine.get_current_player(state)
-        player_config = self._ai_player_service.get_player(current_player)
+        player_config = self._experiment_config_service.get_config(current_player)
         model_cfg = (player_config or {}).get("model_config", {})
         legal_actions = engine.get_legal_actions(state, current_player)
         all_hands = {pid: list(cards) for pid, cards in getattr(state, "hands", {}).items()}
@@ -459,7 +497,9 @@ class GameOrchestrationService:
             "total_rounds": state.round,
         })
 
-        winner_config = self._ai_player_service.get_player(winner) if winner else None
+        winner_config = (
+            self._experiment_config_service.get_config(winner) if winner else None
+        )
 
         await ws_manager.broadcast(game_id, {
             "type": "game_ended",

@@ -30,14 +30,19 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     dependencies.get_settings.cache_clear()
     if hasattr(dependencies, "get_skill_service"):
         dependencies.get_skill_service.cache_clear()
+    dependencies.get_experiment_config_service.cache_clear()
+    dependencies.get_experiment_config_stats_service.cache_clear()
     dependencies.get_ai_service.cache_clear()
     dependencies.get_decision_service.cache_clear()
+    dependencies.get_data_service.cache_clear()
 
     with pytest.MonkeyPatch.context() as m:
         m.setenv("SQLITE_PATH", test_settings.sqlite_path)
         m.setenv("DATA_DIR", test_settings.data_dir)
 
         app = create_app(settings=test_settings)
+        await dependencies.get_experiment_config_service().initialize()
+
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:
             yield ac

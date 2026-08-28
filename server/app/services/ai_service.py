@@ -19,7 +19,6 @@ from app.core.ai.tools.hand_analyzer import HandAnalyzerTool
 from app.core.ai.tools.win_probability import WinProbabilityTool
 from app.core.engine.base import GameAction, GameEngine, GameState
 from app.database import get_db_connection
-from app.services.ai_player_service import AIPlayerService
 from app.utils.exceptions import (
     AIProviderError,
     AIProviderUnavailableError,
@@ -76,13 +75,11 @@ class AIService:
         self,
         llm_factory: LLMClientFactory,
         prompt_builder: PromptBuilder,
-        ai_player_service: AIPlayerService,
         decision_service: DecisionService | None = None,
         sqlite_path: str | None = None,
     ) -> None:
         self._llm_factory = llm_factory
         self._prompt_builder = prompt_builder
-        self._ai_player_service = ai_player_service
         self._decision_service = decision_service
         self._sqlite_path = sqlite_path
         self._client_cache: dict[str, LLMClient] = {}
@@ -280,6 +277,15 @@ class AIService:
             player_id=player_id, action_type="PASS"
         )
         fallback_thinking = f"[LLM调用失败，使用默认动作] {last_error}"
+        if self._decision_service:
+            await self._record_decision_point(
+                state=state,
+                player_id=player_id,
+                legal_actions=legal_actions,
+                chosen_action=fallback,
+                thinking=fallback_thinking,
+                game_id=game_id,
+            )
         return AIDecisionResult(
             action=fallback,
             thinking=fallback_thinking,
@@ -632,7 +638,8 @@ class AIService:
         legal_actions: list[GameAction],
     ) -> tuple[str, GameAction]:
         """Fallback parsing when LangChain parser fails."""
-        thinking = raw_response[:200]
+        # Prefix so evaluate_train_usable marks train_usable=false
+        thinking = f"[LLM解析失败，使用默认动作] {raw_response[:200]}"
         if legal_actions:
             return thinking, legal_actions[0]
         return thinking, GameAction(player_id="", action_type="PASS")

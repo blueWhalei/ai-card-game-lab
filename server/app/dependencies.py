@@ -7,7 +7,7 @@ Dependency Lifecycle Overview:
    - Settings: Configuration loaded once at startup
    - GameEngineRegistry: Game engine registry (stateless)
    - LLMClientFactory: LLM client factory (stateless)
-   - AIPlayerService: AI player configuration (stateless)
+   - ExperimentConfigService: Experiment config profiles (stateless)
    - PromptBuilder: Prompt builder (stateless)
    - JsonlWriter: Data collector (stateless, writes to files)
    - EventBus: Event bus singleton for domain events
@@ -46,14 +46,14 @@ from app.core.engine.doudizhu import DoudizhuEngine
 from app.core.engine.registry import GameEngineRegistry
 from app.core.events import get_event_bus
 from app.database import get_db_connection
-from app.services.ai_player_service import AIPlayerService
+from app.services.experiment_config_service import ExperimentConfigService
+from app.services.experiment_config_stats_service import ExperimentConfigStatsService
 from app.services.ai_service import AIService
 from app.services.data_service import DataService
 from app.services.decision_service import DecisionService
 from app.services.game_orchestration_service import GameOrchestrationService
 from app.services.game_replay_service import GameReplayService
 from app.services.game_service import GameService
-from app.services.player_stats_service import PlayerStatsService
 
 if TYPE_CHECKING:
     from app.services.prompt_service import PromptService as PromptServiceType
@@ -158,14 +158,21 @@ def get_llm_factory() -> LLMClientFactory:
 
 
 @lru_cache
-def get_ai_player_service() -> AIPlayerService:
-    """Singleton AI player service (SQLite + optional YAML seed)."""
+def get_experiment_config_service() -> ExperimentConfigService:
+    """Singleton experiment config service (SQLite + optional YAML seed)."""
     settings = get_settings()
-    yaml_path = str(Path(settings.config_dir) / "ai_players.yaml")
-    return AIPlayerService(
+    yaml_path = str(Path(settings.config_dir) / "experiment_configs.yaml")
+    return ExperimentConfigService(
         sqlite_path=settings.sqlite_path,
         yaml_seed_path=yaml_path,
     )
+
+
+@lru_cache
+def get_experiment_config_stats_service() -> ExperimentConfigStatsService:
+    """Singleton experiment config stats service."""
+    settings = get_settings()
+    return ExperimentConfigStatsService(sqlite_path=settings.sqlite_path)
 
 
 @lru_cache
@@ -188,7 +195,6 @@ def get_ai_service() -> AIService:
     return AIService(
         llm_factory=get_llm_factory(),
         prompt_builder=get_prompt_builder(),
-        ai_player_service=get_ai_player_service(),
         decision_service=get_decision_service(),
         sqlite_path=settings.sqlite_path,
     )
@@ -202,7 +208,7 @@ def get_game_orchestration_service() -> GameOrchestrationService:
         engine_registry=get_engine_registry(),
         collector=get_jsonl_writer(),
         ai_service=get_ai_service(),
-        ai_player_service=get_ai_player_service(),
+        experiment_config_service=get_experiment_config_service(),
         sqlite_path=settings.sqlite_path,
         event_bus=get_event_bus(),
         decision_service=get_decision_service(),
@@ -296,10 +302,3 @@ def get_archive_service() -> "ArchiveService":
         sqlite_path=settings.sqlite_path,
         data_dir=settings.data_dir,
     )
-
-
-@lru_cache
-def get_player_stats_service() -> PlayerStatsService:
-    """Singleton player stats service."""
-    settings = get_settings()
-    return PlayerStatsService(sqlite_path=settings.sqlite_path)

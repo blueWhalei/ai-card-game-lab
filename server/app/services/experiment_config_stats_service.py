@@ -32,17 +32,30 @@ class ExperimentConfigStatsService:
         stats.sort(key=lambda x: x["games_played"], reverse=True)
         return stats
 
+    async def get_config_stats(self, config_id: str) -> dict[str, Any]:
+        """Get statistics for a single experiment config."""
+        async with aiosqlite.connect(self._sqlite_path) as db:
+            db.row_factory = aiosqlite.Row
+            repo = ExperimentConfigStatsRepository(db)
+            return await self._build_config_stats(
+                repo,
+                config_id,
+                include_last_game_id=True,
+            )
+
     async def _build_config_stats(
         self,
         repo: ExperimentConfigStatsRepository,
         config_id: str,
+        *,
+        include_last_game_id: bool = False,
     ) -> dict[str, Any]:
         """Build stats dict for a single experiment config."""
         games_played = await repo.count_games_played(config_id)
         wins = await repo.count_wins(config_id)
         last_game = await repo.get_last_game(config_id)
 
-        return {
+        result: dict[str, Any] = {
             "config_id": config_id,
             "games_played": games_played,
             "wins": wins,
@@ -50,3 +63,8 @@ class ExperimentConfigStatsService:
             "win_rate": wins / games_played if games_played > 0 else 0.0,
             "last_game_at": last_game["created_at"] if last_game else None,
         }
+
+        if include_last_game_id:
+            result["last_game_id"] = last_game["id"] if last_game else None
+
+        return result

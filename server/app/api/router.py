@@ -3,12 +3,12 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
-    ai_player,
     data,
     decision,
+    experiment_config,
+    experiment_config_stats,
     game,
     migration,
-    player_stats,
     prompt,
     system,
     trace,
@@ -19,8 +19,16 @@ api_router = APIRouter()
 
 api_router.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 api_router.include_router(game.router, prefix="/api/v1/games", tags=["games"])
-api_router.include_router(player_stats.router, prefix="/api/v1/ai-players", tags=["ai-players"])
-api_router.include_router(ai_player.router, prefix="/api/v1/ai-players", tags=["ai-players"])
+api_router.include_router(
+    experiment_config_stats.router,
+    prefix="/api/v1/experiment-configs",
+    tags=["experiment-configs"],
+)
+api_router.include_router(
+    experiment_config.router,
+    prefix="/api/v1/experiment-configs",
+    tags=["experiment-configs"],
+)
 api_router.include_router(data.router, prefix="/api/v1", tags=["data"])
 api_router.include_router(training.router, prefix="/api/v1", tags=["training"])
 api_router.include_router(prompt.router, prefix="/api/v1/prompts", tags=["prompts"])
