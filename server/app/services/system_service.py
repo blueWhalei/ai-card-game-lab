@@ -122,6 +122,13 @@ class SystemService:
             _compute_storage_stats, db_path, data_dir
         )
 
+    def get_runtime_stats(self) -> dict[str, object]:
+        from app.core.training.runtime_stats import get_runtime_stats as _snap
+
+        data = dict(_snap())
+        data["training_active"] = False  # Task 3 may enrich
+        return data
+
 
 def _compute_storage_stats(db_path: Path, data_dir: Path) -> dict[str, Any]:
     """Synchronous storage computation (called via asyncio.to_thread)."""

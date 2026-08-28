@@ -49,6 +49,13 @@ async def get_storage(
     return ApiResponse(data=await service.get_storage_info())
 
 
+@router.get("/runtime-stats")
+async def runtime_stats(
+    service: SystemService = Depends(get_system_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=service.get_runtime_stats())
+
+
 @router.get("/archive/stats")
 async def get_archive_stats(
     archive_service: ArchiveService = Depends(get_archive_service),
