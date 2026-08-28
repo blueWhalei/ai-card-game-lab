@@ -2,8 +2,10 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { showApiError } from '@/utils/error'
-import { tracesApi, type Trace } from '@/api/traces'
+import { tracesApi, type AggregatedMetrics, type Trace } from '@/api/traces'
 import TraceDetail from '@/components/trace/TraceDetail.vue'
+import ResponseTimeChart from '@/components/trace/ResponseTimeChart.vue'
+import TraceMetrics from '@/components/trace/TraceMetrics.vue'
 import { formatDateTime } from '@/utils/format'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiBadge from '@/components/ui/Badge.vue'
@@ -11,6 +13,7 @@ import UiEmpty from '@/components/ui/Empty.vue'
 
 const route = useRoute()
 const traces = ref<Trace[]>([])
+const metrics = ref<AggregatedMetrics | null>(null)
 const loading = ref(false)
 const selectedTrace = ref<Trace | null>(null)
 
@@ -23,8 +26,14 @@ async function fetchTraces() {
     if (gameId.value) {
       params.game_id = gameId.value
     }
-    const res = await tracesApi.list(params)
-    traces.value = res.data.data || []
+    const [listRes, metricsRes] = await Promise.all([
+      tracesApi.list(params),
+      tracesApi.metrics(
+        gameId.value ? { game_id: gameId.value } : {},
+      ),
+    ])
+    traces.value = listRes.data || []
+    metrics.value = metricsRes.data ?? null
     if (traces.value.length > 0 && !selectedTrace.value) {
       selectedTrace.value = traces.value[0] ?? null
     }
@@ -45,8 +54,18 @@ onMounted(fetchTraces)
 </script>
 
 <template>
-  <div class="page-container">
-    <p class="page-subtitle mb-8 mt-0">AI 决策链路追踪与调试</p>
+  <div class="page-container space-y-6">
+    <p class="page-subtitle mb-0 mt-0">AI 决策链路追踪与调试</p>
+
+    <ResponseTimeChart :game-id="gameId" />
+
+    <TraceMetrics v-if="metrics && metrics.total_traces > 0" :metrics="metrics" />
+    <div
+      v-else-if="!loading"
+      class="rounded-ink-md border border-ink-border bg-ink-surface p-5 text-center text-ink-text-muted"
+    >
+      暂无聚合性能指标
+    </div>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div class="lg:col-span-1">

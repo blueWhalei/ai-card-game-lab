@@ -37,12 +37,29 @@ export interface DatasetFilters {
   player_ids?: string[] | null
   result?: string | null
   include_chain_of_thought?: boolean
+  source?: string
+  format?: string
+  train_usable_only?: boolean
+  include_thinking?: boolean
+  game_id?: string | null
+  min_quality?: number | null
+  outcome?: string | null
 }
 
 export interface CreateDatasetRequest {
   name: string
   game_type: string
   filters: DatasetFilters
+}
+
+export interface CreateDatasetFromDecisionsRequest {
+  name: string
+  game_type?: string
+  game_id?: string | null
+  min_quality?: number | null
+  outcome?: string | null
+  train_usable_only?: boolean
+  include_thinking?: boolean
 }
 
 export interface DatasetItem {
@@ -62,6 +79,9 @@ export const dataApi = {
 
   createDataset: (data: CreateDatasetRequest) =>
     apiClient.post<never, ApiResponse<DatasetItem>>('/api/v1/datasets', data),
+
+  createDatasetFromDecisions: (data: CreateDatasetFromDecisionsRequest) =>
+    apiClient.post<never, ApiResponse<DatasetItem>>('/api/v1/datasets/from-decisions', data),
 
   getDataset: (id: string) =>
     apiClient.get<never, ApiResponse<DatasetItem>>(`/api/v1/datasets/${id}`),

@@ -18,3 +18,15 @@ class CreateDatasetRequest(BaseModel):
     name: str
     game_type: str
     filters: DatasetFilters
+
+
+class CreateDatasetFromDecisionsRequest(BaseModel):
+    """Register a ChatML dataset from decision_points (train_usable preferred)."""
+
+    name: str
+    game_type: str = "doudizhu"
+    game_id: str | None = None
+    min_quality: float | None = None
+    outcome: str | None = None
+    train_usable_only: bool = True
+    include_thinking: bool = False

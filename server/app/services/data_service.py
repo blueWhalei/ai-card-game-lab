@@ -13,8 +13,9 @@ import structlog
 
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.stats_repo import StatsRepository
-from app.schemas.data import CreateDatasetRequest
-from app.utils.exceptions import DataExportError, DatasetNotFoundError
+from app.schemas.data import CreateDatasetFromDecisionsRequest, CreateDatasetRequest
+from app.services.decision_service import DecisionService
+from app.utils.exceptions import DataExportError, DatasetNotFoundError, NoExportableDataError
 from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
@@ -26,6 +27,7 @@ class DataService:
     def __init__(self, sqlite_path: str, data_dir: str) -> None:
         self._sqlite_path = sqlite_path
         self._data_dir = Path(data_dir)
+        self._decision_service = DecisionService(sqlite_path=sqlite_path, data_dir=data_dir)
 
     async def get_stats(self) -> dict[str, Any]:
         """Query aggregate statistics from games and rounds tables."""
@@ -144,6 +146,51 @@ class DataService:
                 "name": request.name,
                 "game_type": request.game_type,
                 "filters": request.filters.model_dump(),
+                "sample_count": sample_count,
+                "file_path": str(output_path.relative_to(self._data_dir)),
+                "created_at": now,
+            })
+
+    async def create_dataset_from_decisions(
+        self,
+        request: CreateDatasetFromDecisionsRequest,
+    ) -> dict[str, Any]:
+        """Export decision points to ChatML and register as a training dataset."""
+        dataset_id = generate_id("ds")
+        datasets_dir = self._data_dir / "datasets"
+        datasets_dir.mkdir(parents=True, exist_ok=True)
+        output_path = datasets_dir / f"{dataset_id}_chatml.jsonl"
+
+        filepath, sample_count = await self._decision_service.export_chatml(
+            game_id=request.game_id,
+            min_quality=request.min_quality,
+            outcome=request.outcome,
+            train_usable_only=request.train_usable_only,
+            include_thinking=request.include_thinking,
+            output_path=str(output_path),
+        )
+        if not filepath or sample_count == 0:
+            output_path.unlink(missing_ok=True)
+            raise NoExportableDataError("No decision points to export into a dataset")
+
+        now = datetime.now(tz=timezone.utc).isoformat()
+        filters: dict[str, Any] = {
+            "source": "decisions",
+            "format": "chatml",
+            "train_usable_only": request.train_usable_only,
+            "include_thinking": request.include_thinking,
+            "game_id": request.game_id,
+            "min_quality": request.min_quality,
+            "outcome": request.outcome,
+        }
+        async with aiosqlite.connect(self._sqlite_path) as db:
+            db.row_factory = aiosqlite.Row
+            repo = DatasetRepository(db)
+            return await repo.create({
+                "id": dataset_id,
+                "name": request.name,
+                "game_type": request.game_type,
+                "filters": filters,
                 "sample_count": sample_count,
                 "file_path": str(output_path.relative_to(self._data_dir)),
                 "created_at": now,

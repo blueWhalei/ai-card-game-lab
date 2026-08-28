@@ -55,19 +55,21 @@ export interface CompareResult {
 
 export const tracesApi = {
   list: (params?: { game_id?: string; player_id?: string; limit?: number; offset?: number }) =>
-    apiClient.get<ApiResponse<Trace[]>>('/api/v1/traces', { params }),
+    apiClient.get<never, ApiResponse<Trace[]>>('/api/v1/traces', { params }),
 
-  get: (traceId: string) => apiClient.get<ApiResponse<Trace>>(`/api/v1/traces/${traceId}`),
+  get: (traceId: string) =>
+    apiClient.get<never, ApiResponse<Trace>>(`/api/v1/traces/${traceId}`),
 
   metrics: (params?: {
     game_id?: string
     model?: string
     start_time?: string
     end_time?: string
-  }) => apiClient.get<ApiResponse<AggregatedMetrics>>('/api/v1/traces/metrics', { params }),
+  }) =>
+    apiClient.get<never, ApiResponse<AggregatedMetrics>>('/api/v1/traces/metrics', { params }),
 
   compare: (version1: string, version2: string) =>
-    apiClient.get<ApiResponse<CompareResult>>('/api/v1/traces/compare', {
+    apiClient.get<never, ApiResponse<CompareResult>>('/api/v1/traces/compare', {
       params: { version1, version2 },
     }),
 }

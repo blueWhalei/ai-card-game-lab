@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { showApiError } from '@/utils/error'
@@ -24,12 +25,19 @@ import { systemApi } from '@/api/systemApi'
 import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
 
 const store = useTrainingStore()
+const route = useRoute()
 const datasets = ref<DatasetItem[]>([])
 const showCreateDialog = ref(false)
 const activeTab = ref<'tasks' | 'models'>('tasks')
 const trainingDepsAvailable = ref(false)
 const cancelling = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function applyTabFromRoute(): void {
+  if (route.query.tab === 'models') {
+    activeTab.value = 'models'
+  }
+}
 
 const CPU_SMOKE_BASE_MODEL = 'Qwen/Qwen2.5-0.5B'
 const CPU_SMOKE_MAX_STEPS = 20
@@ -55,10 +63,13 @@ const baseModelOptions = ref([
 ])
 
 const datasetOptions = computed(() =>
-  datasets.value.map((ds) => ({
-    label: `${ds.name} (${ds.sample_count} 条)`,
-    value: ds.id,
-  })),
+  datasets.value.map((ds) => {
+    const fmt = ds.filters?.format === 'chatml' ? 'ChatML' : 'JSONL'
+    return {
+      label: `${ds.name} (${ds.sample_count} · ${fmt})`,
+      value: ds.id,
+    }
+  }),
 )
 
 type TaskRow = (typeof store.tasks)[number] & Record<string, unknown>
@@ -86,8 +97,8 @@ async function fetchDatasets() {
   try {
     const res = await dataApi.listDatasets()
     datasets.value = res.data
-  } catch {
-    /* ignore */
+  } catch (e: unknown) {
+    showApiError(e, '加载数据集失败')
   }
 }
 
@@ -170,6 +181,13 @@ async function handleCreate() {
 }
 
 async function handleCancelTask(id: string) {
+  const ok = await confirmDialog({
+    title: '取消训练',
+    message: '确定取消该训练任务？进行中的 CPU 冒烟会尽快停止。',
+    confirmText: '取消训练',
+    danger: true,
+  })
+  if (!ok) return
   cancelling.value = true
   try {
     await store.cancelTask(id)
@@ -269,8 +287,13 @@ onMounted(async () => {
       }
     }
     trainingDepsAvailable.value = cfg.data.training_deps_available === true
-  } catch {
-    /* keep fallbacks */
+  } catch (e: unknown) {
+    // Non-blocking: keep hardcoded base models / mock defaults
+    showApiError(e, '加载系统配置失败，已使用本地默认值')
+  }
+  applyTabFromRoute()
+  if (activeTab.value === 'models') {
+    void store.fetchModels()
   }
   store.fetchTasks()
   store.fetchModels()
@@ -289,7 +312,7 @@ onUnmounted(() => {
   <div class="page-container">
     <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <p class="text-base text-ink-text-secondary">
-        默认 Mock 演示；真实 LoRA 需先
+        推荐：决策点页「登记为训练数据集」(ChatML) → 本页创建任务。也可用 JSONL 对局筛选数据集。默认 Mock；真实 LoRA 需
         <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-sm">poetry install --with training</code>
         并关闭「使用 Mock」。
       </p>

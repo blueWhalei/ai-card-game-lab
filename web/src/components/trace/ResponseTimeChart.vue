@@ -7,6 +7,7 @@ import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/compon
 import VChart from 'vue-echarts'
 import { tracesApi, type Trace, type AggregatedMetrics } from '@/api/traces'
 import { formatDateTime } from '@/utils/format'
+import { showApiError } from '@/utils/error'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiButton from '@/components/ui/Button.vue'
 
@@ -145,10 +146,10 @@ async function fetchData() {
       tracesApi.metrics(params),
     ])
 
-    traces.value = tracesRes.data.data || []
-    metrics.value = metricsRes.data.data
-  } catch (e) {
-    console.error('Failed to fetch trace data:', e)
+    traces.value = tracesRes.data || []
+    metrics.value = metricsRes.data
+  } catch (e: unknown) {
+    showApiError(e, '加载追踪趋势失败')
   } finally {
     loading.value = false
   }

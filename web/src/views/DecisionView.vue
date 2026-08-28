@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decision'
+import { dataApi } from '@/api/dataApi'
 import { formatDateTime } from '@/utils/format'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -11,16 +12,19 @@ import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
 import UiSelect from '@/components/ui/Select.vue'
+import UiInput from '@/components/ui/Input.vue'
 
 const route = useRoute()
 const decisionPoints = ref<DecisionPoint[]>([])
 const loading = ref(false)
 const exporting = ref(false)
+const registering = ref(false)
 const selectedPoint = ref<DecisionPoint | null>(null)
 const stats = ref<DecisionStats | null>(null)
 const showStats = ref(false)
 const exportTrainUsableOnly = ref(true)
 const exportIncludeThinking = ref(false)
+const datasetName = ref('')
 /** list-level filter: all | true | false */
 const trainUsableFilter = ref<'all' | 'true' | 'false'>('all')
 
@@ -56,7 +60,7 @@ async function fetchDecisionPoints() {
       params.train_usable = false
     }
     const res = await decisionApi.list(params)
-    decisionPoints.value = res.data.data || []
+    decisionPoints.value = res.data || []
     selectedPoint.value =
       decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
       decisionPoints.value[0] ??
@@ -71,7 +75,7 @@ async function fetchDecisionPoints() {
 async function fetchStats() {
   try {
     const res = await decisionApi.stats()
-    stats.value = res.data.data
+    stats.value = res.data
   } catch (e: unknown) {
     showApiError(e, '获取统计数据失败')
   }
@@ -86,7 +90,7 @@ async function exportChatml() {
       train_usable_only: exportTrainUsableOnly.value,
       include_thinking: exportIncludeThinking.value,
     })
-    const { filepath, count } = res.data.data
+    const { filepath, count } = res.data
     if (!filepath || count === 0) {
       toast.warning('没有可导出的决策点')
       return
@@ -96,6 +100,31 @@ async function exportChatml() {
     showApiError(e, '导出失败')
   } finally {
     exporting.value = false
+  }
+}
+
+async function registerAsDataset() {
+  const name =
+    datasetName.value.trim() ||
+    `decisions-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
+  registering.value = true
+  try {
+    const res = await dataApi.createDatasetFromDecisions({
+      name,
+      game_type: 'doudizhu',
+      game_id: gameId.value,
+      min_quality: minQuality.value,
+      train_usable_only: exportTrainUsableOnly.value,
+      include_thinking: exportIncludeThinking.value,
+    })
+    toast.success(
+      `已登记训练数据集「${res.data.name}」(${res.data.sample_count} 条 ChatML)，可在训练台选用`,
+    )
+    datasetName.value = ''
+  } catch (e: unknown) {
+    showApiError(e, '登记数据集失败')
+  } finally {
+    registering.value = false
   }
 }
 
@@ -138,8 +167,21 @@ onMounted(() => {
       <div class="flex flex-wrap items-center gap-3">
         <UiCheckbox v-model="exportTrainUsableOnly" label="仅可训练样本" />
         <UiCheckbox v-model="exportIncludeThinking" label="包含思考" />
+        <UiInput
+          v-model="datasetName"
+          class="w-48"
+          placeholder="数据集名称（可选）"
+        />
         <UiButton variant="primary" size="sm" :loading="exporting" @click="exportChatml">
           {{ exporting ? '导出中…' : '导出 ChatML' }}
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :loading="registering"
+          @click="registerAsDataset"
+        >
+          {{ registering ? '登记中…' : '登记为训练数据集' }}
         </UiButton>
         <UiButton
           variant="secondary"

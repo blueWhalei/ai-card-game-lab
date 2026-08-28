@@ -1,4 +1,5 @@
 import { apiClient } from './client'
+import type { ApiResponse } from './types'
 
 export interface DecisionPoint {
   id: string
@@ -62,16 +63,16 @@ export const decisionApi = {
     limit?: number
     offset?: number
   }) =>
-    apiClient.get<{ data: DecisionPoint[]; message: string }>('/api/v1/decision-points', {
+    apiClient.get<never, ApiResponse<DecisionPoint[]>>('/api/v1/decision-points', {
       params,
     }),
 
   get: (id: string) =>
-    apiClient.get<{ data: DecisionPoint }>(`/api/v1/decision-points/${id}`),
+    apiClient.get<never, ApiResponse<DecisionPoint>>(`/api/v1/decision-points/${id}`),
 
   stats: () =>
-    apiClient.get<{ data: DecisionStats }>('/api/v1/decision-points/stats'),
+    apiClient.get<never, ApiResponse<DecisionStats>>('/api/v1/decision-points/stats'),
 
   export: (params?: DecisionExportParams) =>
-    apiClient.post<{ data: ExportResult; message: string }>('/api/v1/decision-points/export', params),
+    apiClient.post<never, ApiResponse<ExportResult>>('/api/v1/decision-points/export', params),
 }

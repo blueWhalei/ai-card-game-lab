@@ -162,11 +162,13 @@ async function load(): Promise<void> {
       {
         id: 'data',
         title: '数据',
-        blurb: '决策点清洗与可训练筛选',
+        blurb: '看板统计 · 决策点清洗 · 登记训练数据集',
         status: hasUsable ? 'done' : games > 0 ? 'ready' : 'idle',
-        meta: hasUsable ? '已有 train_usable 决策' : '导出 ChatML 前先筛 train_usable',
-        ctaLabel: '决策点',
-        ctaPath: '/decisions',
+        meta: hasUsable
+          ? '已有 train_usable 决策；可登记为 ChatML 数据集后训练'
+          : '先看总览图表，再筛 train_usable 决策点',
+        ctaLabel: '数据看板',
+        ctaPath: '/data',
       },
       {
         id: 'train',
@@ -184,7 +186,7 @@ async function load(): Promise<void> {
         status: deployStatus,
         meta: deployMeta,
         ctaLabel: deployCtaLabel,
-        ctaPath: '/training',
+        ctaPath: hasLora ? '/training?tab=models' : '/training',
       },
     ]
   } catch (e) {
@@ -202,11 +204,11 @@ async function load(): Promise<void> {
       {
         id: 'data',
         title: '数据',
-        blurb: '决策点清洗与可训练筛选',
+        blurb: '看板统计 · 决策点清洗 · 登记训练数据集',
         status: 'idle',
         meta: '—',
-        ctaLabel: '决策点',
-        ctaPath: '/decisions',
+        ctaLabel: '数据看板',
+        ctaPath: '/data',
       },
       {
         id: 'train',
@@ -224,7 +226,7 @@ async function load(): Promise<void> {
         status: 'idle',
         meta: '—',
         ctaLabel: '查看模型',
-        ctaPath: '/training',
+        ctaPath: '/training?tab=models',
       },
     ]
   } finally {
@@ -292,6 +294,7 @@ onMounted(() => {
       </p>
       <div class="mt-4 flex flex-wrap gap-2">
         <UiButton variant="secondary" @click="router.push('/game')">创建对局</UiButton>
+        <UiButton variant="secondary" @click="router.push('/data')">数据看板</UiButton>
         <UiButton variant="secondary" @click="router.push('/decisions')">导出决策点</UiButton>
         <UiButton variant="secondary" @click="router.push('/training')">启动训练</UiButton>
       </div>
