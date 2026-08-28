@@ -294,8 +294,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--count", type=int, default=1, help="Games to collect")
     p.add_argument("--timeout", type=int, default=1800, help="Wait timeout seconds")
     p.add_argument("--no-wait", action="store_true", help="Do not poll for completion")
-    p.add_argument("--dataset-name", default="e2e-doudizhu")
-    p.add_argument("--task-name", default="e2e-sft")
+    p.add_argument("--dataset-name", default=f"e2e-doudizhu-{time.strftime('%Y%m%d_%H%M%S')}")
+    p.add_argument("--task-name", default=f"e2e-sft-{time.strftime('%Y%m%d_%H%M%S')}")
     p.add_argument("--base-model", default="Qwen/Qwen2.5-1.5B")
     p.add_argument(
         "--mock",
