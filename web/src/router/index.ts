@@ -18,9 +18,13 @@ const router = createRouter({
           component: () => import('@/views/GameView.vue'),
         },
         {
+          path: 'experiment-configs',
+          name: 'experiment-configs',
+          component: () => import('@/views/ExperimentConfigView.vue'),
+        },
+        {
           path: 'ai-players',
-          name: 'ai-players',
-          component: () => import('@/views/AIPlayerView.vue'),
+          redirect: '/experiment-configs',
         },
         {
           path: 'data',

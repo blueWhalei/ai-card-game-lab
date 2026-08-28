@@ -4,9 +4,9 @@ import { useRouter } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
-import { aiPlayerApi } from '@/api/aiPlayerApi'
+import { experimentConfigApi } from '@/api/experimentConfigApi'
 import type { GameItem } from '@/api/gameApi'
-import type { AIPlayer } from '@/api/aiPlayerApi'
+import type { ExperimentConfig } from '@/api/experimentConfigApi'
 import { GAME_STATUS_MAP } from '@/utils/constants'
 import { formatDateTime } from '@/utils/format'
 import EmptyState from '@/components/common/EmptyState.vue'
@@ -30,7 +30,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
 const loading = ref(false)
-const players = ref<AIPlayer[]>([])
+const configs = ref<ExperimentConfig[]>([])
 const createDialogVisible = ref(false)
 
 const createForm = ref({
@@ -90,12 +90,16 @@ async function fetchGames() {
   }
 }
 
-async function fetchPlayers() {
+function configOptionLabel(c: ExperimentConfig): string {
+  return `${c.name}（${c.model_config.provider}/${c.model_config.model_name} · T=${c.model_config.temperature}）`
+}
+
+async function fetchConfigs() {
   try {
-    const res = await aiPlayerApi.list()
-    players.value = res.data
-  } catch {
-    /* ignore */
+    const res = await experimentConfigApi.list()
+    configs.value = res.data
+  } catch (e: unknown) {
+    showApiError(e, '加载实验配置失败')
   }
 }
 
@@ -108,12 +112,12 @@ function openCreateDialog() {
     batchCount: 5,
   }
   createDialogVisible.value = true
-  fetchPlayers()
+  fetchConfigs()
 }
 
 async function handleCreate() {
   if (createForm.value.player_ids.length !== 3) {
-    toast.warning('斗地主需要选择 3 个 AI 角色')
+    toast.warning('斗地主需要选择 3 个实验配置')
     return
   }
   try {
@@ -159,8 +163,9 @@ onMounted(async () => {
         createForm.value.game_type = res.data[0] ?? 'doudizhu'
       }
     }
-  } catch {
-    /* keep fallback options */
+  } catch (e: unknown) {
+    // Non-blocking: keep doudizhu fallback option
+    showApiError(e, '加载游戏类型失败，已使用默认选项')
   }
   await fetchGames()
 })
@@ -255,23 +260,25 @@ onMounted(async () => {
 
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            选择 AI 角色（3个） <span class="text-ink-danger">*</span>
+            选择实验配置（{{ createForm.player_ids.length }}/3）
+            <span class="text-ink-danger">*</span>
           </label>
           <div class="flex flex-col gap-2 rounded-ink border border-ink-border p-3">
             <UiCheckbox
-              v-for="p in players"
-              :key="p.id"
-              :model-value="createForm.player_ids.includes(p.id)"
+              v-for="c in configs"
+              :key="c.id"
+              :id="`create-config-${c.id}`"
+              :model-value="createForm.player_ids.includes(c.id)"
               :disabled="
-                !createForm.player_ids.includes(p.id) && createForm.player_ids.length >= 3
+                !createForm.player_ids.includes(c.id) && createForm.player_ids.length >= 3
               "
-              @update:model-value="(v) => togglePlayer(p.id, v)"
+              @update:model-value="(v) => togglePlayer(c.id, Boolean(v))"
             >
-              {{ p.avatar }} {{ p.name }}
+              {{ configOptionLabel(c) }}
             </UiCheckbox>
           </div>
-          <div v-if="players.length === 0" class="mt-2 text-xs text-ink-accent">
-            暂无 AI 角色，请先在「AI 角色」页面创建
+          <div v-if="configs.length === 0" class="mt-2 text-xs text-ink-accent">
+            暂无实验配置，请先在「实验配置」页面创建
           </div>
         </div>
 

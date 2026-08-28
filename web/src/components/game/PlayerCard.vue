@@ -4,6 +4,7 @@ import CardDisplay from '@/components/game/CardDisplay.vue'
 
 const props = defineProps<{
   playerId: string
+  name?: string
   info?: { cardsLeft: number; role: string }
   handCards?: string[]
   isCurrent: boolean
@@ -41,7 +42,7 @@ const props = defineProps<{
       👑
     </div>
 
-    <div :class="mini ? 'text-xs font-semibold text-gray-800 truncate' : 'text-sm font-semibold text-gray-800'">{{ playerId }}</div>
+    <div :class="mini ? 'text-xs font-semibold text-gray-800 truncate' : 'text-sm font-semibold text-gray-800'">{{ props.name || playerId }}</div>
     <div v-if="!mini" class="mt-1 flex flex-wrap items-center justify-center gap-1 text-[11px] text-gray-500">
       <template v-if="info?.role === 'landlord'">地主</template>
       <template v-else-if="info?.role === 'peasant'">农民</template>

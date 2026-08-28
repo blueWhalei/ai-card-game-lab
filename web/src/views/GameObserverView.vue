@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
+import { experimentConfigApi } from '@/api/experimentConfigApi'
 import type { GameItem, ReplayData } from '@/api/gameApi'
 import { useGameWebSocket } from '@/composables/useGameWebSocket'
 import type { HistoryEntry } from '@/composables/useGameWebSocket'
@@ -67,13 +68,31 @@ const {
   historyPanel,
 } = useGameWebSocket(gameId.value)
 
+const configNameMap = ref<Record<string, string>>({})
+
 const playerNames = computed<Record<string, string>>(() => {
   const names: Record<string, string> = {}
   for (const id of game.value?.player_ids || []) {
-    names[id] = id
+    names[id] = configNameMap.value[id] || id
   }
   return names
 })
+
+async function fetchConfigNames(ids: string[]) {
+  if (ids.length === 0) return
+  try {
+    const res = await experimentConfigApi.list()
+    const map: Record<string, string> = {}
+    for (const config of res.data) {
+      if (ids.includes(config.id)) {
+        map[config.id] = config.name
+      }
+    }
+    configNameMap.value = map
+  } catch {
+    // Non-blocking: fall back to config id
+  }
+}
 
 const totalTokens = computed(() =>
   Object.values(playerTokenTotals.value).reduce((sum, value) => sum + value, 0),
@@ -97,6 +116,7 @@ async function fetchGame() {
   try {
     const res = await gameApi.get(gameId.value)
     game.value = res.data
+    await fetchConfigNames(res.data.player_ids)
     isStarted.value = ['running', 'paused', 'finished'].includes(res.data.status)
     isPaused.value = res.data.status === 'paused'
     isFinished.value = res.data.status === 'finished'

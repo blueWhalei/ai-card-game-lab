@@ -17,7 +17,7 @@ const groups: NavGroup[] = [
     label: '实验室',
     items: [
       { path: '/game', label: '对局', icon: 'lucide:swords' },
-      { path: '/ai-players', label: 'AI 角色', icon: 'lucide:bot' },
+      { path: '/experiment-configs', label: '实验配置', icon: 'lucide:flask-conical' },
     ],
   },
   {
@@ -60,7 +60,7 @@ const pageHint = computed(() => {
   const hints: Record<string, string> = {
     '/': '采集 → 数据 → 训练 → 部署',
     '/game': '批量对局采集行为数据',
-    '/ai-players': '配置 provider / model',
+    '/experiment-configs': '采样参数配置档；提示词在「提示词」页统一管理',
     '/data': '指标与数据集',
     '/decisions': 'train_usable 与 ChatML 导出',
     '/training': 'SFT 任务与本地模型',

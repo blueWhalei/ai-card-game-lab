@@ -4,12 +4,12 @@ import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { showApiError } from '@/utils/error'
 import {
-  aiPlayerApi,
-  type AIPlayer,
-  type AIPlayerStats,
-  type CreateAIPlayerRequest,
-  type UpdateAIPlayerRequest,
-} from '@/api/aiPlayerApi'
+  experimentConfigApi,
+  type ExperimentConfig,
+  type ExperimentConfigStats,
+  type CreateExperimentConfigRequest,
+  type UpdateExperimentConfigRequest,
+} from '@/api/experimentConfigApi'
 import { formatDateTime, formatPercentage } from '@/utils/format'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
@@ -22,8 +22,8 @@ import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
 import { systemApi, type ProviderInfo } from '@/api/systemApi'
 
-const players = ref<AIPlayer[]>([])
-const playerStats = ref<Map<string, AIPlayerStats>>(new Map())
+const configs = ref<ExperimentConfig[]>([])
+const configStats = ref<Map<string, ExperimentConfigStats>>(new Map())
 const loading = ref(false)
 const dialogVisible = ref(false)
 const isEditing = ref(false)
@@ -40,11 +40,10 @@ function onProviderChange(val: string) {
   }
 }
 
-const defaultForm = (): CreateAIPlayerRequest => ({
+const defaultForm = (): CreateExperimentConfigRequest => ({
   id: '',
   name: '',
-  description: '',
-  avatar: '🤖',
+  notes: '',
   model_config_data: {
     provider: 'openai',
     model_name: 'gpt-4o-mini',
@@ -54,27 +53,37 @@ const defaultForm = (): CreateAIPlayerRequest => ({
   },
 })
 
-const form = ref<CreateAIPlayerRequest>(defaultForm())
+const form = ref<CreateExperimentConfigRequest>(defaultForm())
 
-function getPlayerStats(playerId: string): AIPlayerStats | undefined {
-  return playerStats.value.get(playerId)
+const EMPTY_STATS: ExperimentConfigStats = {
+  config_id: '',
+  games_played: 0,
+  wins: 0,
+  losses: 0,
+  win_rate: 0,
+  last_game_id: null,
+  last_game_at: null,
 }
 
-async function fetchPlayers() {
+function getConfigStats(configId: string): ExperimentConfigStats {
+  return configStats.value.get(configId) ?? { ...EMPTY_STATS, config_id: configId }
+}
+
+async function fetchConfigs() {
   loading.value = true
   try {
-    const [playersRes, statsRes, providersRes] = await Promise.all([
-      aiPlayerApi.list(),
-      aiPlayerApi.getAllStats(),
+    const [configsRes, statsRes, providersRes] = await Promise.all([
+      experimentConfigApi.list(),
+      experimentConfigApi.getAllStats(),
       systemApi.listProviders(),
     ])
-    players.value = playersRes.data
+    configs.value = configsRes.data
     providers.value = providersRes.data
-    const statsMap = new Map<string, AIPlayerStats>()
+    const statsMap = new Map<string, ExperimentConfigStats>()
     for (const stat of statsRes.data) {
-      statsMap.set(stat.player_id, stat)
+      statsMap.set(stat.config_id, stat)
     }
-    playerStats.value = statsMap
+    configStats.value = statsMap
   } catch (e: unknown) {
     showApiError(e, '加载失败')
   } finally {
@@ -88,14 +97,13 @@ function openCreateDialog() {
   dialogVisible.value = true
 }
 
-function openEditDialog(player: AIPlayer) {
+function openEditDialog(config: ExperimentConfig) {
   isEditing.value = true
   form.value = {
-    id: player.id,
-    name: player.name,
-    description: player.description,
-    avatar: player.avatar,
-    model_config_data: { ...player.model_config },
+    id: config.id,
+    name: config.name,
+    notes: config.notes,
+    model_config_data: { ...config.model_config },
   }
   dialogVisible.value = true
 }
@@ -103,79 +111,79 @@ function openEditDialog(player: AIPlayer) {
 async function handleSubmit() {
   try {
     if (isEditing.value) {
-      const updateData: UpdateAIPlayerRequest = {
+      const updateData: UpdateExperimentConfigRequest = {
         name: form.value.name,
-        description: form.value.description,
-        avatar: form.value.avatar,
+        notes: form.value.notes,
         model_config_data: form.value.model_config_data,
       }
-      await aiPlayerApi.update(form.value.id, updateData)
+      await experimentConfigApi.update(form.value.id, updateData)
       toast.success('更新成功')
     } else {
-      await aiPlayerApi.create(form.value)
+      await experimentConfigApi.create(form.value)
       toast.success('创建成功')
     }
     dialogVisible.value = false
-    await fetchPlayers()
+    await fetchConfigs()
   } catch (e: unknown) {
     showApiError(e, '操作失败')
   }
 }
 
-async function handleDelete(player: AIPlayer) {
+async function handleDelete(config: ExperimentConfig) {
   const ok = await confirmDialog({
-    message: `确定删除 AI 角色「${player.name}」吗？`,
+    message: `确定删除实验配置「${config.name}」吗？`,
     title: '删除确认',
     confirmText: '删除',
     danger: true,
   })
   if (!ok) return
   try {
-    await aiPlayerApi.delete(player.id)
+    await experimentConfigApi.delete(config.id)
     toast.success('已删除')
-    await fetchPlayers()
+    await fetchConfigs()
   } catch (e: unknown) {
     showApiError(e, '删除失败')
   }
 }
 
-onMounted(fetchPlayers)
+onMounted(fetchConfigs)
 </script>
 
 <template>
   <div class="page-container">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-base text-ink-text-secondary">配置 provider / model；运行时从数据库读取。</p>
-      <UiButton @click="openCreateDialog">新增角色</UiButton>
+      <p class="text-base text-ink-text-secondary">
+        采样参数配置档；提示词在「提示词」页统一管理。
+      </p>
+      <UiButton @click="openCreateDialog">新增配置</UiButton>
     </div>
 
     <div class="relative min-h-[200px]">
       <UiSpinner v-if="loading" overlay label="加载中…" />
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
         <div
-          v-for="player in players"
-          :key="player.id"
+          v-for="config in configs"
+          :key="config.id"
           class="rounded-ink-md border border-ink-border bg-ink-surface p-5 transition-shadow hover:shadow-[var(--ink-shadow-md)]"
         >
-          <div class="mb-4 flex items-center gap-3">
-            <span class="text-3xl">{{ player.avatar }}</span>
-            <div class="flex-1">
-              <h3 class="font-semibold text-ink-text">{{ player.name }}</h3>
-              <span class="text-xs text-ink-text-muted">{{ player.id }}</span>
-            </div>
+          <div class="mb-4">
+            <h3 class="font-semibold text-ink-text">{{ config.name }}</h3>
+            <span class="text-xs text-ink-text-muted">{{ config.id }}</span>
           </div>
-          <p class="mb-4 text-sm text-ink-text-secondary">{{ player.description || '暂无描述' }}</p>
           <div class="mb-4 flex flex-wrap gap-2">
-            <UiBadge variant="muted">{{ player.model_config.provider }}</UiBadge>
-            <UiBadge>{{ player.model_config.model_name }}</UiBadge>
-            <UiBadge variant="warning">T={{ player.model_config.temperature }}</UiBadge>
+            <UiBadge variant="muted">{{ config.model_config.provider }}</UiBadge>
+            <UiBadge>{{ config.model_config.model_name }}</UiBadge>
+            <UiBadge variant="warning">T={{ config.model_config.temperature }}</UiBadge>
+            <UiBadge variant="muted">top_p={{ config.model_config.top_p }}</UiBadge>
+            <UiBadge variant="muted">max={{ config.model_config.max_tokens }}</UiBadge>
           </div>
+          <p v-if="config.notes" class="mb-4 text-sm text-ink-text-secondary">{{ config.notes }}</p>
 
-          <div v-if="getPlayerStats(player.id)" class="mb-4 border-t border-ink-border pt-4">
+          <div class="mb-4 border-t border-ink-border pt-4">
             <div class="grid grid-cols-3 gap-2 text-center">
               <div>
                 <div class="text-lg font-semibold text-ink-text">
-                  {{ getPlayerStats(player.id)?.games_played ?? 0 }}
+                  {{ getConfigStats(config.id).games_played }}
                 </div>
                 <div class="text-xs text-ink-text-muted">对局</div>
               </div>
@@ -183,73 +191,69 @@ onMounted(fetchPlayers)
                 <div
                   class="text-lg font-semibold"
                   :class="
-                    (getPlayerStats(player.id)?.win_rate ?? 0) >= 0.5
+                    getConfigStats(config.id).win_rate >= 0.5
                       ? 'text-ink-success'
                       : 'text-ink-danger'
                   "
                 >
-                  {{ formatPercentage(getPlayerStats(player.id)?.win_rate) }}
+                  {{ formatPercentage(getConfigStats(config.id).win_rate) }}
                 </div>
                 <div class="text-xs text-ink-text-muted">胜率</div>
               </div>
               <div>
                 <div class="text-lg font-semibold text-ink-text">
-                  {{ getPlayerStats(player.id)?.wins ?? 0 }}
+                  {{ getConfigStats(config.id).wins }}
                 </div>
                 <div class="text-xs text-ink-text-muted">胜场</div>
               </div>
             </div>
             <div
-              v-if="getPlayerStats(player.id)?.last_game_at"
+              v-if="getConfigStats(config.id).last_game_at"
               class="mt-2 text-center text-xs text-ink-text-muted"
             >
-              最近对局: {{ formatDateTime(getPlayerStats(player.id)?.last_game_at) }}
+              最近对局: {{ formatDateTime(getConfigStats(config.id).last_game_at) }}
             </div>
           </div>
 
           <div class="flex gap-2">
-            <UiButton variant="secondary" size="sm" @click="openEditDialog(player)">编辑</UiButton>
-            <UiButton variant="ghost" size="sm" class="text-ink-danger" @click="handleDelete(player)">
+            <UiButton variant="secondary" size="sm" @click="openEditDialog(config)">编辑</UiButton>
+            <UiButton variant="ghost" size="sm" class="text-ink-danger" @click="handleDelete(config)">
               删除
             </UiButton>
           </div>
         </div>
 
-        <div v-if="!loading && players.length === 0" class="col-span-full">
-          <UiEmpty title="暂无 AI 角色" description="点击上方按钮创建" />
+        <div v-if="!loading && configs.length === 0" class="col-span-full">
+          <UiEmpty title="暂无实验配置" description="点击上方按钮创建" />
         </div>
       </div>
     </div>
 
     <UiDialog
       :open="dialogVisible"
-      :title="isEditing ? '编辑 AI 角色' : '新增 AI 角色'"
+      :title="isEditing ? '编辑实验配置' : '新增实验配置'"
       class="w-[min(92vw,560px)]"
       @update:open="dialogVisible = $event"
     >
       <div class="space-y-4">
         <div v-if="!isEditing">
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            角色 ID <span class="text-ink-danger">*</span>
+            配置 ID <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="form.id" placeholder="如 aggressive_tiger" class="w-full" />
+          <UiInput v-model="form.id" placeholder="如 cfg_temp_09" class="w-full" />
         </div>
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
             名称 <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="form.name" placeholder="如 激进虎" class="w-full" />
+          <UiInput v-model="form.name" placeholder="如 Temp 0.9" class="w-full" />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">头像 Emoji</label>
-          <UiInput v-model="form.avatar" placeholder="🤖" class="w-20" />
-        </div>
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">描述</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">备注</label>
           <UiTextarea
-            v-model="form.description"
+            v-model="form.notes"
             :rows="2"
-            placeholder="描述 AI 角色的性格和策略特点"
+            placeholder="实验意图说明，如「高 temperature 对照」"
             class="w-full"
           />
         </div>
