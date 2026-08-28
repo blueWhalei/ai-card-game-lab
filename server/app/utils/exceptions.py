@@ -59,6 +59,18 @@ class UnsupportedGameTypeError(AppError):
         )
 
 
+class InvalidPlayerIdsError(AppError):
+    """Raised when player_ids reference missing experiment configs."""
+
+    def __init__(self, missing_ids: list[str]) -> None:
+        ids_str = ", ".join(missing_ids)
+        super().__init__(
+            message=f"Unknown experiment config id(s) in player_ids: {ids_str}",
+            code="INVALID_PLAYER_IDS",
+            status_code=400,
+        )
+
+
 # ── AI ────────────────────────────────────────────────
 
 
@@ -116,6 +128,17 @@ class DataExportError(AppError):
             message=f"Data export failed: {detail}",
             code="DATA_EXPORT_FAILED",
             status_code=500,
+        )
+
+
+class NoExportableDataError(AppError):
+    """No rows matched export filters (empty ChatML / dataset)."""
+
+    def __init__(self, detail: str = "No exportable decision points") -> None:
+        super().__init__(
+            message=detail,
+            code="NO_EXPORTABLE_DATA",
+            status_code=400,
         )
 
 

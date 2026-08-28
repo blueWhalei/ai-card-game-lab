@@ -236,6 +236,7 @@ def get_game_service() -> GameService:
         sqlite_path=settings.sqlite_path,
         orchestration_service=get_game_orchestration_service(),
         replay_service=get_game_replay_service(),
+        experiment_config_service=get_experiment_config_service(),
     )
 
 

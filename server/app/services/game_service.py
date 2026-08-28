@@ -11,7 +11,7 @@ import structlog
 from app.database import open_db_connection
 from app.repositories.game_repo import GameRepository
 from app.repositories.round_repo import RoundRepository
-from app.utils.exceptions import GameAlreadyStartedError, GameNotFoundError
+from app.utils.exceptions import GameAlreadyStartedError, GameNotFoundError, InvalidPlayerIdsError
 from app.utils.id_generator import generate_id
 
 if TYPE_CHECKING:
@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from app.core.collector.jsonl_writer import JsonlWriter
     from app.core.engine.base import GameState
     from app.core.engine.registry import GameEngineRegistry
+    from app.services.experiment_config_service import ExperimentConfigService
     from app.services.game_orchestration_service import GameOrchestrationService
     from app.services.game_replay_service import GameReplayService
 
@@ -42,12 +43,23 @@ class GameService:
         sqlite_path: str,
         orchestration_service: GameOrchestrationService,
         replay_service: GameReplayService,
+        experiment_config_service: ExperimentConfigService,
     ) -> None:
         self._engine_registry = engine_registry
         self._collector = collector
         self._sqlite_path = sqlite_path
         self._orchestration_service = orchestration_service
         self._replay_service = replay_service
+        self._experiment_config_service = experiment_config_service
+
+    def _validate_player_ids(self, player_ids: list[str]) -> None:
+        missing = [
+            pid
+            for pid in player_ids
+            if self._experiment_config_service.get_config(pid) is None
+        ]
+        if missing:
+            raise InvalidPlayerIdsError(missing)
 
     async def _get_bg_db(self) -> aiosqlite.Connection:
         """Open a fresh DB connection for background tasks."""
@@ -119,6 +131,8 @@ class GameService:
         Returns:
             The created game record
         """
+        self._validate_player_ids(player_ids)
+
         game_id = generate_id("game")
         now = datetime.now(tz=UTC).isoformat()
 

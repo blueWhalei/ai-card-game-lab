@@ -32,6 +32,7 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
         dependencies.get_skill_service.cache_clear()
     dependencies.get_experiment_config_service.cache_clear()
     dependencies.get_experiment_config_stats_service.cache_clear()
+    dependencies.get_game_service.cache_clear()
     dependencies.get_ai_service.cache_clear()
     dependencies.get_decision_service.cache_clear()
     dependencies.get_data_service.cache_clear()
