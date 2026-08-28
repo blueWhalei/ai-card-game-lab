@@ -141,21 +141,26 @@ async function handleCreate() {
     })
     if (!ok) return
   }
+  // Schema requires max_steps >= 1 when present; omit on Mock (or when <= 0)
+  // to avoid 422. The backend treats missing max_steps as "no cap".
+  const trainingConfig: Record<string, unknown> = {
+    learning_rate: createForm.value.learning_rate,
+    batch_size: createForm.value.batch_size,
+    num_epochs: createForm.value.num_epochs,
+    output_format: 'pytorch',
+    use_mock: createForm.value.use_mock,
+    lora_r: createForm.value.lora_r,
+  }
+  if (!createForm.value.use_mock && createForm.value.max_steps > 0) {
+    trainingConfig.max_steps = createForm.value.max_steps
+  }
   try {
     await store.createTask({
       name: createForm.value.name,
       dataset_id: createForm.value.dataset_id,
       base_model: createForm.value.base_model,
       training_type: createForm.value.training_type,
-      config: {
-        learning_rate: createForm.value.learning_rate,
-        batch_size: createForm.value.batch_size,
-        num_epochs: createForm.value.num_epochs,
-        output_format: 'pytorch',
-        use_mock: createForm.value.use_mock,
-        lora_r: createForm.value.lora_r,
-        max_steps: createForm.value.use_mock ? 0 : createForm.value.max_steps,
-      },
+      config: trainingConfig,
     })
     toast.success('训练任务已创建')
     showCreateDialog.value = false
