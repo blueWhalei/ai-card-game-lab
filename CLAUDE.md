@@ -94,10 +94,10 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/api/` — typed Axios client with interceptors; `src/stores/` — one store per domain
 - `src/composables/` — `useWebSocket`, `usePagination`
 - `src/components/` organized by domain: `game/`, `data/`, `trace/`, `common/`
-- `src/views/` — `PipelineView`, `GameView`, `GameObserverView`, `AIPlayerView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`
+- `src/views/` — `PipelineView`, `GameView`, `GameObserverView`, `ExperimentConfigView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`
 - Dual shells: `layouts/WorkbenchLayout.vue` (grouped nav) + `layouts/ObserverLayout.vue` (fullscreen)
 - Headless UI kit: `components/ui/*` (Reka UI + Ink Lab tokens); charts via ECharts
-- Runtime config: AI players + prompt templates in SQLite; secrets/paths via `.env`; `config/ai_players.yaml` is seed-only
+- Runtime config: experiment configs + prompt templates in SQLite; secrets/paths via `.env`; `config/experiment_configs.yaml` is seed-only
 - Vite dev server proxies `/api` → `localhost:8000` and WebSocket at `/api/v1/games/ws`
 
 ### Game Observer Features

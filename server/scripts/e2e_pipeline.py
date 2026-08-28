@@ -29,7 +29,7 @@ except ImportError:  # pragma: no cover
     print("httpx is required. Run: cd server && poetry install", file=sys.stderr)
     sys.exit(2)
 
-DEFAULT_PLAYERS = ["aggressive_tiger", "cautious_fox", "random_panda"]
+DEFAULT_PLAYERS = ["cfg_temp_09", "cfg_temp_06", "cfg_temp_12"]
 DEFAULT_BASE = "http://localhost:8000"
 
 
@@ -56,7 +56,7 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
 
 [0] 准备
   - 复制 .env.example → .env，填入至少一个 LLM API Key（或配 Ollama）
-  - 确认 config/ai_players.yaml 中三名玩家 provider 可用
+  - 确认 config/experiment_configs.yaml 中三份配置 provider 可用
   - 启动后端：start-backend.bat  或  cd server && poetry run uvicorn ...
   - 启动前端（可选观战）：start-frontend.bat
 
@@ -106,15 +106,15 @@ def cmd_check(args: argparse.Namespace) -> int:
         print("  → start backend first (start-backend.bat)")
         return 1
     try:
-        players = _api(args.base_url, "GET", "/api/v1/ai-players")
-        ids = [p.get("id") for p in (players or [])]
-        print(f"[check] AI players: {ids}")
+        configs = _api(args.base_url, "GET", "/api/v1/experiment-configs")
+        ids = [c.get("id") for c in (configs or [])]
+        print(f"[check] experiment configs: {ids}")
         missing = [p for p in args.players if p not in ids]
         if missing:
-            print(f"  → missing players {missing}; edit config/ai_players.yaml")
+            print(f"  → missing configs {missing}; edit config/experiment_configs.yaml")
             return 1
     except Exception as exc:
-        print(f"[check] failed to list AI players: {exc}", file=sys.stderr)
+        print(f"[check] failed to list experiment configs: {exc}", file=sys.stderr)
         return 1
     print("[check] OK")
     return 0
@@ -289,7 +289,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--players",
         default=",".join(DEFAULT_PLAYERS),
-        help="Comma-separated three AI player ids",
+        help="Comma-separated three experiment config ids",
     )
     p.add_argument("--count", type=int, default=1, help="Games to collect")
     p.add_argument("--timeout", type=int, default=1800, help="Wait timeout seconds")

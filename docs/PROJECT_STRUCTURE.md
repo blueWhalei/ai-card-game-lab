@@ -24,13 +24,14 @@ ai-card-game-lab/
 │   │   │   └── v1/                      # API v1 版本
 │   │   │       ├── __init__.py
 │   │   │       ├── game.py             # 对局 CRUD + 控制
-│   │   │       ├── ai_player.py        # AI 角色管理
+│   │   │       ├── experiment_config.py        # 实验配置管理
+│   │   │       ├── experiment_config_stats.py  # 实验配置统计 API
 │   │   │       ├── data.py             # 数据统计 + 数据集管理
 │   │   │       ├── training.py         # 训练任务 + 模型仓库
 │   │   │       ├── prompt.py           # 提示词模板管理
 │   │   │       ├── trace.py            # AI 决策追踪 API
 │   │   │       ├── decision.py         # 决策点数据 API (SFT 训练样本)
-│   │   │       ├── player_stats.py     # AI 角色统计 API
+│   │   │       ├── player_stats.py     # （已合并至 experiment_config_stats）
 │   │   │       ├── migration.py        # 数据库迁移工具 API
 │   │   │       └── system.py           # 系统健康检查 + 配置 + 归档管理
 │   │   │
@@ -38,7 +39,7 @@ ai-card-game-lab/
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py              # 通用响应包装 (ApiResponse, PaginatedData)
 │   │   │   ├── game.py                # 对局请求/响应模型
-│   │   │   ├── ai_player.py           # AI 角色请求/响应模型
+│   │   │   ├── experiment_config.py   # 实验配置请求/响应模型
 │   │   │   ├── data.py                # 数据/数据集请求/响应模型
 │   │   │   ├── training.py            # 训练任务请求/响应模型
 │   │   │   ├── archive.py             # 归档/清理请求/响应模型
@@ -50,7 +51,8 @@ ai-card-game-lab/
 │   │   │   ├── game_orchestration_service.py # 对局执行编排（引擎调用 + AI 调度）
 │   │   │   ├── game_replay_service.py # 对局回放服务
 │   │   │   ├── ai_service.py          # AI 调用业务编排（重试 + 解析）
-│   │   │   ├── ai_player_service.py   # AI 角色 CRUD（YAML 持久化）
+│   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite + YAML seed）
+│   │   │   ├── experiment_config_stats_service.py  # 实验配置战绩统计
 │   │   │   ├── data_service.py        # 数据统计 + 数据集导出
 │   │   │   ├── training_service.py    # 训练任务编排（状态机 + mock 训练）
 │   │   │   ├── prompt_service.py      # 提示词模板管理
@@ -65,7 +67,9 @@ ai-card-game-lab/
 │   │   │   ├── round_repo.py          # 轮次数据访问 (SQLite)
 │   │   │   ├── dataset_repo.py        # 数据集元数据访问 (SQLite)
 │   │   │   ├── training_repo.py       # 训练任务数据访问 (SQLite)
-│   │   │   └── prompt_repo.py         # 提示词模板数据访问 (SQLite)
+│   │   │   ├── prompt_repo.py         # 提示词模板数据访问 (SQLite)
+│   │   │   ├── experiment_config_repo.py       # 实验配置数据访问 (SQLite)
+│   │   │   └── experiment_config_stats_repo.py # 实验配置战绩统计 (SQLite)
 │   │   │
 │   │   ├── core/                        # ---------- 核心领域层 ----------
 │   │   │   ├── __init__.py
@@ -167,7 +171,7 @@ ai-card-game-lab/
 │   │   │   ├── client.ts              # Axios 实例 + 拦截器
 │   │   │   ├── types.ts               # API 类型定义（对齐后端 Schema）
 │   │   │   ├── gameApi.ts
-│   │   │   ├── aiPlayerApi.ts
+│   │   │   ├── experimentConfigApi.ts
 │   │   │   ├── dataApi.ts
 │   │   │   ├── trainingApi.ts
 │   │   │   ├── prompts.ts             # 提示词模板 API
@@ -214,7 +218,7 @@ ai-card-game-lab/
 │   │   │   ├── GameView.vue           # 对局列表 + 创建
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
 │   │   │   ├── PipelineView.vue       # 管道总览（默认首页）
-│   │   │   ├── AIPlayerView.vue       # AI 角色 CRUD
+│   │   │   ├── ExperimentConfigView.vue  # 实验配置 CRUD
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练控制台（任务列表 + 模型仓库 + 创建对话框）
 │   │   │   ├── PromptView.vue         # 提示词管理（模板列表 + 版本控制）
@@ -242,8 +246,8 @@ ai-card-game-lab/
 │       └── components/
 │
 ├── config/                              # ===== 运行时配置 =====
-│   ├── ai_players.yaml                 # AI 角色配置
-│   └── README.md                       # 说明：AI 角色 YAML 仅作 seed；运行时配置见 .env
+│   ├── experiment_configs.yaml         # 实验配置 seed
+│   └── README.md                       # 说明：experiment_configs.yaml 仅作 seed；运行时配置见 .env
 │
 ├── data/                                # ===== 运行时数据 (gitignore) =====
 │   ├── games/                          # 对局 JSONL 归档

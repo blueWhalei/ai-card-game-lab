@@ -150,37 +150,30 @@ WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 &sort_order=desc
 ```
 
-### 2.2 AI 角色管理
+### 2.2 实验配置管理
 
 ```
-GET    /api/v1/ai-players                    # AI 角色列表
-POST   /api/v1/ai-players                    # 创建 AI 角色
-GET    /api/v1/ai-players/{player_id}        # 角色详情
-PUT    /api/v1/ai-players/{player_id}        # 更新角色配置
-DELETE /api/v1/ai-players/{player_id}        # 删除角色
+GET    /api/v1/experiment-configs                    # 实验配置列表
+POST   /api/v1/experiment-configs                    # 创建实验配置
+GET    /api/v1/experiment-configs/{config_id}        # 配置详情
+PUT    /api/v1/experiment-configs/{config_id}        # 更新配置
+DELETE /api/v1/experiment-configs/{config_id}        # 删除配置
 ```
 
-#### POST /api/v1/ai-players — 创建 AI 角色
+#### POST /api/v1/experiment-configs — 创建实验配置
 
 **Request**:
 ```json
 {
-  "id": "ai_bluffer",
-  "name": "诈胡大师",
-  "description": "擅长虚张声势，喜欢用假动作迷惑对手",
-  "avatar": "bluffer.png",
-  "model_config": {
+  "id": "cfg_high_temp",
+  "name": "High Temp 1.2",
+  "notes": "高 temperature 对照实验",
+  "model_config_data": {
     "provider": "openai",
     "model_name": "gpt-4",
-    "temperature": 0.9,
+    "temperature": 1.2,
     "top_p": 0.95,
     "max_tokens": 1024
-  },
-  "game_configs": {
-    "doudizhu": {
-      "style": "aggressive",
-      "risk_tolerance": 0.7
-    }
   }
 }
 ```
@@ -421,14 +414,14 @@ POST   /api/v1/system/cleanup                # 执行数据清理
 }
 ```
 
-### 2.8 AI 角色统计
+### 2.8 实验配置统计
 
 ```
-GET    /api/v1/ai-players/stats              # 所有角色统计
-GET    /api/v1/ai-players/{player_id}/stats   # 单个角色统计
+GET    /api/v1/experiment-configs/stats              # 所有配置统计
+GET    /api/v1/experiment-configs/{config_id}/stats   # 单个配置统计
 ```
 
-#### GET /api/v1/ai-players/stats — 所有角色统计
+#### GET /api/v1/experiment-configs/stats — 所有配置统计
 
 **Response**:
 ```json
@@ -437,7 +430,7 @@ GET    /api/v1/ai-players/{player_id}/stats   # 单个角色统计
   "message": "success",
   "data": [
     {
-      "player_id": "ai_bluffer",
+      "config_id": "cfg_temp_09",
       "games_played": 50,
       "wins": 30,
       "losses": 20,

@@ -9,7 +9,7 @@
 |----|------|
 | Python 3.11+ / Poetry / Node 18+ | 必选 |
 | `.env` | 从 `.env.example` 复制并填 API Key，或配 Ollama |
-| `config/ai_players.yaml` | 默认三名玩家可用 |
+| `config/experiment_configs.yaml` | 仅 **seed**：首次启动写入 SQLite；运行时在「实验配置」页维护 |
 | 后端 | `start-backend.bat` 或 `cd server && poetry run uvicorn ...` |
 
 可选：
@@ -56,16 +56,18 @@ poetry run python scripts/e2e_pipeline.py all --count 1 --mock
 | `check` | 健康检查 + AI 玩家是否齐全 |
 | `collect` | 批量开斗地主并等待结束 |
 | `export` | 导出 `train_usable` 决策点 ChatML（默认不含思考） |
-| `train` | 建数据集 + 训练任务（默认 Mock） |
+| `train` | 建数据集 + 训练任务（默认 Mock；e2e 仍可走 JSONL 数据集） |
 | `deploy-hints` | 打印最新模型的 GGUF / Ollama 步骤 |
 | `all` | check → collect → export → train → deploy-hints |
+
+**推荐 UI 路径（决策点 → 训练）：** 决策点页「登记为训练数据集」→ `POST /api/v1/datasets/from-decisions`（ChatML）→ 训练台选用该数据集（管道跳过 rounds→SFT 转换）。
 
 ## 人工观战（可选）
 
 1. `start-frontend.bat` → http://localhost:5173  
 2. 「对局」创建 / 进入观战页看思考链  
-3. 「决策点」导出（勾选「仅可训练样本」）  
-4. 「训练」创建任务 → 「模型仓库」导出部署包 → 验证 / 测一局  
+3. 「数据」看板看统计；「决策点」勾选「仅可训练样本」→ **登记为训练数据集**（或仅导出 ChatML）  
+4. 「训练」选用 ChatML 数据集创建任务 → 「模型仓库」导出部署包 → 验证 / 测一局  
 
 ## 验收对照（v1.0）
 

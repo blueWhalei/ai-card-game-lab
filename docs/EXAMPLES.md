@@ -375,26 +375,20 @@ CLAUDE_API_KEY=your-key-here
 CLAUDE_BASE_URL=https://api.anthropic.com/v1
 ```
 
-### 2.4 在 AI 玩家配置中使用
+### 2.4 在实验配置中使用
 
-修改 `config/ai_players.yaml`：
+修改 `config/experiment_configs.yaml`：
 
 ```yaml
-players:
-  - id: "claude_thinker"
-    name: "Claude 思考者"
-    description: "使用 Claude 模型的策略玩家"
-    avatar: "🤖"
+configs:
+  - id: "cfg_claude_07"
+    name: "Claude Temp 0.7"
+    notes: "使用 Claude 模型的对照配置"
     model_config:
       provider: "claude"
       model_name: "claude-3-sonnet-20240229"
       temperature: 0.7
       max_tokens: 1024
-    game_configs:
-      doudizhu:
-        style: "cautious"
-        bid_threshold: 0.6
-        risk_tolerance: 0.4
 ```
 
 ---

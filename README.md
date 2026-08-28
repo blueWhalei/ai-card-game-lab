@@ -75,43 +75,33 @@ npm run dev
 
 ### 创建第一个 AI 对局
 
-#### 步骤 1：配置 AI 玩家
+#### 步骤 1：配置实验参数
 
-编辑 `config/ai_players.yaml` 文件，定义 AI 玩家的决策风格：
+运行时配置保存在 **SQLite**（前端「实验配置」页增删改）。`config/experiment_configs.yaml` 仅在首次启动时作为 **seed** 导入，之后以数据库为准。
+
+也可编辑 seed 文件后清空相关表重新导入（开发环境），示例结构：
 
 ```yaml
-players:
-  - id: "aggressive_tiger"
-    name: "激进虎"
-    description: "偏好主动出击，率先出牌，追求速赢"
-    avatar: "🐯"
+configs:
+  - id: "cfg_temp_09"
+    name: "Temp 0.9"
+    notes: "较高 temperature 对照"
     model_config:
       provider: "deepseek"           # LLM 供应商
       model_name: "deepseek-v4-flash"
       temperature: 0.9               # 高温度 = 更随机
       top_p: 0.95
       max_tokens: 1024
-    game_configs:
-      doudizhu:
-        style: "aggressive"          # 游戏风格
-        bid_threshold: 0.4           # 叫地主阈值
-        risk_tolerance: 0.8          # 风险承受度
 
-  - id: "cautious_fox"
-    name: "谨慎狐"
-    description: "保守出牌，观察对手策略后再做决定"
-    avatar: "🦊"
+  - id: "cfg_temp_06"
+    name: "Temp 0.6"
+    notes: "较低 temperature 对照"
     model_config:
       provider: "deepseek"
       model_name: "deepseek-v4-flash"
       temperature: 0.6               # 低温度 = 更保守
       top_p: 0.9
       max_tokens: 1024
-    game_configs:
-      doudizhu:
-        style: "cautious"
-        bid_threshold: 0.7
-        risk_tolerance: 0.3
 ```
 
 #### 步骤 2：配置 API Key
@@ -137,7 +127,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 2. 进入「对局」页面
 3. 点击「创建对局」按钮
 4. 选择游戏类型：斗地主
-5. 选择 3 个 AI 玩家（如：激进虎、谨慎狐、随机熊猫）
+5. 选择 3 个实验配置（如：Temp 0.9、Temp 0.6、Temp 1.2）
 6. 点击「开始」
 
 #### 步骤 4：观战对局
@@ -158,7 +148,7 @@ OLLAMA_BASE_URL=http://localhost:11434
 3. 对局数据自动保存到 `data/games/` 目录
 4. 可在「数据」页面查看统计和导出数据集
 
-### 配置 AI 玩家示例
+### 配置实验参数示例
 
 #### 使用不同 LLM 供应商
 
@@ -188,15 +178,9 @@ model_config:
   temperature: 0.7
 ```
 
-#### 调整决策风格
+#### 调整采样参数
 
-```yaml
-game_configs:
-  doudizhu:
-    style: "aggressive"      # aggressive | cautious | random
-    bid_threshold: 0.5       # 叫地主阈值 (0-1)
-    risk_tolerance: 0.6      # 风险承受度 (0-1)
-```
+通过 `model_config.temperature`、`top_p`、`max_tokens` 控制 LLM 行为；实验意图写在 `notes` 字段（如「高 temperature 对照」）。
 
 ## 项目文档
 

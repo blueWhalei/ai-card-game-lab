@@ -38,7 +38,7 @@
 
 **理由**：
 - 原子化 CSS，开发效率高，bundle 体积小
-- 与 Element Plus 组件库可良好共存
+- 与现有组件体系（Reka UI + Ink Lab）可良好共存
 - 社区生态成熟，文档完善
 
 ## 2. 系统架构总览
@@ -52,7 +52,7 @@
 │  │ (WebSocket)│ │ (ECharts)  │ │            │    │
 │  └────────────┘ └────────────┘ └────────────┘    │
 │                                                                   │
-│  Tailwind CSS + Element Plus                                      │
+│  Tailwind CSS + Reka UI（Ink Lab tokens）                          │
 └───────────────────────────┬───────────────────────────────────────┘
                             │
                             ▼  HTTP (REST) + WebSocket
@@ -144,7 +144,7 @@ class GameService:
         engine_registry: GameEngineRegistry,
         collector: JsonlWriter,
         ai_service: AIService,
-        ai_player_service: AIPlayerService,
+        experiment_config_service: ExperimentConfigService,
         sqlite_path: str,
     ) -> None:
         self._engine_registry = engine_registry
@@ -267,21 +267,14 @@ def get_engine_registry() -> GameEngineRegistry:
 
 @lru_cache
 def get_game_service() -> GameService:
-    """Singleton — holds long-lived game state.
-    API handlers pass db into methods; background tasks open own connections.
-    """
+    """Singleton game service."""
     settings = get_settings()
-    ai_service = AIService(
-        llm_factory=get_llm_factory(),
-        prompt_builder=get_prompt_builder(),
-        ai_player_service=get_ai_player_service(),
-    )
     return GameService(
         engine_registry=get_engine_registry(),
         collector=get_jsonl_writer(),
-        ai_service=ai_service,
-        ai_player_service=get_ai_player_service(),
         sqlite_path=settings.sqlite_path,
+        orchestration_service=get_game_orchestration_service(),
+        replay_service=get_game_replay_service(),
     )
 ```
 
@@ -427,7 +420,7 @@ def get_game_service() -> GameService:
 | `Settings` | `get_settings()` | 应用配置 |
 | `GameEngineRegistry` | `get_engine_registry()` | 游戏引擎注册中心 |
 | `LLMClientFactory` | `get_llm_factory()` | LLM 客户端工厂 |
-| `AIPlayerService` | `get_ai_player_service()` | AI 角色管理 |
+| `ExperimentConfigService` | `get_experiment_config_service()` | 实验配置管理 |
 | `PromptBuilder` | `get_prompt_builder()` | 提示词构建器 |
 | `JsonlWriter` | `get_jsonl_writer()` | JSONL 数据写入器 |
 | `GameService` | `get_game_service()` | 对局业务服务 |
@@ -697,8 +690,8 @@ CREATE INDEX idx_spans_trace ON spans(trace_id);
 
 1. 在 `core/engine/` 下创建新游戏包（如 `sanguosha/`）
 2. 继承 `GameEngine` 抽象基类，实现所有抽象方法
-3. 在引擎注册中心注册
-4. 前端创建对应的牌桌组件
+3. 实现 `get_public_info(..., is_observer=True)` 输出统一 ObserverSnapshot
+4. **不要**为每个游戏单独写 Board 组件；观战统一使用 GenericBoard
 5. 无需修改 Service 层和 API 层 —— 通过 `game_type` 参数自动路由
 
 ### 10.2 新增 LLM 供应商
@@ -706,7 +699,7 @@ CREATE INDEX idx_spans_trace ON spans(trace_id);
 1. 在 `core/ai/providers/` 下创建新文件
 2. 继承 `LLMClient` 抽象基类
 3. 在 `LLMClientFactory` 注册
-4. 在 `ai_players.yaml` 中配置使用
+4. 在 UI「实验配置」页配置使用（`config/experiment_configs.yaml` 仅作首次 seed）
 
 ### 10.3 新增训练算法
 

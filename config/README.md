@@ -1,7 +1,7 @@
 # Config directory
 
-- `ai_players.yaml` — **seed / backup only**. Runtime AI players live in SQLite
-  (`ai_players` table). On first boot with an empty table, players are imported
-  from this file. Prefer editing via the AI 角色 UI.
+- `experiment_configs.yaml` — **seed / backup only**. Runtime experiment configs live in SQLite
+  (`experiment_configs` table). On first boot with an empty table, configs are imported
+  from this file. Prefer editing via the 实验配置 UI.
 - Application settings come from environment variables / `.env` via
   `server/app/config.py` (not from a YAML settings file).
