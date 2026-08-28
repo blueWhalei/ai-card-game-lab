@@ -21,18 +21,14 @@ export const TRAINING_STATUS_MAP: Record<string, { label: string; type: string }
   cancelled: { label: '已取消', type: 'info' },
 }
 
-/** Prompt template key labels */
+/** Prompt template key labels — must match registry keys used at runtime */
 export const TEMPLATE_KEY_LABELS: Record<string, string> = {
-  game_instruction: '游戏指令',
-  player_prompt: '玩家提示',
-  system_prompt: '系统提示',
-  game_summary: '游戏总结',
+  doudizhu_playing: '斗地主 · 出牌',
+  doudizhu_bidding: '斗地主 · 叫分',
 }
 
 /** Prompt template key options for select dropdowns */
 export const TEMPLATE_KEY_OPTIONS = [
-  { value: 'game_instruction', label: '游戏指令 (game_instruction)' },
-  { value: 'player_prompt', label: '玩家提示 (player_prompt)' },
-  { value: 'system_prompt', label: '系统提示 (system_prompt)' },
-  { value: 'game_summary', label: '游戏总结 (game_summary)' },
+  { value: 'doudizhu_playing', label: '斗地主 · 出牌 (doudizhu_playing)' },
+  { value: 'doudizhu_bidding', label: '斗地主 · 叫分 (doudizhu_bidding)' },
 ] as const

@@ -212,7 +212,8 @@ ai-card-game-lab/
 │   │   │
 │   │   ├── views/                      # 页面级组件（路由对应）
 │   │   │   ├── GameView.vue           # 对局列表 + 创建
-│   │   │   ├── GameObserverView.vue   # 实时观战（WS + 牌桌 + 双 Tab 面板）
+│   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
+│   │   │   ├── PipelineView.vue       # 管道总览（默认首页）
 │   │   │   ├── AIPlayerView.vue       # AI 角色 CRUD
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练控制台（任务列表 + 模型仓库 + 创建对话框）
@@ -221,13 +222,19 @@ ai-card-game-lab/
 │   │   │   ├── DecisionView.vue       # 决策点数据（SFT 训练样本列表 + 详情）
 │   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
 │   │   │
+│   │   ├── layouts/                    # 双壳布局
+│   │   │   ├── WorkbenchLayout.vue    # 侧栏分组导航（实验室/管道/调参）
+│   │   │   └── ObserverLayout.vue     # 全屏观战壳
+│   │   │
 │   │   ├── styles/                     # 全局样式
 │   │   │   ├── index.css              # 全局样式入口
-│   │   │   ├── variables.css          # CSS 变量（Element Plus 主题覆盖）
+│   │   │   ├── tokens.css             # Ink Lab CSS 变量
+│   │   │   ├── variables.css          # 兼容入口（转 tokens）
 │   │   │   └── components.css         # 共享组件样式
 │   │   │
 │   │   └── types/                      # 全局 TypeScript 类型
 │   │       ├── game.ts                # 游戏领域类型
+│   │       ├── observer.ts            # ObserverSnapshot 协议
 │   │       ├── websocket.ts           # WebSocket 消息类型
 │   │       └── env.d.ts               # 环境变量类型声明
 │   │
@@ -236,7 +243,7 @@ ai-card-game-lab/
 │
 ├── config/                              # ===== 运行时配置 =====
 │   ├── ai_players.yaml                 # AI 角色配置
-│   └── settings.yaml                   # 系统配置（非敏感项）
+│   └── README.md                       # 说明：AI 角色 YAML 仅作 seed；运行时配置见 .env
 │
 ├── data/                                # ===== 运行时数据 (gitignore) =====
 │   ├── games/                          # 对局 JSONL 归档
@@ -300,13 +307,14 @@ API → Service → Repository → database
 
 ## 新增游戏时需要修改的文件清单
 
-以添加"三国杀"为例：
+以添加「三国杀」为例：
 
 | 位置 | 操作 |
 |------|------|
 | `server/app/core/engine/sanguosha/` | 新建目录，实现引擎 |
 | `server/app/core/engine/__init__.py` | 注册新引擎 |
-| `web/src/components/game/boards/<GameName>Board.vue` | 新建牌桌组件（目录待创建） |
-| `web/src/views/GameObserverView.vue` | 添加新游戏的牌桌渲染逻辑 |
+| `get_public_info(..., is_observer=True)` | 输出 ObserverSnapshot（`players[]` / `table.slots` / `extras`） |
+
+**禁止**新建 `web/src/components/game/boards/<GameName>Board.vue` 或修改 `GameObserverView` 按游戏分支。观战统一走 `GenericBoard`。
 
 无需修改 API 层、Service 层、数据层 —— 通过 `game_type` 参数自动路由。

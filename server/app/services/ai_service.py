@@ -18,6 +18,7 @@ from app.core.ai.stream_chunk import StreamChunk
 from app.core.ai.tools.hand_analyzer import HandAnalyzerTool
 from app.core.ai.tools.win_probability import WinProbabilityTool
 from app.core.engine.base import GameAction, GameEngine, GameState
+from app.database import get_db_connection
 from app.services.ai_player_service import AIPlayerService
 from app.utils.exceptions import (
     AIProviderError,
@@ -77,11 +78,13 @@ class AIService:
         prompt_builder: PromptBuilder,
         ai_player_service: AIPlayerService,
         decision_service: DecisionService | None = None,
+        sqlite_path: str | None = None,
     ) -> None:
         self._llm_factory = llm_factory
         self._prompt_builder = prompt_builder
         self._ai_player_service = ai_player_service
         self._decision_service = decision_service
+        self._sqlite_path = sqlite_path
         self._client_cache: dict[str, LLMClient] = {}
         self._action_parser = ActionOutputParser()
         self._bid_parser = BidOutputParser()
@@ -110,6 +113,52 @@ class AIService:
             return AIProviderUnavailableError(provider, detail)
         return AIProviderError(provider, detail)
 
+    async def _build_prompt_messages(
+        self,
+        *,
+        state: GameState,
+        legal_actions: list[GameAction],
+        engine: GameEngine,
+        player_id: str,
+        model_name: str | None,
+        game_id: str | None,
+        tool_analysis: str | None,
+    ) -> list[dict[str, str]]:
+        """Build prompt via registry, preferring DB-backed templates when available."""
+        if not self._sqlite_path:
+            return await self._prompt_builder.build_async(
+                state=state,
+                legal_actions=legal_actions,
+                engine=engine,
+                player_id=player_id,
+                db=None,
+                session_id=game_id,
+                model_name=model_name,
+                tool_analysis=tool_analysis,
+            )
+
+        async for db in get_db_connection(self._sqlite_path):
+            return await self._prompt_builder.build_async(
+                state=state,
+                legal_actions=legal_actions,
+                engine=engine,
+                player_id=player_id,
+                db=db,
+                session_id=game_id,
+                model_name=model_name,
+                tool_analysis=tool_analysis,
+            )
+        return await self._prompt_builder.build_async(
+            state=state,
+            legal_actions=legal_actions,
+            engine=engine,
+            player_id=player_id,
+            db=None,
+            session_id=game_id,
+            model_name=model_name,
+            tool_analysis=tool_analysis,
+        )
+
     async def get_decision(
         self,
         state: GameState,
@@ -131,12 +180,13 @@ class AIService:
         if phase != "bidding":
             tool_data = self._run_tools(state, player_id)
 
-        messages = self._prompt_builder.build(
+        messages = await self._build_prompt_messages(
             state=state,
             legal_actions=legal_actions,
             engine=engine,
             player_id=player_id,
             model_name=model_name,
+            game_id=game_id,
             tool_analysis=tool_data.get("tool_analysis") if tool_data else None,
         )
         client = self._get_client(player_config)
@@ -282,12 +332,13 @@ class AIService:
         if phase != "bidding":
             tool_data = self._run_tools(state, player_id)
 
-        messages = self._prompt_builder.build(
+        messages = await self._build_prompt_messages(
             state=state,
             legal_actions=legal_actions,
             engine=engine,
             player_id=player_id,
             model_name=model_name,
+            game_id=game_id,
             tool_analysis=tool_data.get("tool_analysis") if tool_data else None,
         )
 
@@ -307,6 +358,7 @@ class AIService:
         provider = model_cfg.get("provider", "unknown")
         phase = getattr(state, "phase", "playing")
 
+        last_error: Exception | None = None
         try:
             # Stream the response
             async for chunk in client.chat_stream(messages, **kwargs):
@@ -318,6 +370,9 @@ class AIService:
 
             # Parse the complete response
             raw_response = "".join(raw_parts)
+            if not raw_response.strip():
+                raise AIProviderError(provider, "Empty streaming response")
+
             thinking, action, used_langchain_parser = self._parse_with_metrics(
                 raw_response, legal_actions, phase
             )
@@ -369,7 +424,31 @@ class AIService:
                 error=str(last_error),
             )
 
-        # Fallback on error
+        # Streaming failed / empty → retry once with non-streaming chat
+        # (batch e2e and some providers are more reliable without SSE).
+        logger.warning(
+            "ai_streaming_fallback_to_chat",
+            player_id=player_id,
+            error=str(last_error),
+        )
+        try:
+            return await self.get_decision(
+                state=state,
+                engine=engine,
+                player_id=player_id,
+                player_config=player_config,
+                legal_actions=legal_actions,
+                game_id=game_id,
+            )
+        except Exception as e:
+            last_error = e
+            logger.warning(
+                "ai_nonstream_fallback_failed",
+                player_id=player_id,
+                error=str(e),
+            )
+
+        # Last resort: legal default (still record so export is not empty)
         raw_response = "".join(raw_parts)
         response_time_ms = (time.perf_counter() - start_time) * 1000
         logger.error(
@@ -381,6 +460,15 @@ class AIService:
             player_id=player_id, action_type="PASS"
         )
         fallback_thinking = f"[LLM流式调用失败，使用默认动作] {last_error}"
+        if self._decision_service:
+            await self._record_decision_point(
+                state=state,
+                player_id=player_id,
+                legal_actions=legal_actions,
+                chosen_action=fallback,
+                thinking=fallback_thinking,
+                game_id=game_id,
+            )
         return AIDecisionResult(
             action=fallback,
             thinking=fallback_thinking,

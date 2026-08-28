@@ -1,4 +1,8 @@
 <script setup lang="ts">
+import UiDialog from '@/components/ui/Dialog.vue'
+import UiButton from '@/components/ui/Button.vue'
+import UiBadge from '@/components/ui/Badge.vue'
+
 defineProps<{
   modelValue: boolean
   winner: {
@@ -9,24 +13,34 @@ defineProps<{
   } | null
 }>()
 
-defineEmits<{
+const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   back: []
 }>()
+
+function onBack(): void {
+  emit('update:modelValue', false)
+  emit('back')
+}
 </script>
 
 <template>
-  <el-dialog :model-value="modelValue" title="对局结束" width="400px" center @update:model-value="$emit('update:modelValue', $event)">
-    <div v-if="winner" class="py-4 text-center">
-      <div class="mb-4 text-5xl">🏆</div>
-      <h3 class="mb-3 text-xl font-semibold text-[#1d1d1f]">{{ winner.name || winner.id }} 获胜！</h3>
-      <span class="inline-block rounded-full px-4 py-1.5 text-sm font-medium" :class="winner.role === 'landlord' ? 'bg-red-50 text-[#ff3b30]' : 'bg-[#e8f8ee] text-[#34c759]'">
+  <UiDialog
+    :open="modelValue"
+    title="对局结束"
+    @update:open="emit('update:modelValue', $event)"
+  >
+    <div v-if="winner" class="py-2 text-center">
+      <h3 class="mb-3 text-xl font-semibold text-ink-text">
+        {{ winner.name || winner.id }} 获胜
+      </h3>
+      <UiBadge :variant="winner.role === 'landlord' ? 'danger' : 'success'">
         {{ winner.role === 'landlord' ? '地主' : '农民' }}
-      </span>
-      <p class="mt-4 text-sm text-[#86868b]">总轮次：{{ winner.totalRounds }}</p>
+      </UiBadge>
+      <p class="mt-4 text-sm text-ink-text-muted">总轮次：{{ winner.totalRounds }}</p>
     </div>
     <template #footer>
-      <button class="apple-btn" @click="$emit('update:modelValue', false); $emit('back')">返回列表</button>
+      <UiButton @click="onBack">返回列表</UiButton>
     </template>
-  </el-dialog>
+  </UiDialog>
 </template>

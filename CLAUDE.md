@@ -94,7 +94,10 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/api/` — typed Axios client with interceptors; `src/stores/` — one store per domain
 - `src/composables/` — `useWebSocket`, `usePagination`
 - `src/components/` organized by domain: `game/`, `data/`, `trace/`, `common/`
-- `src/views/` — `GameView`, `GameObserverView`, `AIPlayerView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`
+- `src/views/` — `PipelineView`, `GameView`, `GameObserverView`, `AIPlayerView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`
+- Dual shells: `layouts/WorkbenchLayout.vue` (grouped nav) + `layouts/ObserverLayout.vue` (fullscreen)
+- Headless UI kit: `components/ui/*` (Reka UI + Ink Lab tokens); charts via ECharts
+- Runtime config: AI players + prompt templates in SQLite; secrets/paths via `.env`; `config/ai_players.yaml` is seed-only
 - Vite dev server proxies `/api` → `localhost:8000` and WebSocket at `/api/v1/games/ws`
 
 ### Game Observer Features
@@ -163,8 +166,12 @@ Frontend: `StatCards.vue` renders stat cards and ECharts charts (Pie + Bar).
 
 1. Create `server/app/core/engine/<game_name>/` with engine implementation inheriting `GameEngine`
 2. Register in `server/app/core/engine/__init__.py`
-3. Create board component under `web/src/components/game/boards/<GameName>Board.vue`
-4. Add rendering logic in `GameObserverView.vue`
+3. Implement `get_public_info(..., is_observer=True)` to emit the universal **ObserverSnapshot**
+   (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`)
+4. Optional: Prompt / Parser for the new game
+
+**Do not** add `web/src/components/game/boards/<GameName>Board.vue` or branch `GameObserverView`
+by `game_type`. Observation uses a single `GenericBoard` list board.
 
 No API/Service/Repository changes needed — routing is automatic via `game_type`.
 

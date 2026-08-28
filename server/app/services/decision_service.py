@@ -11,6 +11,7 @@ from typing import Any
 import aiosqlite
 import structlog
 
+from app.core.training.data_quality import evaluate_train_usable
 from app.repositories.decision_repo import DecisionRepository
 from app.utils.id_generator import generate_id
 
@@ -37,9 +38,14 @@ class DecisionService:
         chosen_action: dict[str, Any],
         thinking: str | None = None,
     ) -> str:
-        """Create a new decision point record."""
+        """Create a new decision point record with train_usable evaluated."""
         decision_id = generate_id("dp")
         now = datetime.now(tz=UTC).isoformat()
+        train_usable, reason = evaluate_train_usable(
+            chosen_action=chosen_action,
+            legal_actions=legal_actions,
+            thinking=thinking,
+        )
 
         async with aiosqlite.connect(self._sqlite_path) as db:
             db.row_factory = aiosqlite.Row
@@ -57,6 +63,7 @@ class DecisionService:
                 chosen_action=chosen_action,
                 thinking=thinking,
                 created_at=now,
+                train_usable=train_usable,
             )
 
         logger.info(
@@ -65,16 +72,52 @@ class DecisionService:
             game_id=game_id,
             round_number=round_number,
             player_id=player_id,
+            train_usable=train_usable,
+            train_usable_reason=reason,
         )
 
         return decision_id
+
+    async def recompute_train_usable(self, game_id: str | None = None) -> int:
+        """Re-evaluate and persist train_usable for existing decision points."""
+        async with aiosqlite.connect(self._sqlite_path) as db:
+            db.row_factory = aiosqlite.Row
+            repo = DecisionRepository(db)
+            items = await repo.list_for_recompute(game_id=game_id)
+            updated = 0
+            for item in items:
+                usable, reason = evaluate_train_usable(
+                    chosen_action=item.get("chosen_action"),
+                    legal_actions=item.get("legal_actions"),
+                    thinking=item.get("thinking"),
+                )
+                if item.get("train_usable") != usable:
+                    await repo.update_train_usable(item["id"], usable)
+                    updated += 1
+                    logger.debug(
+                        "train_usable_recomputed",
+                        decision_id=item["id"],
+                        train_usable=usable,
+                        reason=reason,
+                    )
+
+        logger.info(
+            "train_usable_recompute_done",
+            game_id=game_id,
+            scanned=len(items),
+            updated=updated,
+        )
+        return updated
 
     async def update_outcome(
         self,
         game_id: str,
         winner_id: str | None,
     ) -> int:
-        """Update outcome and quality score for all decision points in a game."""
+        """Update outcome and quality score for all decision points in a game.
+
+        quality_score is an end-game outcome proxy only (not reasoning quality).
+        """
         async with aiosqlite.connect(self._sqlite_path) as db:
             db.row_factory = aiosqlite.Row
             repo = DecisionRepository(db)
@@ -100,6 +143,7 @@ class DecisionService:
         max_quality: float | None = None,
         game_phase: str | None = None,
         outcome: str | None = None,
+        train_usable: bool | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -114,6 +158,7 @@ class DecisionService:
                 max_quality=max_quality,
                 game_phase=game_phase,
                 outcome=outcome,
+                train_usable=train_usable,
                 limit=limit,
                 offset=offset,
             )
@@ -148,36 +193,57 @@ class DecisionService:
         game_id: str | None = None,
         min_quality: float | None = None,
         outcome: str | None = None,
+        train_usable_only: bool = True,
+        include_thinking: bool = False,
         output_path: str | None = None,
-    ) -> str:
-        """Export decision points to ChatML format JSONL."""
+    ) -> tuple[str, int]:
+        """Export decision points to ChatML format JSONL.
+
+        Returns (filepath, count). Empty filepath when nothing to export.
+        """
+        train_usable_filter: bool | None = True if train_usable_only else None
         items, _ = await self.list_decision_points(
             game_id=game_id,
             min_quality=min_quality,
             outcome=outcome,
+            train_usable=train_usable_filter,
             limit=10000,
         )
 
         if not items:
-            logger.warning("export_chatml_no_data", game_id=game_id, min_quality=min_quality)
-            return ""
+            logger.warning(
+                "export_chatml_no_data",
+                game_id=game_id,
+                min_quality=min_quality,
+                train_usable_only=train_usable_only,
+            )
+            return "", 0
 
-        self._data_dir.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
-        filename = f"decision_points_{timestamp}.jsonl"
-        filepath = self._data_dir / "datasets" / filename
+        if output_path:
+            filepath = Path(output_path)
+        else:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+            filename = f"decision_points_{timestamp}.jsonl"
+            filepath = self._data_dir / "datasets" / filename
+
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
-        lines = [json.dumps(_to_chatml(item), ensure_ascii=False) for item in items]
+        lines = [
+            json.dumps(_to_chatml(item, include_thinking=include_thinking), ensure_ascii=False)
+            for item in items
+        ]
         await asyncio.to_thread(_write_lines, filepath, lines)
 
         logger.info(
             "export_chatml_completed",
             filepath=str(filepath),
             count=len(items),
+            include_thinking=include_thinking,
+            train_usable_only=train_usable_only,
         )
 
-        return str(filepath)
+        return str(filepath), len(items)
 
 
 def _write_lines(filepath: Path, lines: list[str]) -> None:
@@ -186,7 +252,7 @@ def _write_lines(filepath: Path, lines: list[str]) -> None:
         f.writelines(line + "\n" for line in lines)
 
 
-def _to_chatml(item: dict[str, Any]) -> dict[str, Any]:
+def _to_chatml(item: dict[str, Any], *, include_thinking: bool = False) -> dict[str, Any]:
     """Convert a decision point to ChatML format."""
     hand_str = _format_hand(item["hand_cards"])
     opponent_str = _format_opponent_hands(item["opponent_hands"])
@@ -201,7 +267,7 @@ def _to_chatml(item: dict[str, Any]) -> dict[str, Any]:
 可选动作: {legal_actions_str}"""
 
     assistant_content = f"{chosen_action_str}"
-    if item.get("thinking"):
+    if include_thinking and item.get("thinking"):
         assistant_content += f"\n\n原因: {item['thinking']}"
 
     return {
@@ -216,6 +282,7 @@ def _to_chatml(item: dict[str, Any]) -> dict[str, Any]:
             "round_number": item["round_number"],
             "player_id": item["player_id"],
             "quality_score": item.get("quality_score", 0.5),
+            "train_usable": item.get("train_usable", True),
         },
     }
 

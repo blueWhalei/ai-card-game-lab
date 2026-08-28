@@ -159,10 +159,13 @@ def get_llm_factory() -> LLMClientFactory:
 
 @lru_cache
 def get_ai_player_service() -> AIPlayerService:
-    """Singleton AI player configuration service."""
+    """Singleton AI player service (SQLite + optional YAML seed)."""
     settings = get_settings()
-    config_path = str(Path(settings.config_dir) / "ai_players.yaml")
-    return AIPlayerService(config_path)
+    yaml_path = str(Path(settings.config_dir) / "ai_players.yaml")
+    return AIPlayerService(
+        sqlite_path=settings.sqlite_path,
+        yaml_seed_path=yaml_path,
+    )
 
 
 @lru_cache
@@ -181,11 +184,13 @@ def get_jsonl_writer() -> JsonlWriter:
 @lru_cache
 def get_ai_service() -> AIService:
     """Singleton AI service."""
+    settings = get_settings()
     return AIService(
         llm_factory=get_llm_factory(),
         prompt_builder=get_prompt_builder(),
         ai_player_service=get_ai_player_service(),
         decision_service=get_decision_service(),
+        sqlite_path=settings.sqlite_path,
     )
 
 
@@ -246,6 +251,8 @@ def get_training_service() -> TrainingService:
         sqlite_path=settings.sqlite_path,
         data_dir=settings.data_dir,
         models_dir=settings.models_dir,
+        training_use_mock=settings.training_use_mock,
+        ollama_base_url=settings.ollama_base_url,
     )
 
 

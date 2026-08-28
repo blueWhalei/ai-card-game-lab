@@ -26,6 +26,7 @@ def export_sft_dataset(
     source_jsonl: str,
     output_path: str,
     game_type: str | None = None,
+    include_thinking: bool = False,
 ) -> int:
     """Convert a raw game dataset JSONL into ChatML SFT training format.
 
@@ -57,18 +58,28 @@ def export_sft_dataset(
             if game_type and record.get("game_type") and record["game_type"] != game_type:
                 continue
 
-            sample = _build_sft_sample(record)
+            sample = _build_sft_sample(record, include_thinking=include_thinking)
             if sample is None:
                 continue
 
             fout.write(json.dumps(sample, ensure_ascii=False) + "\n")
             count += 1
 
-    logger.info("sft_export_done", source=source_jsonl, output=output_path, count=count)
+    logger.info(
+        "sft_export_done",
+        source=source_jsonl,
+        output=output_path,
+        count=count,
+        include_thinking=include_thinking,
+    )
     return count
 
 
-def _build_sft_sample(record: dict[str, Any]) -> dict[str, Any] | None:
+def _build_sft_sample(
+    record: dict[str, Any],
+    *,
+    include_thinking: bool = False,
+) -> dict[str, Any] | None:
     """Build a single ChatML training sample from a round record."""
     thinking = record.get("thinking", "")
     action_type = record.get("action_type", "")
@@ -86,18 +97,29 @@ def _build_sft_sample(record: dict[str, Any]) -> dict[str, Any] | None:
     user_content = "\n".join(user_parts)
 
     # Build the assistant response (what the model should learn to output)
-    assistant_obj = {
-        "thinking": thinking or "无",
-        "action": {
-            "type": action_type,
-            "cards": cards,
-        },
+    action_payload: dict[str, Any] = {
+        "type": action_type,
+        "cards": cards,
     }
+    if include_thinking:
+        assistant_obj: dict[str, Any] = {
+            "thinking": thinking or "无",
+            "action": action_payload,
+        }
+    else:
+        assistant_obj = {"action": action_payload}
     assistant_content = json.dumps(assistant_obj, ensure_ascii=False)
+
+    system = _SFT_SYSTEM
+    if not include_thinking:
+        system = (
+            "你是一个 AI 卡牌游戏玩家。根据当前局面选择最佳动作，"
+            '按照 JSON 格式输出：{"action": {"type": "...", "cards": [...]}}'
+        )
 
     return {
         "messages": [
-            {"role": "system", "content": _SFT_SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": user_content},
             {"role": "assistant", "content": assistant_content},
         ],

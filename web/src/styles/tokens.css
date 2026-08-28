@@ -1,0 +1,76 @@
+:root {
+  /* ── Ink Lab — Workbench (warm paper) ── */
+  --ink-paper: #f3efe6;
+  --ink-paper-elevated: #faf7f0;
+  --ink-surface: #ffffff;
+  --ink-surface-muted: #ebe6db;
+  --ink-border: rgba(28, 42, 38, 0.12);
+  --ink-border-strong: rgba(28, 42, 38, 0.22);
+
+  --ink-text: #1c2a26;
+  --ink-text-secondary: #4a5c56;
+  --ink-text-muted: #5c6e67;
+  --ink-text-inverse: #f3efe6;
+
+  /* Teal / slate primary — lab signal (not Apple blue) */
+  --ink-primary: #1a6b5c;
+  --ink-primary-hover: #155a4e;
+  --ink-primary-muted: rgba(26, 107, 92, 0.12);
+  --ink-primary-fg: #f3efe6;
+
+  /* Amber — in progress / attention */
+  --ink-accent: #c47a1a;
+  --ink-accent-muted: rgba(196, 122, 26, 0.14);
+
+  --ink-success: #2d7a4f;
+  --ink-danger: #b33a2e;
+  --ink-warning: #c47a1a;
+  --ink-info: #4a5c56;
+
+  --ink-radius-sm: 6px;
+  --ink-radius: 8px;
+  --ink-radius-md: 10px;
+  --ink-shadow: 0 1px 2px rgba(28, 42, 38, 0.06);
+  --ink-shadow-md: 0 2px 8px rgba(28, 42, 38, 0.08);
+
+  --ink-font-sans: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
+  --ink-font-cn: 'Noto Sans SC', 'IBM Plex Sans', system-ui, sans-serif;
+  /* 16px root so Tailwind rem scale stays readable (14px root made text-sm ≈ 12px) */
+  --ink-font-size: 16px;
+
+  /* ── Observer shell (dark charcoal / ink) ── */
+  --ink-obs-bg: #141a18;
+  --ink-obs-surface: #1e2623;
+  --ink-obs-border: rgba(243, 239, 230, 0.12);
+  --ink-obs-text: #e8e4db;
+  --ink-obs-muted: #9aaba3;
+  --ink-obs-accent: #3d9b86;
+  --ink-obs-pulse: rgba(61, 155, 134, 0.35);
+}
+
+@theme inline {
+  --color-ink-paper: var(--ink-paper);
+  --color-ink-paper-elevated: var(--ink-paper-elevated);
+  --color-ink-surface: var(--ink-surface);
+  --color-ink-surface-muted: var(--ink-surface-muted);
+  --color-ink-border: var(--ink-border);
+  --color-ink-text: var(--ink-text);
+  --color-ink-text-secondary: var(--ink-text-secondary);
+  --color-ink-text-muted: var(--ink-text-muted);
+  --color-ink-primary: var(--ink-primary);
+  --color-ink-primary-hover: var(--ink-primary-hover);
+  --color-ink-primary-muted: var(--ink-primary-muted);
+  --color-ink-accent: var(--ink-accent);
+  --color-ink-accent-muted: var(--ink-accent-muted);
+  --color-ink-success: var(--ink-success);
+  --color-ink-danger: var(--ink-danger);
+  --color-ink-obs-bg: var(--ink-obs-bg);
+  --color-ink-obs-surface: var(--ink-obs-surface);
+  --color-ink-obs-border: var(--ink-obs-border);
+  --color-ink-obs-text: var(--ink-obs-text);
+  --color-ink-obs-muted: var(--ink-obs-muted);
+  --color-ink-obs-accent: var(--ink-obs-accent);
+  --font-sans: var(--ink-font-sans);
+  --radius-ink: var(--ink-radius);
+  --radius-ink-md: var(--ink-radius-md);
+}

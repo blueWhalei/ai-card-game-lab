@@ -1,10 +1,21 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import { promptsApi, type PromptTemplateResponse, type ABTestConfig, type ABStatsResponse } from '@/api/prompts'
+import {
+  promptsApi,
+  type PromptTemplateResponse,
+  type ABTestConfig,
+  type ABStatsResponse,
+} from '@/api/prompts'
 import PromptList from '@/components/prompt/PromptList.vue'
 import PromptEditor from '@/components/prompt/PromptEditor.vue'
+import UiButton from '@/components/ui/Button.vue'
+import UiDialog from '@/components/ui/Dialog.vue'
+import UiSwitch from '@/components/ui/Switch.vue'
+import UiSlider from '@/components/ui/Slider.vue'
+import UiBadge from '@/components/ui/Badge.vue'
+import UiEmpty from '@/components/ui/Empty.vue'
 
 const templates = ref<PromptTemplateResponse[]>([])
 const loading = ref(false)
@@ -26,7 +37,7 @@ const editorForm = ref({
 
 const editorLoading = ref(false)
 
-const dialogTitle = computed(() => isEditing.value ? '编辑模板' : '新建模板')
+const dialogTitle = computed(() => (isEditing.value ? '编辑模板' : '新建模板'))
 
 async function fetchTemplates() {
   loading.value = true
@@ -85,9 +96,11 @@ async function handleEditorSubmit() {
         content: editorForm.value.content,
       })
       if (editorForm.value.is_active && !selectedTemplate.value?.is_active) {
-        await promptsApi.activate(editorForm.value.template_key, { version: editorForm.value.version })
+        await promptsApi.activate(editorForm.value.template_key, {
+          version: editorForm.value.version,
+        })
       }
-      ElMessage.success('模板已更新')
+      toast.success('模板已更新')
     } else {
       await promptsApi.create({
         template_key: editorForm.value.template_key,
@@ -95,9 +108,11 @@ async function handleEditorSubmit() {
         content: editorForm.value.content,
       })
       if (editorForm.value.is_active) {
-        await promptsApi.activate(editorForm.value.template_key, { version: editorForm.value.version })
+        await promptsApi.activate(editorForm.value.template_key, {
+          version: editorForm.value.version,
+        })
       }
-      ElMessage.success('模板已创建')
+      toast.success('模板已创建')
     }
     showEditorDialog.value = false
     await fetchTemplates()
@@ -111,7 +126,7 @@ async function handleEditorSubmit() {
 async function handleActivate(templateKey: string, version: string) {
   try {
     await promptsApi.activate(templateKey, { version })
-    ElMessage.success('模板已激活')
+    toast.success('模板已激活')
     await fetchTemplates()
   } catch (e: unknown) {
     showApiError(e, '激活失败')
@@ -121,7 +136,7 @@ async function handleActivate(templateKey: string, version: string) {
 async function handleDeactivate(templateKey: string, version: string) {
   try {
     await promptsApi.deactivate(templateKey, { version })
-    ElMessage.success('模板已停用')
+    toast.success('模板已停用')
     await fetchTemplates()
   } catch (e: unknown) {
     showApiError(e, '停用失败')
@@ -131,8 +146,11 @@ async function handleDeactivate(templateKey: string, version: string) {
 async function handleDelete(templateKey: string, version: string) {
   try {
     await promptsApi.delete(templateKey, version)
-    ElMessage.success('模板已删除')
-    if (selectedTemplate.value?.template_key === templateKey && selectedTemplate.value?.version === version) {
+    toast.success('模板已删除')
+    if (
+      selectedTemplate.value?.template_key === templateKey &&
+      selectedTemplate.value?.version === version
+    ) {
       selectedTemplate.value = null
     }
     await fetchTemplates()
@@ -143,7 +161,9 @@ async function handleDelete(templateKey: string, version: string) {
 
 function handleSelect(templateKey: string, version: string) {
   selectedTemplateKey.value = templateKey
-  const template = templates.value.find(t => t.template_key === templateKey && t.version === version)
+  const template = templates.value.find(
+    (t) => t.template_key === templateKey && t.version === version,
+  )
   if (template) {
     selectedTemplate.value = template
   }
@@ -152,7 +172,7 @@ function handleSelect(templateKey: string, version: string) {
 async function handleABConfigUpdate() {
   try {
     await promptsApi.updateAbConfig(abConfig.value)
-    ElMessage.success('A/B 测试配置已更新')
+    toast.success('A/B 测试配置已更新')
     await fetchABStats()
   } catch (e: unknown) {
     showApiError(e, '更新配置失败')
@@ -172,63 +192,51 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <div class="mb-8 flex items-center justify-between">
-      <div>
-        <h2 class="page-title">提示词管理</h2>
-        <p class="page-subtitle">管理 AI 决策的提示词模板，支持版本控制和 A/B 测试</p>
-      </div>
-      <div class="flex gap-3">
-        <button
-          class="rounded-full border border-[#d2d2d7] px-4 py-2 text-sm font-medium text-[#424245] transition-all hover:border-[#86868b]"
-          @click="showABPanel = !showABPanel"
-        >
+    <div class="mb-8 flex items-center justify-between gap-4">
+      <p class="page-subtitle mt-0">管理 AI 决策的提示词模板，支持版本控制和 A/B 测试</p>
+      <div class="flex shrink-0 gap-3">
+        <UiButton variant="secondary" @click="showABPanel = !showABPanel">
           {{ showABPanel ? '隐藏' : 'A/B 测试' }}
-        </button>
-        <button class="apple-btn" @click="openCreateDialog()">新建模板</button>
+        </UiButton>
+        <UiButton @click="openCreateDialog()">新建模板</UiButton>
       </div>
     </div>
 
-    <div v-if="showABPanel" class="apple-card mb-6">
-      <div class="mb-4 flex items-center justify-between border-b border-[#f5f5f7] pb-3">
-        <h3 class="text-base font-semibold text-[#1d1d1f]">A/B 测试配置</h3>
+    <div v-if="showABPanel" class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-5">
+      <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
+        <h3 class="text-base font-semibold text-ink-text">A/B 测试配置</h3>
       </div>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div>
           <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-[#424245]">启用 A/B 测试</label>
-            <el-switch
-              v-model="abConfig.enabled"
-              active-text="启用"
-              inactive-text="禁用"
-            />
+            <label class="mb-2 block text-sm font-medium text-ink-text">启用 A/B 测试</label>
+            <div class="flex items-center gap-2">
+              <UiSwitch v-model="abConfig.enabled" />
+              <span class="text-sm text-ink-text-muted">{{ abConfig.enabled ? '启用' : '禁用' }}</span>
+            </div>
           </div>
           <div v-if="abConfig.enabled" class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-[#424245]">
+            <label class="mb-2 block text-sm font-medium text-ink-text">
               v2 版本分配比例: {{ (abConfig.ratio * 100).toFixed(0) }}%
             </label>
-            <el-slider v-model="abConfig.ratio" :min="0" :max="1" :step="0.1" />
+            <UiSlider v-model="abConfig.ratio" :min="0" :max="1" :step="0.1" />
           </div>
-          <button
-            class="rounded-full bg-[#0071e3] px-4 py-2 text-sm font-medium text-white transition-all hover:bg-[#0077ed]"
-            @click="handleABConfigUpdate"
-          >
-            保存配置
-          </button>
+          <UiButton @click="handleABConfigUpdate">保存配置</UiButton>
         </div>
-        <div v-if="abStats" class="rounded-xl bg-[#f5f5f7] p-4">
-          <h4 class="mb-3 text-sm font-semibold text-[#424245]">分配统计</h4>
+        <div v-if="abStats" class="rounded-ink-md bg-ink-surface-muted p-4">
+          <h4 class="mb-3 text-sm font-semibold text-ink-text-secondary">分配统计</h4>
           <div class="grid grid-cols-3 gap-4 text-center">
             <div>
-              <div class="text-2xl font-semibold text-[#1d1d1f]">{{ abStats.total_assignments }}</div>
-              <div class="text-xs text-[#86868b]">总分配次数</div>
+              <div class="text-2xl font-semibold text-ink-text">{{ abStats.total_assignments }}</div>
+              <div class="text-xs text-ink-text-muted">总分配次数</div>
             </div>
             <div>
-              <div class="text-2xl font-semibold text-[#0071e3]">{{ abStats.v1_count }}</div>
-              <div class="text-xs text-[#86868b]">v1 版本</div>
+              <div class="text-2xl font-semibold text-ink-primary">{{ abStats.v1_count }}</div>
+              <div class="text-xs text-ink-text-muted">v1 版本</div>
             </div>
             <div>
-              <div class="text-2xl font-semibold text-[#4a9c2d]">{{ abStats.v2_count }}</div>
-              <div class="text-xs text-[#86868b]">v2 版本</div>
+              <div class="text-2xl font-semibold text-ink-success">{{ abStats.v2_count }}</div>
+              <div class="text-xs text-ink-text-muted">v2 版本</div>
             </div>
           </div>
         </div>
@@ -250,64 +258,54 @@ onMounted(() => {
       </div>
 
       <div class="lg:col-span-1">
-        <div v-if="selectedTemplate" class="apple-card sticky top-20">
-          <div class="mb-4 flex items-center justify-between border-b border-[#f5f5f7] pb-3">
-            <h3 class="text-base font-semibold text-[#1d1d1f]">模板详情</h3>
-            <button
-              class="rounded-full bg-[#e6f2ff] px-3 py-1 text-xs font-medium text-[#0071e3] transition-all hover:bg-[#cce4ff]"
-              @click="openEditDialog(selectedTemplate)"
-            >
+        <div
+          v-if="selectedTemplate"
+          class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5"
+        >
+          <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
+            <h3 class="text-base font-semibold text-ink-text">模板详情</h3>
+            <UiButton size="sm" variant="secondary" @click="openEditDialog(selectedTemplate)">
               编辑
-            </button>
+            </UiButton>
           </div>
           <div class="space-y-3">
             <div>
-              <span class="text-xs text-[#86868b]">模板类型</span>
-              <div class="font-medium text-[#1d1d1f]">{{ selectedTemplate.template_key }}</div>
+              <span class="text-xs text-ink-text-muted">模板类型</span>
+              <div class="font-medium text-ink-text">{{ selectedTemplate.template_key }}</div>
             </div>
             <div>
-              <span class="text-xs text-[#86868b]">版本</span>
-              <div class="font-medium text-[#1d1d1f]">v{{ selectedTemplate.version }}</div>
+              <span class="text-xs text-ink-text-muted">版本</span>
+              <div class="font-medium text-ink-text">v{{ selectedTemplate.version }}</div>
             </div>
             <div>
-              <span class="text-xs text-[#86868b]">状态</span>
-              <div>
-                <span
-                  v-if="selectedTemplate.is_active"
-                  class="rounded-full bg-[#e1f3d8] px-2 py-0.5 text-xs font-medium text-[#4a9c2d]"
-                >
-                  已激活
-                </span>
-                <span
-                  v-else
-                  class="rounded-full bg-[#f5f5f7] px-2 py-0.5 text-xs text-[#86868b]"
-                >
-                  未激活
-                </span>
+              <span class="text-xs text-ink-text-muted">状态</span>
+              <div class="mt-1">
+                <UiBadge :variant="selectedTemplate.is_active ? 'success' : 'muted'">
+                  {{ selectedTemplate.is_active ? '已激活' : '未激活' }}
+                </UiBadge>
               </div>
             </div>
             <div>
-              <span class="text-xs text-[#86868b]">内容</span>
-              <div class="mt-1 max-h-64 overflow-y-auto rounded-lg bg-[#f5f5f7] p-3">
-                <pre class="whitespace-pre-wrap font-mono text-xs text-[#424245]">{{ selectedTemplate.content }}</pre>
+              <span class="text-xs text-ink-text-muted">内容</span>
+              <div class="mt-1 max-h-64 overflow-y-auto rounded-ink bg-ink-surface-muted p-3">
+                <pre class="whitespace-pre-wrap font-mono text-xs text-ink-text-secondary">{{
+                  selectedTemplate.content
+                }}</pre>
               </div>
             </div>
           </div>
         </div>
-        <div v-else class="apple-card sticky top-20">
-          <div class="py-8 text-center text-[#86868b]">
-            <p class="mb-2">选择一个模板查看详情</p>
-            <p class="text-xs">或点击"新建模板"创建</p>
-          </div>
+        <div v-else class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5">
+          <UiEmpty title="选择一个模板查看详情" description='或点击"新建模板"创建' />
         </div>
       </div>
     </div>
 
-    <el-dialog
-      v-model="showEditorDialog"
+    <UiDialog
+      :open="showEditorDialog"
       :title="dialogTitle"
-      width="700px"
-      destroy-on-close
+      class="w-[min(92vw,700px)]"
+      @update:open="showEditorDialog = $event"
     >
       <PromptEditor
         v-model="editorForm"
@@ -316,6 +314,6 @@ onMounted(() => {
         @submit="handleEditorSubmit"
         @cancel="showEditorDialog = false"
       />
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>

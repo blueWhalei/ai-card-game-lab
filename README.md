@@ -8,18 +8,18 @@ AI 卡牌游戏实验室数据采集与训练平台 —— 面向 AI 研究的�
 - **实时思考链观察**：通过 WebSocket 实时推送 AI 决策的思考过程，含流式推理输出、Token 用量统计
 - **数据采集闭环**：JSONL 全量归档 + SQLite 元数据索引，支持多维度筛选导出
 - **数据看板**：Token 用量统计、对局质量分析、AI 表现对比、响应时间分析等多维度统计图表
-- **模型蒸馏训练**：SFT 训练管线 + Mock 训练任务编排，逐步演进到真实训练能力
+- **模型蒸馏训练**：可选 PEFT LoRA + Mock；一键脚本串起采集→导出→训练→部署提示
 
 ## 技术栈
 
 | 层级 | 技术选型 |
 |------|----------|
-| 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS + Element Plus |
+| 前端 | Vue 3 + TypeScript + Vite + Tailwind CSS v4 + Reka UI（Ink Lab 双壳） |
 | 后端 | Python 3.11+ / FastAPI + WebSocket |
 | AI 调用 | OpenAI / Ollama / DashScope / DeepSeek / Kimi / ZhipuAI / Yi / Baichuan / MiniMax 统一适配 |
 | 元数据库 | SQLite（索引/查询/统计） |
 | 数据归档 | JSONL 本地文件 |
-| 训练框架 | Mock 训练器（开发阶段），当前聚焦 SFT 流程，预留 PyTorch + Transformers 接口 |
+| 训练框架 | Mock 默认可用；可选 `poetry install --with training` 启用 PEFT LoRA（Transformers） |
 
 ## 快速开始
 
@@ -54,9 +54,22 @@ npm install
 npm run dev
 ```
 
+### 一小时闭环（推荐）
+
+后端起来后，在仓库根目录：
+
+```powershell
+.\scripts\e2e_pipeline.ps1 guide          # 打印清单
+.\scripts\e2e_pipeline.ps1 check          # 健康检查
+.\scripts\e2e_pipeline.ps1 all -Count 1   # 采集→导出→Mock 训练
+```
+
+完整说明见 [端到端闭环指南](docs/E2E_PIPELINE.md)。
+
 ### 访问地址
 
 - 前端界面：http://localhost:5173（开发模式）
+  - **Ink Lab 双壳**：默认进管道总览；`/game/:id` 为全屏观战（GenericBoard），无工作台侧栏
 - API 文档：http://localhost:8000/docs（Swagger UI）
 - API 备选文档：http://localhost:8000/redoc（ReDoc）
 
@@ -74,7 +87,7 @@ players:
     avatar: "🐯"
     model_config:
       provider: "deepseek"           # LLM 供应商
-      model_name: "deepseek-reasoner"
+      model_name: "deepseek-v4-flash"
       temperature: 0.9               # 高温度 = 更随机
       top_p: 0.95
       max_tokens: 1024
@@ -90,7 +103,7 @@ players:
     avatar: "🦊"
     model_config:
       provider: "deepseek"
-      model_name: "deepseek-reasoner"
+      model_name: "deepseek-v4-flash"
       temperature: 0.6               # 低温度 = 更保守
       top_p: 0.9
       max_tokens: 1024
@@ -159,7 +172,7 @@ model_config:
 # DeepSeek（推荐）
 model_config:
   provider: "deepseek"
-  model_name: "deepseek-chat"
+  model_name: "deepseek-v4-flash"
   temperature: 0.7
 
 # 本地 Ollama
@@ -189,6 +202,7 @@ game_configs:
 
 | 文档 | 说明 |
 |------|------|
+| [端到端闭环](docs/E2E_PIPELINE.md) | 1 小时采集→训练→部署指南与脚本 |
 | [架构设计](docs/ARCHITECTURE.md) | 系统架构、分层设计、核心流程 |
 | [目录结构](docs/PROJECT_STRUCTURE.md) | 目录规划与模块职责 |
 | [编码规范](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue 编码标准 |
@@ -207,10 +221,24 @@ game_configs:
 ### 第二阶段：数据与训练
 - [x] 数据统计看板
 - [x] 数据集筛选导出
-- [x] 训练任务管理界面（Mock 训练器）
+- [x] 决策点 `train_usable` 过滤 + ChatML 导出（默认不含思考链）
+- [x] 训练任务管理界面（Mock 默认 + 可选 PEFT LoRA）
 - [x] 模型仓库管理
-- [ ] 接入真实 SFT 训练（PyTorch / Transformers）
-- [ ] 模型部署为 AI 角色
+- [x] 接入真实 SFT 训练（可选依赖组 `training`：Transformers + PEFT）
+- [x] 模型导出部署包（merge + Modelfile + llama.cpp GGUF 脚本）+ Ollama 验证 / 测一局
+- [x] 一键体验脚本串起采集→训练→部署提示（`scripts/e2e_pipeline.*`）
+
+> **说明**：决策点上的 `quality_score` 仅为终局胜负代理（胜 0.8 / 负 0.3 / 平 0.5），**不是**推理质量分。SFT 样本筛选以 `train_usable` 为准；导出默认 `include_thinking=false`，避免伪思考链污染训练集。
+>
+> **真实训练**：`cd server && poetry install --with training`，设置 `TRAINING_USE_MOCK=false`（或创建任务时取消「使用 Mock」）。产物为 `models/<task_id>/adapter/` LoRA 权重。
+>
+> **本地部署（M3）**：
+> 1. 训练页对 LoRA 模型点「导出部署包」→ `models/<id>/deploy/`（含 `merged/`、`Modelfile`、`convert_gguf.ps1`）
+> 2. 设置 `LLAMA_CPP_DIR` 后运行转换脚本得到 `model.gguf`
+> 3. `ollama create <tag> -f Modelfile`
+> 4. 点「验证决策」或「测一局」
+>
+> **一键闭环（M4）**：见 [docs/E2E_PIPELINE.md](docs/E2E_PIPELINE.md)，`.\scripts\e2e_pipeline.ps1 all -Count 1`
 
 ### 第四阶段：扩展与优化（持续）
 - [ ] 新增游戏引擎（三国杀等）

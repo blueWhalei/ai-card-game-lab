@@ -125,6 +125,8 @@ CREATE TABLE IF NOT EXISTS spans (
 CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
 
 -- Decision Points for SFT training data
+-- quality_score is an end-game outcome proxy (win=0.8 / lose=0.3 / draw=0.5),
+-- not reasoning quality. Use train_usable for SFT filtering.
 CREATE TABLE IF NOT EXISTS decision_points (
     id              TEXT PRIMARY KEY,
     game_id         TEXT    NOT NULL,
@@ -139,12 +141,24 @@ CREATE TABLE IF NOT EXISTS decision_points (
     thinking        TEXT,
     outcome         TEXT,
     quality_score   REAL    DEFAULT 0.5,
+    train_usable    INTEGER NOT NULL DEFAULT 1,
     created_at      TEXT    NOT NULL
 );
 
 CREATE INDEX IF NOT EXISTS idx_decision_points_game    ON decision_points(game_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_player  ON decision_points(player_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_quality ON decision_points(quality_score);
+CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable ON decision_points(train_usable);
+
+CREATE TABLE IF NOT EXISTS ai_players (
+    id            TEXT PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    description   TEXT    NOT NULL DEFAULT '',
+    avatar        TEXT    NOT NULL DEFAULT '',
+    model_config  TEXT    NOT NULL,
+    created_at    TEXT    NOT NULL,
+    updated_at    TEXT    NOT NULL
+);
 """
 
 
@@ -161,6 +175,19 @@ async def init_db(sqlite_path: str) -> None:
             pass
         try:
             await db.execute("ALTER TABLE rounds ADD COLUMN all_hands TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute(
+                "ALTER TABLE decision_points ADD COLUMN train_usable INTEGER NOT NULL DEFAULT 1"
+            )
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable "
+                "ON decision_points(train_usable)"
+            )
         except aiosqlite.OperationalError:
             pass
         await db.commit()

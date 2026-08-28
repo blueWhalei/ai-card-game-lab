@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import type { GameItem } from '@/api/gameApi'
+import UiButton from '@/components/ui/Button.vue'
+import UiBadge from '@/components/ui/Badge.vue'
 
 defineProps<{
   game: GameItem | null
@@ -21,25 +23,42 @@ defineEmits<{
 </script>
 
 <template>
-  <div class="flex shrink-0 items-center justify-between border-b border-black/[0.06] bg-white/80 px-6 py-3 backdrop-blur-xl">
-    <div class="flex items-center gap-3">
-      <button class="rounded-full px-3 py-1.5 text-sm text-[#0071e3] transition-colors hover:bg-[#f5f5f7]" @click="$emit('back')">← 返回</button>
-      <h2 class="text-base font-semibold text-[#1d1d1f]">对局观察</h2>
-      <span v-if="game" class="rounded-full bg-[#f5f5f7] px-2.5 py-0.5 font-mono text-xs text-[#86868b]">{{ game.id }}</span>
-      <span class="inline-block h-2 w-2 rounded-full transition-colors" :class="isConnected ? 'bg-[#34c759]' : 'bg-[#ff3b30]'" />
-      <span class="text-xs" :class="isConnected ? 'text-[#34c759]' : 'text-[#ff3b30]'">{{ isConnected ? '已连接' : '连接中...' }}</span>
-      <span v-if="totalTokens > 0" class="rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-medium text-amber-700">
-        总Token: {{ totalTokens.toLocaleString() }}
+  <div
+    class="flex shrink-0 items-center justify-between border-b border-ink-obs-border bg-ink-obs-surface/90 px-4 py-3 backdrop-blur"
+  >
+    <div class="flex flex-wrap items-center gap-3">
+      <button
+        type="button"
+        class="text-sm text-ink-obs-accent hover:underline"
+        @click="$emit('back')"
+      >
+        ← 工作台
+      </button>
+      <span v-if="game" class="font-mono text-xs text-ink-obs-muted">{{ game.id }}</span>
+      <span
+        class="inline-block h-2 w-2 rounded-full"
+        :class="isConnected ? 'bg-ink-success' : 'bg-ink-danger'"
+      />
+      <span class="text-xs" :class="isConnected ? 'text-ink-success' : 'text-ink-danger'">
+        {{ isConnected ? '已连接' : '连接中…' }}
       </span>
-      <span v-if="latestModelName" class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs text-slate-600">
-        {{ latestModelName }}
-      </span>
+      <UiBadge v-if="totalTokens > 0" variant="accent">
+        Token {{ totalTokens.toLocaleString() }}
+      </UiBadge>
+      <span v-if="latestModelName" class="text-xs text-ink-obs-muted">{{ latestModelName }}</span>
     </div>
     <div class="flex items-center gap-2">
-      <button v-if="!isStarted && !isFinished" class="apple-btn" @click="$emit('start')">启动对局</button>
-      <button v-if="isStarted && !isPaused && !isFinished" class="apple-btn-secondary" @click="$emit('pause')">暂停</button>
-      <button v-if="isPaused" class="apple-btn" @click="$emit('resume')">继续</button>
-      <span v-if="isFinished && !isReplayMode" class="rounded-full bg-red-50 px-3 py-1 text-xs font-medium text-[#ff3b30]">已结束</span>
+      <UiButton v-if="!isStarted && !isFinished" size="sm" @click="$emit('start')">启动</UiButton>
+      <UiButton
+        v-if="isStarted && !isPaused && !isFinished"
+        size="sm"
+        variant="secondary"
+        @click="$emit('pause')"
+      >
+        暂停
+      </UiButton>
+      <UiButton v-if="isPaused" size="sm" @click="$emit('resume')">继续</UiButton>
+      <UiBadge v-if="isFinished && !isReplayMode" variant="danger">已结束</UiBadge>
       <slot name="replay-controls" />
     </div>
   </div>

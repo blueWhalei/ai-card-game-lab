@@ -3,7 +3,7 @@
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.dependencies import get_decision_service
 from app.schemas.common import ApiResponse
@@ -19,7 +19,7 @@ class DecisionPointResponse(BaseModel):
     game_id: str
     round_number: int
     player_id: str
-    hand_cards: list[str]
+    hand_cards: list[Any]
     opponent_hands: dict[str, int] | None
     last_action: dict[str, Any] | None
     game_phase: str
@@ -28,6 +28,7 @@ class DecisionPointResponse(BaseModel):
     thinking: str | None
     outcome: str | None
     quality_score: float
+    train_usable: bool = True
     created_at: str
 
 
@@ -48,6 +49,14 @@ class ExportRequest(BaseModel):
     game_id: str | None = None
     min_quality: float | None = None
     outcome: str | None = None
+    train_usable_only: bool = Field(
+        default=True,
+        description="Only export samples marked train_usable=true",
+    )
+    include_thinking: bool = Field(
+        default=False,
+        description="Include chain-of-thought text in assistant messages",
+    )
 
 
 class ExportResponse(BaseModel):
@@ -65,6 +74,9 @@ async def list_decision_points(
     max_quality: float | None = Query(None, description="Maximum quality score"),
     game_phase: str | None = Query(None, description="Filter by game phase"),
     outcome: str | None = Query(None, description="Filter by outcome (win/lose/draw)"),
+    train_usable: bool | None = Query(
+        None, description="Filter by train_usable flag (true/false)"
+    ),
     limit: int = Query(100, ge=1, le=500),
     offset: int = Query(0, ge=0),
     service: DecisionService = Depends(get_decision_service),
@@ -77,6 +89,7 @@ async def list_decision_points(
         max_quality=max_quality,
         game_phase=game_phase,
         outcome=outcome,
+        train_usable=train_usable,
         limit=limit,
         offset=offset,
     )
@@ -102,10 +115,12 @@ async def export_chatml(
     service: DecisionService = Depends(get_decision_service),
 ) -> ApiResponse[ExportResponse]:
     """Export decision points to ChatML format JSONL."""
-    filepath = await service.export_chatml(
+    filepath, count = await service.export_chatml(
         game_id=request.game_id,
         min_quality=request.min_quality,
         outcome=request.outcome,
+        train_usable_only=request.train_usable_only,
+        include_thinking=request.include_thinking,
     )
 
     if not filepath:
@@ -113,13 +128,6 @@ async def export_chatml(
             data=ExportResponse(filepath="", count=0),
             message="No decision points found to export",
         )
-
-    _, count = await service.list_decision_points(
-        game_id=request.game_id,
-        min_quality=request.min_quality,
-        outcome=request.outcome,
-        limit=10000,
-    )
 
     return ApiResponse(
         data=ExportResponse(filepath=filepath, count=count),

@@ -24,6 +24,7 @@ export interface DecisionPoint {
   thinking: string | null
   outcome: string | null
   quality_score: number
+  train_usable: boolean
   created_at: string
 }
 
@@ -41,6 +42,14 @@ export interface ExportResult {
   count: number
 }
 
+export interface DecisionExportParams {
+  game_id?: string
+  min_quality?: number
+  outcome?: string
+  train_usable_only?: boolean
+  include_thinking?: boolean
+}
+
 export const decisionApi = {
   list: (params?: {
     game_id?: string
@@ -49,6 +58,7 @@ export const decisionApi = {
     max_quality?: number
     game_phase?: string
     outcome?: string
+    train_usable?: boolean
     limit?: number
     offset?: number
   }) =>
@@ -62,10 +72,6 @@ export const decisionApi = {
   stats: () =>
     apiClient.get<{ data: DecisionStats }>('/api/v1/decision-points/stats'),
 
-  export: (params?: {
-    game_id?: string
-    min_quality?: number
-    outcome?: string
-  }) =>
+  export: (params?: DecisionExportParams) =>
     apiClient.post<{ data: ExportResult; message: string }>('/api/v1/decision-points/export', params),
 }

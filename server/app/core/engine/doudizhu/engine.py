@@ -462,41 +462,74 @@ class DoudizhuEngine(GameEngine):
         self, state: GameState, viewer_id: str, is_observer: bool = False
     ) -> dict[str, Any]:
         s = self._cast(state)
-        players_info: dict[str, Any] = {}
-        for pid in s.player_ids:
-            players_info[pid] = {
-                "cards_left": len(s.hands.get(pid, [])),
-                "role": s.roles.get(pid, "unknown"),
-            }
+        show_hands = is_observer or viewer_id == "observer"
 
-        last_action = None
+        last_play_action: dict[str, Any] | None = None
         if s.last_play:
             lp_player, lp_type, _, lp_cards = s.last_play
-            last_action = {
-                "player_id": lp_player,
-                "action_type": str(lp_type),
-                "cards": lp_cards,
+            last_play_action = {
+                "type": str(lp_type),
+                "cards": list(lp_cards),
+                "label": "不出" if str(lp_type) == "PASS" else None,
             }
+            # Drop null label for cleaner payloads
+            if last_play_action["label"] is None:
+                del last_play_action["label"]
+
+        players: list[dict[str, Any]] = []
+        for pid in s.player_ids:
+            hand = list(s.hands.get(pid, []))
+            role = s.roles.get(pid, "unknown")
+            badges: list[str] = []
+            if role and role != "unknown":
+                badges.append(str(role))
+            entry: dict[str, Any] = {
+                "id": pid,
+                "role": role,
+                "is_active": s.current_player == pid,
+                "hand_count": len(hand),
+                "badges": badges,
+            }
+            if show_hands:
+                entry["hand_cards"] = hand
+            if last_play_action and s.last_play and s.last_play[0] == pid:
+                entry["last_action"] = last_play_action
+            players.append(entry)
+
+        slots: list[dict[str, Any]] = []
+        if s.phase == "playing" and s.landlord_cards:
+            slots.append(
+                {
+                    "key": "landlord",
+                    "label": "底牌",
+                    "cards": list(s.landlord_cards),
+                }
+            )
+        if last_play_action and last_play_action.get("cards"):
+            slots.append(
+                {
+                    "key": "last_play",
+                    "label": "上一手",
+                    "cards": list(last_play_action["cards"]),
+                }
+            )
 
         result: dict[str, Any] = {
+            "game_type": s.game_type,
             "phase": s.phase,
             "round": s.round,
-            "current_player": s.current_player,
-            "players": players_info,
-            "landlord_cards": s.landlord_cards if s.phase == "playing" else [],
-            "last_action": last_action,
-            "is_terminal": s.is_terminal,
-            "winner": s.winner,
-            "winner_role": s.winner_role,
-            # Bidding info
-            "current_highest_bid": s.current_highest_bid,
-            "current_highest_bidder": s.current_highest_bidder,
-            "current_bids": s.current_bids,
+            "current_player_id": s.current_player,
+            "players": players,
+            "table": {"slots": slots},
+            "extras": {
+                "is_terminal": s.is_terminal,
+                "winner": s.winner,
+                "winner_role": s.winner_role,
+                "current_highest_bid": s.current_highest_bid,
+                "current_highest_bidder": s.current_highest_bidder,
+                "current_bids": s.current_bids,
+            },
         }
-
-        # Observer mode: show all hands (上帝视角)
-        if is_observer or viewer_id == "observer":
-            result["hands"] = {pid: list(cards) for pid, cards in s.hands.items()}
 
         return result
 

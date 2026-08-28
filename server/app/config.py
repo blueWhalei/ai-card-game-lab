@@ -34,7 +34,8 @@ class Settings(BaseSettings):
 
     deepseek_api_key: str = ""
     deepseek_base_url: str = "https://api.deepseek.com/v1"
-    deepseek_model: str = "deepseek-chat"  # deepseek-chat for fast response; deepseek-reasoner for chain-of-thought
+    # deepseek-v4-flash：默认（成本/延迟友好）；需要更强推理可用 deepseek-v4-pro
+    deepseek_model: str = "deepseek-v4-flash"
 
     kimi_api_key: str = ""
     kimi_base_url: str = "https://api.moonshot.cn/v1"
@@ -54,6 +55,10 @@ class Settings(BaseSettings):
     data_dir: str = str(_PROJECT_ROOT / "data")
     sqlite_path: str = str(_PROJECT_ROOT / "data" / "db" / "app.db")
     models_dir: str = str(_PROJECT_ROOT / "models")
+
+    # Default True so fresh installs work without torch; set False after
+    # `poetry install --with training` to enable real PEFT LoRA.
+    training_use_mock: bool = True
 
     config_dir: str = str(_PROJECT_ROOT / "config")
 

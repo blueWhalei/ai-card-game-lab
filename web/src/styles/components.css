@@ -1,70 +1,46 @@
 @layer components {
+  /* Workbench fills the main pane; cap only on ultra-wide so tables don't stretch endlessly */
   .page-container {
-    @apply mx-auto max-w-6xl px-10 py-8;
+    @apply w-full max-w-[1680px] px-6 py-6 md:px-8 md:py-8 xl:px-10;
   }
 
   .page-title {
-    @apply text-2xl font-semibold tracking-tight text-[#1d1d1f];
+    @apply text-[1.75rem] font-semibold tracking-tight text-ink-text;
   }
 
   .page-subtitle {
-    @apply mt-1 text-sm text-[#86868b];
+    @apply mt-1 text-base text-ink-text-secondary;
   }
 
-  .apple-card {
-    @apply rounded-2xl bg-white p-6 shadow-sm transition-all duration-300;
+  .ink-card {
+    @apply rounded-ink-md border border-ink-border bg-ink-surface p-5 shadow-[var(--ink-shadow)];
   }
 
-  .apple-card-hover {
-    @apply rounded-2xl bg-white p-6 shadow-sm transition-all duration-300 hover:shadow-md;
+  .ink-btn {
+    @apply inline-flex items-center justify-center rounded-ink bg-ink-primary px-4 py-2 text-base font-medium text-[var(--ink-primary-fg)] transition-colors duration-150 hover:bg-ink-primary-hover disabled:opacity-50;
   }
 
-  .apple-btn {
-    @apply inline-flex items-center justify-center rounded-full bg-[#0071e3] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-[#0077ed];
+  .ink-btn-secondary {
+    @apply inline-flex items-center justify-center rounded-ink border border-ink-border bg-ink-surface-muted px-4 py-2 text-base font-medium text-ink-text transition-colors duration-150 hover:bg-ink-paper-elevated disabled:opacity-50;
   }
 
-  .apple-btn-secondary {
-    @apply inline-flex items-center justify-center rounded-full bg-[#f5f5f7] px-5 py-2 text-sm font-medium text-[#1d1d1f] transition-all duration-200 hover:bg-[#e8e8ed];
+  .ink-input {
+    @apply w-full rounded-ink border border-ink-border bg-ink-surface px-3 py-2.5 text-base text-ink-text outline-none transition-colors duration-150 placeholder:text-ink-text-muted focus:border-ink-primary focus:ring-2 focus:ring-ink-primary-muted;
   }
 
-  .apple-input {
-    @apply rounded-xl border border-[rgba(0,0,0,0.1)] bg-white px-4 py-2.5 text-sm outline-none transition-all duration-200 focus:border-[#0071e3] focus:ring-2 focus:ring-[#0071e3]/20;
+  .ink-label {
+    @apply text-sm font-medium text-ink-text-secondary;
   }
 
-  .apple-segmented {
-    @apply inline-flex rounded-lg bg-[#e8e8ed] p-0.5;
+  .ink-value {
+    @apply text-base text-ink-text;
   }
 
-  .apple-segmented-item {
-    @apply rounded-md px-4 py-1.5 text-sm font-medium text-[#86868b] transition-all duration-200;
+  .ink-stat-number {
+    @apply text-3xl font-semibold tracking-tight text-ink-text;
   }
 
-  .apple-segmented-item-active {
-    @apply rounded-md bg-white px-4 py-1.5 text-sm font-medium text-[#1d1d1f] shadow-sm ring-2 ring-[#e8e8ed];
-  }
-
-  .apple-divider {
-    @apply border-t border-[rgba(0,0,0,0.06)];
-  }
-
-  .apple-label {
-    @apply text-sm font-medium text-[#86868b];
-  }
-
-  .apple-value {
-    @apply text-sm text-[#1d1d1f];
-  }
-
-  .apple-stat-number {
-    @apply text-3xl font-semibold tracking-tight text-[#1d1d1f];
-  }
-
-  /* Element Plus switch - make visible on white background */
-  :deep(.el-switch) {
-    --el-switch-off-color: #d1d5db;
-    --el-switch-bg-color: #e8e8ed;
-  }
-  :deep(.el-switch.is-checked) {
-    --el-switch-on-color: #0071e3;
+  .ink-divider {
+    @apply border-t border-ink-border;
   }
 }

@@ -84,6 +84,7 @@ class PromptService:
         await self._repo.save_template(template)
 
         # Update registry cache
+        self._registry.invalidate(template.template_key)
         cache_key = f"{template.template_key}_{template.version}"
         self._registry._cache[cache_key] = template
 
@@ -115,8 +116,8 @@ class PromptService:
 
         await self._repo.save_template(template)
 
-        # Update registry cache
-        cache_key = f"{template.template_key}_{template.version}"
+        self._registry.invalidate(template_key)
+        cache_key = f"{template_key}_{version}"
         self._registry._cache[cache_key] = template
 
         logger.info(
@@ -136,9 +137,7 @@ class PromptService:
         deleted = await self._repo.delete_template(template_key, version)
 
         if deleted:
-            # Remove from registry cache
-            cache_key = f"{template_key}_{version}"
-            self._registry._cache.pop(cache_key, None)
+            self._registry.invalidate(template_key, version)
 
             logger.info(
                 "prompt_template_deleted",
@@ -153,25 +152,27 @@ class PromptService:
         template_key: str,
         request: ActivatePromptRequest,
     ) -> PromptTemplateResponse | None:
-        """Activate a specific template version."""
-        template = await self._repo.get_active_template(template_key, request.version)
+        """Activate a specific template version (including currently inactive ones)."""
+        existing = await self._repo.get_template(template_key, request.version)
+        if not existing:
+            return None
+
+        await self._repo.activate_template(template_key, request.version)
+        template = await self._repo.get_template(template_key, request.version)
         if not template:
             return None
 
-        success = await self._repo.activate_template(template_key, request.version)
-        if success:
-            # Update cache
-            cache_key = f"{template_key}_{request.version}"
-            self._registry._cache[cache_key] = template
+        self._registry.invalidate(template_key)
+        cache_key = f"{template_key}_{request.version}"
+        self._registry._cache[cache_key] = template
 
-            logger.info(
-                "prompt_template_activated",
-                template_key=template_key,
-                version=request.version,
-            )
+        logger.info(
+            "prompt_template_activated",
+            template_key=template_key,
+            version=request.version,
+        )
 
-            return self._to_response(template)
-        return None
+        return self._to_response(template)
 
     async def deactivate_template(
         self,
@@ -179,24 +180,24 @@ class PromptService:
         request: DeactivatePromptRequest,
     ) -> PromptTemplateResponse | None:
         """Deactivate a specific template version."""
-        template = await self._repo.get_active_template(template_key, request.version)
+        existing = await self._repo.get_template(template_key, request.version)
+        if not existing:
+            return None
+
+        await self._repo.deactivate_template(template_key, request.version)
+        template = await self._repo.get_template(template_key, request.version)
         if not template:
             return None
 
-        success = await self._repo.deactivate_template(template_key, request.version)
-        if success:
-            # Remove from cache (deactivated templates shouldn't be used)
-            cache_key = f"{template_key}_{request.version}"
-            self._registry._cache.pop(cache_key, None)
+        self._registry.invalidate(template_key, request.version)
 
-            logger.info(
-                "prompt_template_deactivated",
-                template_key=template_key,
-                version=request.version,
-            )
+        logger.info(
+            "prompt_template_deactivated",
+            template_key=template_key,
+            version=request.version,
+        )
 
-            return self._to_response(template)
-        return None
+        return self._to_response(template)
 
     def get_ab_stats(self) -> ABStatsResponse:
         """Get current A/B test statistics."""

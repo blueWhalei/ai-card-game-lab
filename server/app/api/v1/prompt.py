@@ -1,6 +1,6 @@
 """Prompt template management endpoints."""
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 
 from app.dependencies import get_prompt_service
 from app.schemas.common import ApiResponse
@@ -103,12 +103,13 @@ async def update_template(
 @router.delete(
     "/{template_key}/{version}",
     status_code=status.HTTP_204_NO_CONTENT,
+    response_class=Response,
 )
 async def delete_template(
     template_key: str,
     version: str,
     service: PromptService = Depends(_get_prompt_service),  # noqa: B008
-) -> None:
+) -> Response:
     """Delete a prompt template version."""
     deleted = await service.delete_template(template_key, version)
     if not deleted:
@@ -116,6 +117,7 @@ async def delete_template(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Template {template_key}:{version} not found",
         )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post(

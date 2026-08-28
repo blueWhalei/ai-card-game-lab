@@ -28,6 +28,7 @@ class DecisionRepository:
         chosen_action: dict[str, Any],
         thinking: str | None,
         created_at: str,
+        train_usable: bool = True,
     ) -> None:
         """Insert a new decision point record."""
         await self._db.execute(
@@ -35,8 +36,8 @@ class DecisionRepository:
             INSERT INTO decision_points (
                 id, game_id, round_number, player_id, hand_cards,
                 opponent_hands, last_action, game_phase, legal_actions,
-                chosen_action, thinking, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                chosen_action, thinking, train_usable, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -50,10 +51,47 @@ class DecisionRepository:
                 json.dumps(legal_actions, ensure_ascii=False),
                 json.dumps(chosen_action, ensure_ascii=False),
                 thinking,
+                1 if train_usable else 0,
                 created_at,
             ),
         )
         await self._db.commit()
+
+    async def update_train_usable(self, decision_id: str, train_usable: bool) -> None:
+        """Update train_usable flag for a single decision point."""
+        await self._db.execute(
+            "UPDATE decision_points SET train_usable = ? WHERE id = ?",
+            (1 if train_usable else 0, decision_id),
+        )
+        await self._db.commit()
+
+    async def list_for_recompute(
+        self,
+        game_id: str | None = None,
+        limit: int = 10000,
+    ) -> list[dict[str, Any]]:
+        """List decision points for train_usable recomputation."""
+        if game_id:
+            cursor = await self._db.execute(
+                """
+                SELECT * FROM decision_points
+                WHERE game_id = ?
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (game_id, limit),
+            )
+        else:
+            cursor = await self._db.execute(
+                """
+                SELECT * FROM decision_points
+                ORDER BY created_at ASC
+                LIMIT ?
+                """,
+                (limit,),
+            )
+        rows = await cursor.fetchall()
+        return [_row_to_dict(row) for row in rows]
 
     async def update_outcome_by_winner(
         self,
@@ -106,6 +144,7 @@ class DecisionRepository:
         max_quality: float | None = None,
         game_phase: str | None = None,
         outcome: str | None = None,
+        train_usable: bool | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -131,6 +170,9 @@ class DecisionRepository:
         if outcome:
             conditions.append("outcome = ?")
             params.append(outcome)
+        if train_usable is not None:
+            conditions.append("train_usable = ?")
+            params.append(1 if train_usable else 0)
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -218,6 +260,8 @@ class DecisionRepository:
 
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     """Convert a decision_points row to a dictionary with JSON fields parsed."""
+    keys = set(row.keys())
+    train_usable_raw = row["train_usable"] if "train_usable" in keys else 1
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -232,5 +276,6 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "thinking": row["thinking"],
         "outcome": row["outcome"],
         "quality_score": row["quality_score"],
+        "train_usable": bool(train_usable_raw),
         "created_at": row["created_at"],
     }

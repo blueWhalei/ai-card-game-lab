@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from app.dependencies import get_ai_player_service
 from app.schemas.ai_player import CreateAIPlayerRequest, UpdateAIPlayerRequest
@@ -46,7 +46,7 @@ async def create_ai_player(
     service: AIPlayerService = Depends(get_ai_player_service),
 ) -> ApiResponse[dict[str, Any]]:
     try:
-        player = service.create_player({
+        player = await service.create_player({
             "id": body.id,
             "name": body.name,
             "description": body.description,
@@ -86,18 +86,19 @@ async def update_ai_player(
         update_data["model_config"] = body.model_config_data.model_dump()
 
     try:
-        player = service.update_player(player_id, update_data)
+        player = await service.update_player(player_id, update_data)
     except KeyError as e:
         raise AIPlayerNotFoundError(player_id) from e
     return ApiResponse(data=player)
 
 
-@router.delete("/{player_id}", status_code=204)
+@router.delete("/{player_id}", status_code=204, response_class=Response)
 async def delete_ai_player(
     player_id: str,
     service: AIPlayerService = Depends(get_ai_player_service),
-) -> None:
+) -> Response:
     try:
-        service.delete_player(player_id)
+        await service.delete_player(player_id)
     except KeyError as e:
         raise AIPlayerNotFoundError(player_id) from e
+    return Response(status_code=204)

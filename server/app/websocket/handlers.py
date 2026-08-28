@@ -34,7 +34,7 @@ async def handle_game_websocket(
     if state is not None:
         try:
             engine = engine_registry.get(state.game_type)
-            public_info = engine.get_public_info(state, "observer")
+            public_info = engine.get_public_info(state, "observer", is_observer=True)
             await websocket.send_json({
                 "type": "state_update",
                 "game_id": game_id,

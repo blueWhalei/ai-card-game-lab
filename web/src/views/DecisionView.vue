@@ -1,16 +1,34 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
+import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decision'
 import { formatDateTime } from '@/utils/format'
+import UiSpinner from '@/components/ui/Spinner.vue'
+import UiButton from '@/components/ui/Button.vue'
+import UiCheckbox from '@/components/ui/Checkbox.vue'
+import UiBadge from '@/components/ui/Badge.vue'
+import UiEmpty from '@/components/ui/Empty.vue'
+import UiSelect from '@/components/ui/Select.vue'
 
 const route = useRoute()
 const decisionPoints = ref<DecisionPoint[]>([])
 const loading = ref(false)
+const exporting = ref(false)
 const selectedPoint = ref<DecisionPoint | null>(null)
 const stats = ref<DecisionStats | null>(null)
 const showStats = ref(false)
+const exportTrainUsableOnly = ref(true)
+const exportIncludeThinking = ref(false)
+/** list-level filter: all | true | false */
+const trainUsableFilter = ref<'all' | 'true' | 'false'>('all')
+
+const trainUsableOptions = [
+  { label: '全部', value: 'all' },
+  { label: '可训练', value: 'true' },
+  { label: '不可训练', value: 'false' },
+]
 
 const gameId = computed(() => route.query.game_id as string | undefined)
 const minQuality = computed(() => {
@@ -21,18 +39,28 @@ const minQuality = computed(() => {
 async function fetchDecisionPoints() {
   loading.value = true
   try {
-    const params: Record<string, string | number | undefined> = {}
+    const params: {
+      game_id?: string
+      min_quality?: number
+      train_usable?: boolean
+    } = {}
     if (gameId.value) {
       params.game_id = gameId.value
     }
     if (minQuality.value !== undefined) {
       params.min_quality = minQuality.value
     }
+    if (trainUsableFilter.value === 'true') {
+      params.train_usable = true
+    } else if (trainUsableFilter.value === 'false') {
+      params.train_usable = false
+    }
     const res = await decisionApi.list(params)
     decisionPoints.value = res.data.data || []
-    if (decisionPoints.value.length > 0 && !selectedPoint.value) {
-      selectedPoint.value = decisionPoints.value[0] ?? null
-    }
+    selectedPoint.value =
+      decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
+      decisionPoints.value[0] ??
+      null
   } catch (e: unknown) {
     showApiError(e, '获取决策点数据失败')
   } finally {
@@ -46,6 +74,28 @@ async function fetchStats() {
     stats.value = res.data.data
   } catch (e: unknown) {
     showApiError(e, '获取统计数据失败')
+  }
+}
+
+async function exportChatml() {
+  exporting.value = true
+  try {
+    const res = await decisionApi.export({
+      game_id: gameId.value,
+      min_quality: minQuality.value,
+      train_usable_only: exportTrainUsableOnly.value,
+      include_thinking: exportIncludeThinking.value,
+    })
+    const { filepath, count } = res.data.data
+    if (!filepath || count === 0) {
+      toast.warning('没有可导出的决策点')
+      return
+    }
+    toast.success(`已导出 ${count} 条 → ${filepath}`)
+  } catch (e: unknown) {
+    showApiError(e, '导出失败')
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -63,13 +113,13 @@ function formatAction(action: { action_type: string; cards: string[] } | null): 
   return `${action.action_type} [${action.cards.join(', ')}]`
 }
 
-function getQualityColor(score: number): string {
-  if (score >= 0.7) return 'bg-[#e1f3d8] text-[#4a9c2d]'
-  if (score >= 0.5) return 'bg-[#fff3e0] text-[#e65100]'
-  return 'bg-[#ffebee] text-[#c62828]'
+function getQualityVariant(score: number): 'success' | 'warning' | 'danger' {
+  if (score >= 0.7) return 'success'
+  if (score >= 0.5) return 'warning'
+  return 'danger'
 }
 
-watch([gameId, minQuality], () => {
+watch([gameId, minQuality, trainUsableFilter], () => {
   fetchDecisionPoints()
 })
 
@@ -81,40 +131,45 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <div class="mb-8 flex items-center justify-between">
-      <div>
-        <h2 class="page-title">决策点数据</h2>
-        <p class="page-subtitle">AI 决策状态-动作对，用于 SFT 训练</p>
-      </div>
-      <div class="flex gap-3">
-        <button
-          class="rounded-full border border-[#d2d2d7] px-4 py-2 text-sm font-medium text-[#424245] transition-all hover:border-[#86868b]"
-          :class="{ 'bg-[#f5f5f7]': showStats }"
+    <div class="mb-8 flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+      <p class="mt-0 text-base text-ink-text-secondary">
+        AI 状态-动作对，用于 SFT。质量分仅为终局胜负代理；训练过滤以「可训练」为准。
+      </p>
+      <div class="flex flex-wrap items-center gap-3">
+        <UiCheckbox v-model="exportTrainUsableOnly" label="仅可训练样本" />
+        <UiCheckbox v-model="exportIncludeThinking" label="包含思考" />
+        <UiButton variant="primary" size="sm" :loading="exporting" @click="exportChatml">
+          {{ exporting ? '导出中…' : '导出 ChatML' }}
+        </UiButton>
+        <UiButton
+          variant="secondary"
+          size="sm"
+          :class="showStats ? 'bg-ink-surface-muted' : ''"
           @click="showStats = !showStats"
         >
           {{ showStats ? '隐藏统计' : '统计数据' }}
-        </button>
+        </UiButton>
       </div>
     </div>
 
     <div v-if="showStats && stats" class="mb-6">
-      <div class="apple-card">
+      <div class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
         <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div class="text-center">
-            <div class="text-2xl font-semibold text-[#1d1d1f]">{{ stats.total }}</div>
-            <div class="text-xs text-[#86868b]">总决策点</div>
+            <div class="text-2xl font-semibold text-ink-text">{{ stats.total }}</div>
+            <div class="text-xs text-ink-text-muted">总决策点</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-semibold text-[#1d1d1f]">{{ stats.avg_quality.toFixed(2) }}</div>
-            <div class="text-xs text-[#86868b]">平均质量</div>
+            <div class="text-2xl font-semibold text-ink-text">{{ stats.avg_quality.toFixed(2) }}</div>
+            <div class="text-xs text-ink-text-muted">平均质量（胜负代理）</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-semibold text-[#4a9c2d]">{{ stats.outcome_counts.win || 0 }}</div>
-            <div class="text-xs text-[#86868b]">胜利决策</div>
+            <div class="text-2xl font-semibold text-ink-success">{{ stats.outcome_counts.win || 0 }}</div>
+            <div class="text-xs text-ink-text-muted">胜利决策</div>
           </div>
           <div class="text-center">
-            <div class="text-2xl font-semibold text-[#c62828]">{{ stats.outcome_counts.lose || 0 }}</div>
-            <div class="text-xs text-[#86868b]">失败决策</div>
+            <div class="text-2xl font-semibold text-ink-danger">{{ stats.outcome_counts.lose || 0 }}</div>
+            <div class="text-xs text-ink-text-muted">失败决策</div>
           </div>
         </div>
       </div>
@@ -122,43 +177,52 @@ onMounted(() => {
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div class="lg:col-span-1">
-        <div class="apple-card">
-          <div class="mb-4 border-b border-[#f5f5f7] pb-3">
-            <h3 class="text-base font-semibold text-[#1d1d1f]">决策点列表</h3>
-            <p v-if="gameId" class="mt-1 text-xs text-[#86868b]">游戏: {{ gameId }}</p>
+        <div class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
+          <div class="mb-4 border-b border-ink-border pb-3">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-base font-semibold text-ink-text">决策点列表</h3>
+              <UiSelect
+                v-model="trainUsableFilter"
+                :options="trainUsableOptions"
+                class="w-28"
+                placeholder="可训练"
+              />
+            </div>
+            <p v-if="gameId" class="mt-1 text-xs text-ink-text-muted">游戏: {{ gameId }}</p>
           </div>
 
-          <div v-loading="loading" class="max-h-[600px] overflow-y-auto">
-            <div v-if="!loading && decisionPoints.length === 0" class="py-8 text-center text-[#86868b]">
-              暂无决策点数据
-            </div>
+          <div class="relative max-h-[600px] overflow-y-auto">
+            <UiSpinner v-if="loading" overlay label="加载中…" />
+            <UiEmpty v-if="!loading && decisionPoints.length === 0" title="暂无决策点数据" />
 
-            <div v-else class="space-y-2">
+            <div v-else-if="!loading" class="space-y-2">
               <div
                 v-for="point in decisionPoints"
                 :key="point.id"
-                class="cursor-pointer rounded-xl p-3 transition-colors"
-                :class="selectedPoint?.id === point.id ? 'bg-[#e6f2ff]' : 'hover:bg-[#f5f5f7]'"
+                class="cursor-pointer rounded-ink-md p-3 transition-colors"
+                :class="
+                  selectedPoint?.id === point.id
+                    ? 'bg-ink-primary-muted'
+                    : 'hover:bg-ink-surface-muted'
+                "
                 @click="selectPoint(point)"
               >
                 <div class="flex items-center justify-between">
                   <div class="flex items-center gap-2">
-                    <span class="rounded-full bg-[#f5f5f7] px-2 py-0.5 text-xs font-medium text-[#424245]">
-                      R{{ point.round_number }}
-                    </span>
-                    <span class="text-sm font-medium text-[#1d1d1f]">{{ point.player_id }}</span>
+                    <UiBadge variant="muted">R{{ point.round_number }}</UiBadge>
+                    <span class="text-sm font-medium text-ink-text">{{ point.player_id }}</span>
+                    <UiBadge :variant="point.train_usable ? 'success' : 'muted'">
+                      {{ point.train_usable ? '可训' : '不可训' }}
+                    </UiBadge>
                   </div>
-                  <span
-                    class="rounded-full px-2 py-0.5 text-xs"
-                    :class="getQualityColor(point.quality_score)"
-                  >
+                  <UiBadge :variant="getQualityVariant(point.quality_score)">
                     {{ point.quality_score.toFixed(2) }}
-                  </span>
+                  </UiBadge>
                 </div>
-                <div class="mt-2 text-xs text-[#86868b]">
+                <div class="mt-2 text-xs text-ink-text-muted">
                   {{ formatAction(point.chosen_action) }}
                 </div>
-                <div class="mt-1 text-xs text-[#86868b]">
+                <div class="mt-1 text-xs text-ink-text-muted">
                   {{ formatDateTime(point.created_at) }}
                 </div>
               </div>
@@ -168,42 +232,44 @@ onMounted(() => {
       </div>
 
       <div class="lg:col-span-2">
-        <div v-if="selectedPoint" class="apple-card">
-          <div class="mb-4 border-b border-[#f5f5f7] pb-3">
-            <h3 class="text-base font-semibold text-[#1d1d1f]">决策详情</h3>
+        <div v-if="selectedPoint" class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
+          <div class="mb-4 border-b border-ink-border pb-3">
+            <h3 class="text-base font-semibold text-ink-text">决策详情</h3>
           </div>
 
           <div class="space-y-4">
             <div class="grid grid-cols-2 gap-4">
               <div>
-                <div class="text-xs font-medium text-[#86868b]">游戏阶段</div>
-                <div class="mt-1 text-sm text-[#1d1d1f]">{{ selectedPoint.game_phase }}</div>
+                <div class="text-xs font-medium text-ink-text-muted">游戏阶段</div>
+                <div class="mt-1 text-sm text-ink-text">{{ selectedPoint.game_phase }}</div>
               </div>
               <div>
-                <div class="text-xs font-medium text-[#86868b]">结果</div>
-                <div class="mt-1 text-sm text-[#1d1d1f]">
-                  <span
+                <div class="text-xs font-medium text-ink-text-muted">可训练 / 结果</div>
+                <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-text">
+                  <UiBadge :variant="selectedPoint.train_usable ? 'success' : 'muted'">
+                    {{ selectedPoint.train_usable ? '可训练' : '不可训练' }}
+                  </UiBadge>
+                  <UiBadge
                     v-if="selectedPoint.outcome"
-                    class="rounded-full px-2 py-0.5 text-xs"
-                    :class="selectedPoint.outcome === 'win' ? 'bg-[#e1f3d8] text-[#4a9c2d]' : 'bg-[#ffebee] text-[#c62828]'"
+                    :variant="selectedPoint.outcome === 'win' ? 'success' : 'danger'"
                   >
                     {{ selectedPoint.outcome === 'win' ? '胜利' : '失败' }}
-                  </span>
-                  <span v-else class="text-[#86868b]">未知</span>
+                  </UiBadge>
+                  <span v-else class="text-ink-text-muted">结果未知</span>
                 </div>
               </div>
             </div>
 
             <div>
-              <div class="text-xs font-medium text-[#86868b]">手牌</div>
-              <div class="mt-1 rounded-lg bg-[#f5f5f7] p-2 font-mono text-sm">
+              <div class="text-xs font-medium text-ink-text-muted">手牌</div>
+              <div class="mt-1 rounded-ink bg-ink-surface-muted p-2 font-mono text-sm">
                 {{ formatCards(selectedPoint.hand_cards) }}
               </div>
             </div>
 
             <div v-if="selectedPoint.opponent_hands">
-              <div class="text-xs font-medium text-[#86868b]">对手剩余牌数</div>
-              <div class="mt-1 text-sm text-[#1d1d1f]">
+              <div class="text-xs font-medium text-ink-text-muted">对手剩余牌数</div>
+              <div class="mt-1 text-sm text-ink-text">
                 <span v-for="(count, pid) in selectedPoint.opponent_hands" :key="pid" class="mr-3">
                   {{ pid }}: {{ count }}张
                 </span>
@@ -211,19 +277,19 @@ onMounted(() => {
             </div>
 
             <div v-if="selectedPoint.last_action">
-              <div class="text-xs font-medium text-[#86868b]">上家出牌</div>
-              <div class="mt-1 text-sm text-[#1d1d1f]">
+              <div class="text-xs font-medium text-ink-text-muted">上家出牌</div>
+              <div class="mt-1 text-sm text-ink-text">
                 {{ selectedPoint.last_action.player }}: {{ formatAction(selectedPoint.last_action) }}
               </div>
             </div>
 
             <div>
-              <div class="text-xs font-medium text-[#86868b]">合法动作</div>
+              <div class="text-xs font-medium text-ink-text-muted">合法动作</div>
               <div class="mt-1 flex flex-wrap gap-2">
                 <span
                   v-for="(action, idx) in selectedPoint.legal_actions"
                   :key="idx"
-                  class="rounded bg-[#f5f5f7] px-2 py-1 text-xs text-[#424245]"
+                  class="rounded-ink bg-ink-surface-muted px-2 py-1 text-xs text-ink-text-secondary"
                 >
                   {{ formatAction(action) }}
                 </span>
@@ -231,25 +297,23 @@ onMounted(() => {
             </div>
 
             <div>
-              <div class="text-xs font-medium text-[#86868b]">选择动作</div>
-              <div class="mt-1 rounded-lg bg-[#e6f2ff] p-2 font-medium text-[#1d1d1f]">
+              <div class="text-xs font-medium text-ink-text-muted">选择动作</div>
+              <div class="mt-1 rounded-ink bg-ink-primary-muted p-2 font-medium text-ink-text">
                 {{ formatAction(selectedPoint.chosen_action) }}
               </div>
             </div>
 
             <div v-if="selectedPoint.thinking">
-              <div class="text-xs font-medium text-[#86868b]">AI 思考</div>
-              <div class="mt-1 rounded-lg bg-[#f5f5f7] p-3 text-sm leading-relaxed text-[#424245]">
+              <div class="text-xs font-medium text-ink-text-muted">AI 思考</div>
+              <div class="mt-1 rounded-ink bg-ink-surface-muted p-3 text-sm leading-relaxed text-ink-text-secondary">
                 {{ selectedPoint.thinking }}
               </div>
             </div>
           </div>
         </div>
 
-        <div v-else class="apple-card">
-          <div class="py-16 text-center text-[#86868b]">
-            选择一个决策点查看详情
-          </div>
+        <div v-else class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
+          <UiEmpty title="选择一个决策点查看详情" />
         </div>
       </div>
     </div>

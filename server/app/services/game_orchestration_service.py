@@ -181,6 +181,7 @@ class GameOrchestrationService:
         })
 
         streamed_chunks: list[StreamChunk] = []
+        use_streaming = ws_manager.get_connection_count(game_id) > 0
 
         def on_chunk(chunk: StreamChunk) -> None:
             streamed_chunks.append(chunk)
@@ -200,15 +201,26 @@ class GameOrchestrationService:
             asyncio.create_task(_broadcast_chunk())
 
         t0 = time.monotonic()
-        decision = await self._ai_service.get_decision_streaming(
-            state=state,
-            engine=engine,
-            player_id=current_player,
-            player_config=player_config or {},
-            legal_actions=legal_actions,
-            game_id=game_id,
-            on_chunk=on_chunk,
-        )
+        if use_streaming:
+            decision = await self._ai_service.get_decision_streaming(
+                state=state,
+                engine=engine,
+                player_id=current_player,
+                player_config=player_config or {},
+                legal_actions=legal_actions,
+                game_id=game_id,
+                on_chunk=on_chunk,
+            )
+        else:
+            # Batch / e2e: no observers — non-streaming is more reliable
+            decision = await self._ai_service.get_decision(
+                state=state,
+                engine=engine,
+                player_id=current_player,
+                player_config=player_config or {},
+                legal_actions=legal_actions,
+                game_id=game_id,
+            )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
         full_thinking = "".join(c.text for c in streamed_chunks) if streamed_chunks else decision.thinking
 
@@ -217,7 +229,7 @@ class GameOrchestrationService:
         # Broadcast updates, persist data, record traces
         await self._broadcast_round_events(
             game_id, current_player, new_state, decision,
-            full_thinking, elapsed_ms, model_cfg,
+            full_thinking, elapsed_ms, model_cfg, engine,
         )
         await self._persist_round(
             game_id, current_player, new_state, decision,
@@ -239,6 +251,7 @@ class GameOrchestrationService:
         full_thinking: str,
         elapsed_ms: int,
         model_cfg: dict[str, Any],
+        engine: Any,
     ) -> None:
         """Broadcast thinking_complete, action, and state_update via WebSocket."""
         await ws_manager.broadcast(game_id, {

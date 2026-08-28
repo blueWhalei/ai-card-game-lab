@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Response
 
 from app.dependencies import get_data_service
 from app.schemas.common import ApiResponse
@@ -50,10 +50,11 @@ async def get_dataset(
     return ApiResponse(data=dataset)
 
 
-@router.delete("/datasets/{dataset_id}", status_code=204)
+@router.delete("/datasets/{dataset_id}", status_code=204, response_class=Response)
 async def delete_dataset(
     dataset_id: str,
     service: DataService = Depends(get_data_service),
-) -> None:
+) -> Response:
     """Delete a dataset and its file."""
     await service.delete_dataset(dataset_id)
+    return Response(status_code=204)

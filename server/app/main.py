@@ -11,7 +11,9 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.config import Settings
-from app.database import init_db
+from app.database import init_db, open_db_connection
+from app.core.ai.prompts.registry import get_registry
+from app.dependencies import get_ai_player_service
 from app.utils.exceptions import AppError
 from app.utils.logger import setup_logging
 
@@ -31,6 +33,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("application_starting", name=settings.app_name)
 
     await init_db(settings.sqlite_path)
+    db = await open_db_connection(settings.sqlite_path)
+    try:
+        seeded = await get_registry().seed_defaults(db)
+        if seeded:
+            logger.info("prompt_templates_seeded", count=seeded)
+    finally:
+        await db.close()
+
+    await get_ai_player_service().initialize()
+
+    # Wire env A/B settings into the in-process prompt registry
+    registry = get_registry()
+    registry._default_version = settings.prompt_version
+    registry._ab_test_enabled = settings.prompt_ab_test_enabled
+    registry._ab_test_ratio = settings.prompt_ab_test_ratio
 
     yield
 

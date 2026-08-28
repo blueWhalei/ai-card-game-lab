@@ -1,3 +1,20 @@
 @import 'tailwindcss';
-@import './variables.css';
+@import '@fontsource-variable/noto-sans-sc/wght.css';
+@import '@fontsource/ibm-plex-sans/400.css';
+@import '@fontsource/ibm-plex-sans/500.css';
+@import '@fontsource/ibm-plex-sans/600.css';
+@import './tokens.css';
 @import './components.css';
+
+html {
+  font-family: var(--ink-font-sans);
+  font-size: var(--ink-font-size);
+  color: var(--ink-text);
+  background: var(--ink-paper);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}

@@ -28,24 +28,69 @@ class SystemService:
     def list_providers(self) -> list[dict[str, Any]]:
         """Return available LLM providers with configuration status."""
         return [
-            {"id": "openai", "name": "OpenAI", "description": "GPT-4o, GPT-4o-mini 等",
-             "configured": bool(self._settings.openai_api_key)},
-            {"id": "deepseek", "name": "DeepSeek", "description": "DeepSeek-V3, DeepSeek-R1 等",
-             "configured": bool(self._settings.deepseek_api_key)},
-            {"id": "kimi", "name": "Kimi / Moonshot", "description": "Moonshot-v1 系列",
-             "configured": bool(self._settings.kimi_api_key)},
-            {"id": "dashscope", "name": "DashScope", "description": "阿里云通义千问系列",
-             "configured": bool(self._settings.dashscope_api_key)},
-            {"id": "zhipu", "name": "智谱 AI", "description": "GLM-4 系列",
-             "configured": bool(self._settings.zhipu_api_key)},
-            {"id": "minimax", "name": "MiniMax", "description": "MiniMax-Text-01 等",
-             "configured": bool(self._settings.minimax_api_key)},
-            {"id": "yi", "name": "零一万物", "description": "Yi-Lightning 等",
-             "configured": bool(self._settings.yi_api_key)},
-            {"id": "baichuan", "name": "百川智能", "description": "Baichuan4 系列",
-             "configured": bool(self._settings.baichuan_api_key)},
-            {"id": "ollama", "name": "Ollama", "description": "本地部署的开源模型",
-             "configured": True},
+            {
+                "id": "openai",
+                "name": "OpenAI",
+                "description": "GPT-4o, GPT-4o-mini 等",
+                "configured": bool(self._settings.openai_api_key),
+                "default_model": "gpt-4o-mini",
+            },
+            {
+                "id": "deepseek",
+                "name": "DeepSeek",
+                "description": "deepseek-v4-flash（默认）/ deepseek-v4-pro",
+                "configured": bool(self._settings.deepseek_api_key),
+                "default_model": self._settings.deepseek_model or "deepseek-v4-flash",
+            },
+            {
+                "id": "kimi",
+                "name": "Kimi / Moonshot",
+                "description": "Moonshot-v1 系列",
+                "configured": bool(self._settings.kimi_api_key),
+                "default_model": "moonshot-v1-8k",
+            },
+            {
+                "id": "dashscope",
+                "name": "DashScope",
+                "description": "阿里云通义千问系列",
+                "configured": bool(self._settings.dashscope_api_key),
+                "default_model": "qwen-plus",
+            },
+            {
+                "id": "zhipu",
+                "name": "智谱 AI",
+                "description": "GLM-4 系列",
+                "configured": bool(self._settings.zhipu_api_key),
+                "default_model": "glm-4-flash",
+            },
+            {
+                "id": "minimax",
+                "name": "MiniMax",
+                "description": "MiniMax-Text-01 等",
+                "configured": bool(self._settings.minimax_api_key),
+                "default_model": "MiniMax-Text-01",
+            },
+            {
+                "id": "yi",
+                "name": "零一万物",
+                "description": "Yi-Lightning 等",
+                "configured": bool(self._settings.yi_api_key),
+                "default_model": "yi-lightning",
+            },
+            {
+                "id": "baichuan",
+                "name": "百川智能",
+                "description": "Baichuan4 系列",
+                "configured": bool(self._settings.baichuan_api_key),
+                "default_model": "Baichuan4-Turbo",
+            },
+            {
+                "id": "ollama",
+                "name": "Ollama",
+                "description": "本地部署的开源模型",
+                "configured": True,
+                "default_model": "llama3.2",
+            },
         ]
 
     def get_config(self) -> dict[str, object]:
@@ -58,6 +103,15 @@ class SystemService:
             "sqlite_path": self._settings.sqlite_path,
             "config_dir": self._settings.config_dir,
             "models_dir": self._settings.models_dir,
+            "prompt_version": self._settings.prompt_version,
+            "prompt_ab_test_enabled": self._settings.prompt_ab_test_enabled,
+            "prompt_ab_test_ratio": self._settings.prompt_ab_test_ratio,
+            "training_use_mock": self._settings.training_use_mock,
+            "default_base_models": [
+                "Qwen/Qwen2.5-1.5B",
+                "Qwen/Qwen2.5-3B",
+                "Qwen/Qwen2.5-7B",
+            ],
         }
 
     async def get_storage_info(self) -> dict[str, Any]:

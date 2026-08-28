@@ -1,7 +1,13 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
-import type { FormInstance, FormRules } from 'element-plus'
 import { TEMPLATE_KEY_OPTIONS } from '@/utils/constants'
+import UiInput from '@/components/ui/Input.vue'
+import UiTextarea from '@/components/ui/Textarea.vue'
+import UiSelect from '@/components/ui/Select.vue'
+import UiSwitch from '@/components/ui/Switch.vue'
+import UiButton from '@/components/ui/Button.vue'
+import UiBadge from '@/components/ui/Badge.vue'
+import { toast } from '@/components/ui/toast'
 
 export interface PromptTemplate {
   id?: string
@@ -44,23 +50,12 @@ const props = withDefaults(defineProps<PromptEditorProps>(), {
 
 const emit = defineEmits<PromptEditorEmits>()
 
-const formRef = ref<FormInstance>()
+const errors = ref<Record<string, string>>({})
 
-const formRules: FormRules = {
-  template_key: [{ required: true, message: '请选择模板类型', trigger: 'change' }],
-  version: [
-    { required: true, message: '请输入版本号', trigger: 'blur' },
-    {
-      pattern: /^\d+\.\d+\.\d+$/,
-      message: '版本号格式应为 x.y.z (如 1.0.0)',
-      trigger: 'blur',
-    },
-  ],
-  content: [
-    { required: true, message: '请输入模板内容', trigger: 'blur' },
-    { min: 10, message: '内容至少需要 10 个字符', trigger: 'blur' },
-  ],
-}
+const templateKeyOptions = TEMPLATE_KEY_OPTIONS.map((item) => ({
+  label: item.label,
+  value: item.value,
+}))
 
 const form = computed({
   get: () => props.modelValue,
@@ -75,25 +70,36 @@ const previewContent = computed(() => {
 
 watch(
   () => props.isEditing,
-  (newValue) => {
-    if (newValue && formRef.value) {
-      formRef.value.clearValidate()
-    }
+  () => {
+    errors.value = {}
   },
 )
 
 function validateForm(): boolean {
-  let isValid = false
-  formRef.value?.validate((valid) => {
-    isValid = valid
-  })
-  return isValid
+  const next: Record<string, string> = {}
+  if (!form.value.template_key) {
+    next.template_key = '请选择模板类型'
+  }
+  if (!form.value.version?.trim()) {
+    next.version = '请输入版本号'
+  } else if (!/^\d+\.\d+\.\d+$/.test(form.value.version)) {
+    next.version = '版本号格式应为 x.y.z (如 1.0.0)'
+  }
+  if (!form.value.content?.trim()) {
+    next.content = '请输入模板内容'
+  } else if (form.value.content.trim().length < 10) {
+    next.content = '内容至少需要 10 个字符'
+  }
+  errors.value = next
+  if (Object.keys(next).length > 0) {
+    toast.warning(Object.values(next)[0] ?? '请检查表单')
+    return false
+  }
+  return true
 }
 
 function handleSubmit() {
-  if (!validateForm()) {
-    return
-  }
+  if (!validateForm()) return
   emit('submit')
 }
 
@@ -107,146 +113,74 @@ defineExpose({
 </script>
 
 <template>
-  <div class="prompt-editor">
-    <el-form
-      ref="formRef"
-      :model="form"
-      :rules="formRules"
-      label-width="100px"
-      label-position="top"
-    >
-      <el-form-item label="模板类型" prop="template_key">
-        <el-select
-          v-model="form.template_key"
-          placeholder="请选择模板类型"
-          style="width: 100%"
-          :disabled="isEditing"
-        >
-          <el-option
-            v-for="item in TEMPLATE_KEY_OPTIONS"
-            :key="item.value"
-            :label="item.label"
-            :value="item.value"
-          />
-        </el-select>
-      </el-form-item>
+  <div class="space-y-4">
+    <div>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">模板类型</label>
+      <UiSelect
+        :model-value="form.template_key"
+        :options="templateKeyOptions"
+        placeholder="请选择模板类型"
+        :disabled="isEditing"
+        class="w-full"
+        @update:model-value="(v) => (form = { ...form, template_key: v })"
+      />
+      <p v-if="errors.template_key" class="mt-1 text-xs text-ink-danger">{{ errors.template_key }}</p>
+    </div>
 
-      <el-form-item label="版本号" prop="version">
-        <el-input
-          v-model="form.version"
-          placeholder="如 1.0.0"
-          clearable
-        />
-      </el-form-item>
+    <div>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">版本号</label>
+      <UiInput
+        :model-value="form.version"
+        placeholder="如 1.0.0"
+        class="w-full"
+        @update:model-value="(v) => (form = { ...form, version: v })"
+      />
+      <p v-if="errors.version" class="mt-1 text-xs text-ink-danger">{{ errors.version }}</p>
+    </div>
 
-      <el-form-item label="模板内容" prop="content">
-        <el-input
-          v-model="form.content"
-          type="textarea"
-          :rows="12"
-          placeholder="请输入提示词模板内容，支持变量占位符，如 {player_name}、{game_state} 等"
-          clearable
-        />
-      </el-form-item>
+    <div>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">模板内容</label>
+      <UiTextarea
+        :model-value="form.content"
+        :rows="12"
+        placeholder="请输入提示词模板内容，支持变量占位符，如 {player_name}、{game_state} 等"
+        class="w-full"
+        @update:model-value="(v) => (form = { ...form, content: v })"
+      />
+      <p v-if="errors.content" class="mt-1 text-xs text-ink-danger">{{ errors.content }}</p>
+    </div>
 
-      <el-form-item label="启用状态">
-        <el-switch
-          v-model="form.is_active"
-          active-text="启用"
-          inactive-text="禁用"
-        />
-      </el-form-item>
+    <div class="flex items-center gap-3">
+      <label class="text-sm font-medium text-ink-text">启用状态</label>
+      <UiSwitch
+        :model-value="form.is_active"
+        @update:model-value="(v) => (form = { ...form, is_active: v })"
+      />
+      <span class="text-xs text-ink-text-muted">{{ form.is_active ? '启用' : '禁用' }}</span>
+    </div>
 
-      <el-divider content-position="left">实时预览</el-divider>
-
-      <div class="preview-container">
-        <div class="preview-header">
-          <span class="preview-label">内容预览</span>
-          <span class="preview-status" :class="{ active: form.is_active }">
+    <div class="border-t border-ink-border pt-4">
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-text-muted">实时预览</p>
+      <div class="overflow-hidden rounded-ink-md border border-ink-border">
+        <div class="flex items-center justify-between border-b border-ink-border bg-ink-surface-muted px-3 py-2">
+          <span class="text-sm font-medium text-ink-text">内容预览</span>
+          <UiBadge :variant="form.is_active ? 'success' : 'muted'">
             {{ form.is_active ? '已启用' : '已禁用' }}
-          </span>
+          </UiBadge>
         </div>
-        <div class="preview-content">
-          <pre>{{ previewContent }}</pre>
+        <div class="max-h-[200px] overflow-y-auto bg-ink-paper p-3">
+          <pre class="m-0 whitespace-pre-wrap break-words font-mono text-[13px] leading-relaxed text-ink-text">{{
+            previewContent
+          }}</pre>
         </div>
       </div>
-    </el-form>
+    </div>
 
-    <div class="form-actions">
-      <el-button @click="handleCancel">取消</el-button>
-      <el-button
-        type="primary"
-        :loading="loading"
-        @click="handleSubmit"
-      >
+    <div class="flex justify-end gap-2 border-t border-ink-border pt-4">
+      <UiButton variant="secondary" @click="handleCancel">取消</UiButton>
+      <UiButton :loading="loading" @click="handleSubmit">
         {{ isEditing ? '保存' : '创建' }}
-      </el-button>
+      </UiButton>
     </div>
   </div>
 </template>
-
-<style scoped>
-.prompt-editor {
-  padding: 0;
-}
-
-.preview-container {
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.preview-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-bottom: 1px solid #e4e7ed;
-}
-
-.preview-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.preview-status {
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 12px;
-  background: #e4e7ed;
-  color: #909399;
-}
-
-.preview-status.active {
-  background: #e1f3d8;
-  color: #67c23a;
-}
-
-.preview-content {
-  max-height: 200px;
-  overflow-y: auto;
-  padding: 12px;
-  background: #fafafa;
-}
-
-.preview-content pre {
-  margin: 0;
-  font-family: 'Courier New', Courier, monospace;
-  font-size: 13px;
-  line-height: 1.6;
-  color: #303133;
-  white-space: pre-wrap;
-  word-wrap: break-word;
-}
-
-.form-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 12px;
-  margin-top: 24px;
-  padding-top: 16px;
-  border-top: 1px solid #e4e7ed;
-}
-</style>

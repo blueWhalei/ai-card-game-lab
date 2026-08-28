@@ -1,4 +1,4 @@
-import { ElMessage } from 'element-plus'
+import { toast } from '@/components/ui/toast'
 
 import type { ApiError } from '@/api/types'
 
@@ -23,5 +23,5 @@ export function getErrorMessage(error: unknown, fallback = '操作失败'): stri
 }
 
 export function showApiError(error: unknown, fallback = '操作失败'): void {
-  ElMessage.error(getErrorMessage(error, fallback))
+  toast.error(getErrorMessage(error, fallback))
 }

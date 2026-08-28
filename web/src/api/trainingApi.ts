@@ -6,6 +6,12 @@ export interface TrainingConfig {
   batch_size: number
   num_epochs: number
   output_format: string
+  use_mock?: boolean
+  lora_r?: number
+  lora_alpha?: number
+  lora_dropout?: number
+  max_seq_length?: number
+  gradient_accumulation_steps?: number
 }
 
 export interface CreateTaskRequest {
@@ -61,4 +67,22 @@ export const trainingApi = {
 
   deleteModel: (id: string) =>
     apiClient.delete<never, ApiResponse<Record<string, string>>>(`/api/v1/models/${id}`),
+
+  exportModel: (
+    id: string,
+    data?: { ollama_tag?: string; merge?: boolean; try_create?: boolean },
+  ) =>
+    apiClient.post<never, ApiResponse<Record<string, unknown>>>(
+      `/api/v1/models/${id}/export`,
+      data ?? {},
+    ),
+
+  verifyModel: (
+    id: string,
+    data?: { ollama_tag?: string; run_game?: boolean; player_ids?: string[] },
+  ) =>
+    apiClient.post<never, ApiResponse<Record<string, unknown>>>(
+      `/api/v1/models/${id}/verify`,
+      data ?? {},
+    ),
 }

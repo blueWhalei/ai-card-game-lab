@@ -402,6 +402,38 @@ class PromptTemplateRegistry:
         self._cache.clear()
         self._ab_assignments.clear()
 
+    def invalidate(self, template_key: str, version: str | None = None) -> None:
+        """Drop cached entries for a template key (optionally one version)."""
+        if version is not None:
+            self._cache.pop(f"{template_key}_{version}", None)
+            return
+        prefix = f"{template_key}_"
+        for key in list(self._cache):
+            if key.startswith(prefix):
+                del self._cache[key]
+
+    async def seed_defaults(self, db: aiosqlite.Connection) -> int:
+        """Insert DEFAULTS into DB when missing. Returns number of rows inserted."""
+        inserted = 0
+        for full_key, content in self.DEFAULTS.items():
+            template_key, version = _split_default_key(full_key)
+            async with db.execute(
+                "SELECT 1 FROM prompt_templates WHERE template_key = ? AND version = ?",
+                (template_key, version),
+            ) as cursor:
+                if await cursor.fetchone() is not None:
+                    continue
+            template = PromptTemplate.create(
+                template_key=template_key,
+                version=version,
+                content=content,
+            )
+            await self.save_template(db, template)
+            inserted += 1
+        if inserted:
+            logger.info("prompt_defaults_seeded", count=inserted)
+        return inserted
+
     def get_ab_stats(self) -> dict[str, Any]:
         """Get A/B test statistics."""
         v1_count = sum(1 for v in self._ab_assignments.values() if v == "v1")
@@ -413,6 +445,14 @@ class PromptTemplateRegistry:
             "v1_count": v1_count,
             "v2_count": v2_count,
         }
+
+
+def _split_default_key(full_key: str) -> tuple[str, str]:
+    """Split ``doudizhu_playing_v1`` → (``doudizhu_playing``, ``v1``)."""
+    for suffix in ("_reasoning", "_v2", "_v1"):
+        if full_key.endswith(suffix):
+            return full_key[: -len(suffix)], suffix[1:]
+    raise ValueError(f"Unrecognized default prompt key: {full_key}")
 
 
 # Global registry instance

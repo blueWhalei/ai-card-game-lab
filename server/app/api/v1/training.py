@@ -8,10 +8,20 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_training_service
 from app.schemas.common import ApiResponse, PaginatedData
-from app.schemas.training import CreateTrainingTaskRequest
+from app.schemas.training import (
+    CreateTrainingTaskRequest,
+    ExportModelRequest,
+    VerifyModelRequest,
+)
 from app.services.training_service import TrainingService
+from app.utils.exceptions import AppError, TrainingTaskNotFoundError
 
 router = APIRouter()
+
+
+class ModelExportError(AppError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(message=detail, code="MODEL_EXPORT_ERROR", status_code=400)
 
 
 @router.get("/training/tasks")
@@ -69,3 +79,42 @@ async def delete_model(
 ) -> ApiResponse[dict[str, str]]:
     await service.delete_model(model_id)
     return ApiResponse(data={"status": "deleted"})
+
+
+@router.post("/models/{model_id}/export")
+async def export_model(
+    model_id: str,
+    body: ExportModelRequest | None = None,
+    service: TrainingService = Depends(get_training_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Export LoRA adapter to deploy bundle (merged HF + Modelfile + GGUF scripts)."""
+    req = body or ExportModelRequest()
+    try:
+        result = await service.export_model(
+            model_id,
+            ollama_tag=req.ollama_tag,
+            merge=req.merge,
+            try_create=req.try_create,
+        )
+    except TrainingTaskNotFoundError:
+        raise
+    except ValueError as exc:
+        raise ModelExportError(str(exc)) from exc
+    return ApiResponse(data=result)
+
+
+@router.post("/models/{model_id}/verify")
+async def verify_model(
+    model_id: str,
+    body: VerifyModelRequest | None = None,
+    service: TrainingService = Depends(get_training_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Smoke-test an Ollama tag (optional full doudizhu game)."""
+    req = body or VerifyModelRequest()
+    result = await service.verify_model(
+        model_id,
+        ollama_tag=req.ollama_tag,
+        run_game=req.run_game,
+        player_ids=req.player_ids,
+    )
+    return ApiResponse(data=result)

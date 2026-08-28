@@ -19,14 +19,14 @@ const successRate = computed(() => {
 </script>
 
 <template>
-  <div class="apple-card">
+  <div class="ink-card">
     <div class="mb-4 border-b border-[#f5f5f7] pb-3">
       <h3 class="text-base font-semibold text-[#1d1d1f]">性能指标</h3>
     </div>
 
     <div class="grid grid-cols-2 gap-4 md:grid-cols-3 lg:grid-cols-5">
       <div class="rounded-xl bg-gradient-to-br from-[#e6f2ff] to-[#f5f5f7] p-4">
-        <div class="text-2xl font-bold text-[#0071e3]">{{ formatNumber(metrics.avg_response_time_ms) }}</div>
+        <div class="text-2xl font-bold text-ink-primary">{{ formatNumber(metrics.avg_response_time_ms) }}</div>
         <div class="mt-1 text-xs text-[#86868b]">平均响应 (ms)</div>
       </div>
 
@@ -46,7 +46,7 @@ const successRate = computed(() => {
       </div>
 
       <div class="rounded-xl bg-gradient-to-br from-[#e6f2ff] to-[#f5f5f7] p-4">
-        <div class="text-2xl font-bold text-[#0071e3]">{{ successCount }}</div>
+        <div class="text-2xl font-bold text-ink-primary">{{ successCount }}</div>
         <div class="mt-1 text-xs text-[#86868b]">解析成功数</div>
       </div>
     </div>

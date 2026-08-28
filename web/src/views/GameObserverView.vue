@@ -1,18 +1,20 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
 import type { GameItem, ReplayData } from '@/api/gameApi'
 import { useGameWebSocket } from '@/composables/useGameWebSocket'
 import type { HistoryEntry } from '@/composables/useGameWebSocket'
+import { coerceObserverSnapshot } from '@/types/observer'
 import { displayCard, isRedCard } from '@/utils/card'
 import GameHeaderBar from '@/components/game/GameHeaderBar.vue'
-import GameTable from '@/components/game/GameTable.vue'
+import GenericBoard from '@/components/game/GenericBoard.vue'
 import GameReplayControls from '@/components/game/GameReplayControls.vue'
 import GameResultDialog from '@/components/game/GameResultDialog.vue'
 import ThinkingPanel from '@/components/game/ThinkingPanel.vue'
+import UiSpinner from '@/components/ui/Spinner.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -25,8 +27,6 @@ const showResultDialog = ref(false)
 const rightPanelTab = ref<'history' | 'thinking'>('thinking')
 const rightPanelCollapsed = ref(false)
 const thinkingExpandedSet = ref(new Set<number>())
-const isAnimatingAction = ref(false)
-let animTimer: ReturnType<typeof setTimeout> | null = null
 
 const isReplayMode = ref(false)
 const replayData = ref<ReplayData | null>(null)
@@ -39,8 +39,9 @@ const {
   isConnected,
   connect: connectWs,
   disconnect: disconnectWs,
+  snapshot,
+  applySnapshot,
   playerHands,
-  players,
   currentPlayer,
   lastAction,
   thinkingPlayer,
@@ -54,13 +55,10 @@ const {
   currentRawResponseFull,
   reasoningContent,
   answerContent,
-  lastResponseTimeMs,
   playerTokenTotals,
   playerLastRoundTokens,
   actionHistory,
   thinkingHistory,
-  landlordCards,
-  playerLastActions,
   isPaused,
   isStarted,
   isFinished,
@@ -69,42 +67,13 @@ const {
   historyPanel,
 } = useGameWebSocket(gameId.value)
 
-watch(winner, (newWinner) => {
-  if (newWinner) {
-    showResultDialog.value = true
+const playerNames = computed<Record<string, string>>(() => {
+  const names: Record<string, string> = {}
+  for (const id of game.value?.player_ids || []) {
+    names[id] = id
   }
+  return names
 })
-
-watch(lastError, (msg) => {
-  if (msg) {
-    ElMessage.error(msg)
-  }
-})
-
-watch(lastAction, (newVal, oldVal) => {
-  if (newVal && newVal.playerId !== oldVal?.playerId) {
-    if (animTimer) clearTimeout(animTimer)
-    isAnimatingAction.value = true
-    animTimer = setTimeout(() => { isAnimatingAction.value = false }, 400)
-  }
-})
-
-function getLastAction(playerId: string): { actionType: string; cards: string[] } | undefined {
-  return playerLastActions.value[playerId]
-}
-
-const playerPositions = computed(() => {
-  const ids = game.value?.player_ids || []
-  return [
-    { id: ids[0] || '', position: 'left' },
-    { id: ids[1] || '', position: 'bottom' },
-    { id: ids[2] || '', position: 'right' },
-  ]
-})
-
-const leftLastAction = computed(() => playerPositions.value[0]?.id ? getLastAction(playerPositions.value[0].id) : undefined)
-const rightLastAction = computed(() => playerPositions.value[2]?.id ? getLastAction(playerPositions.value[2].id) : undefined)
-const bottomLastAction = computed(() => playerPositions.value[1]?.id ? getLastAction(playerPositions.value[1].id) : undefined)
 
 const totalTokens = computed(() =>
   Object.values(playerTokenTotals.value).reduce((sum, value) => sum + value, 0),
@@ -113,6 +82,14 @@ const totalTokens = computed(() =>
 const latestModelName = computed(() => {
   const latest = [...thinkingHistory.value].reverse().find((entry) => entry.modelName)
   return latest?.modelName || undefined
+})
+
+watch(winner, (newWinner) => {
+  if (newWinner) showResultDialog.value = true
+})
+
+watch(lastError, (msg) => {
+  if (msg) toast.error(msg)
 })
 
 async function fetchGame() {
@@ -133,7 +110,7 @@ async function fetchGame() {
 async function handleStart() {
   try {
     await gameApi.start(gameId.value)
-    ElMessage.success('对局已启动')
+    toast.success('对局已启动')
   } catch (e: unknown) {
     showApiError(e, '启动失败')
   }
@@ -159,7 +136,6 @@ function goBack() {
   router.push('/game')
 }
 
-// ── Replay functions ──────────────────────────────
 async function loadReplay() {
   replayLoading.value = true
   try {
@@ -171,6 +147,7 @@ async function loadReplay() {
     thinkingHistory.value = []
     Object.keys(playerTokenTotals.value).forEach((key) => delete playerTokenTotals.value[key])
     Object.keys(playerLastRoundTokens.value).forEach((key) => delete playerLastRoundTokens.value[key])
+    replayStepTo(0)
   } catch (e: unknown) {
     showApiError(e, '加载回放数据失败')
   } finally {
@@ -187,6 +164,11 @@ function replayStepTo(index: number) {
   Object.keys(playerLastRoundTokens.value).forEach((key) => delete playerLastRoundTokens.value[key])
   Object.keys(playerHands.value).forEach((key) => delete playerHands.value[key])
   lastAction.value = null
+
+  const ids = game.value?.player_ids || []
+  const roles: Record<string, string> = {}
+  const hands: Record<string, string[]> = {}
+
   for (let i = 0; i <= index && i < rounds.length; i++) {
     const r = rounds[i]
     if (!r) continue
@@ -213,19 +195,23 @@ function replayStepTo(index: number) {
         modelName: r.model_name ?? undefined,
         actionType: r.action_type,
         cards: r.cards || [],
-        promptPreview: r.prompt?.map((message) => `[${message.role}]\n${message.content}`).join('\n\n') || '',
+        promptPreview:
+          r.prompt?.map((message) => `[${message.role}]\n${message.content}`).join('\n\n') || '',
         rawResponsePreview: r.raw_response || '',
       })
       if (typeof r.total_tokens === 'number') {
         playerLastRoundTokens.value[r.player_id] = r.total_tokens
-        playerTokenTotals.value[r.player_id] = (playerTokenTotals.value[r.player_id] || 0) + r.total_tokens
+        playerTokenTotals.value[r.player_id] =
+          (playerTokenTotals.value[r.player_id] || 0) + r.total_tokens
       }
     }
     if (r.all_hands && Object.keys(r.all_hands).length > 0) {
       for (const [pid, hand] of Object.entries(r.all_hands)) {
+        hands[pid] = hand as string[]
         playerHands.value[pid] = hand as string[]
       }
     } else if (r.hand_snapshot) {
+      hands[r.player_id] = r.hand_snapshot
       playerHands.value[r.player_id] = r.hand_snapshot
     }
     lastAction.value = {
@@ -235,6 +221,37 @@ function replayStepTo(index: number) {
     }
     currentPlayer.value = r.player_id
   }
+
+  const playerList = (ids.length ? ids : Object.keys(hands)).map((id) => ({
+    id,
+    role: roles[id] || 'unknown',
+    is_active: currentPlayer.value === id,
+    hand_count: hands[id]?.length ?? 0,
+    hand_cards: hands[id],
+    badges: roles[id] ? [roles[id]] : [],
+    last_action:
+      lastAction.value?.playerId === id
+        ? {
+            type: lastAction.value.actionType,
+            cards: lastAction.value.cards,
+            label: lastAction.value.actionType === 'PASS' ? '不出' : undefined,
+          }
+        : undefined,
+  }))
+
+  applySnapshot(
+    coerceObserverSnapshot(
+      {
+        game_type: game.value?.game_type || 'doudizhu',
+        phase: 'playing',
+        round: rounds[index]?.round_num ?? 0,
+        current_player_id: currentPlayer.value,
+        players: playerList,
+        table: { slots: [] },
+      },
+      game.value?.game_type || 'doudizhu',
+    ),
+  )
   replayIndex.value = index
 }
 
@@ -287,8 +304,11 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div v-loading="loading" class="flex h-[calc(100vh-48px)] flex-col overflow-hidden bg-[#f5f5f7]">
-    <!-- Header bar -->
+  <div class="relative flex h-screen flex-col overflow-hidden bg-ink-obs-bg text-ink-obs-text">
+    <div v-if="loading" class="absolute inset-0 z-20">
+      <UiSpinner overlay label="加载对局…" />
+    </div>
+
     <GameHeaderBar
       :game="game"
       :is-connected="isConnected"
@@ -319,64 +339,96 @@ onUnmounted(() => {
       </template>
     </GameHeaderBar>
 
-    <!-- Main area -->
     <div class="flex min-h-0 flex-1">
-      <!-- Game Table -->
-      <GameTable
-        :replay-loading="replayLoading"
-        :is-connected="isConnected"
-        :is-started="isStarted"
-        :is-finished="isFinished"
-        :loading="loading"
-        :landlord-cards="landlordCards"
-        :action-history-length="actionHistory.length"
-        :player-positions="playerPositions"
-        :player-hands="playerHands"
-        :players="players"
-        :current-player="currentPlayer"
-        :thinking-player="thinkingPlayer"
-        :last-response-time-ms="lastResponseTimeMs"
-        :player-last-round-tokens="playerLastRoundTokens"
-        :player-token-totals="playerTokenTotals"
-        :latest-model-name="latestModelName"
-        :left-last-action="leftLastAction"
-        :right-last-action="rightLastAction"
-        :bottom-last-action="bottomLastAction"
-        :is-animating-action="isAnimatingAction"
-        :last-action="lastAction"
-      />
+      <div class="relative min-w-0 flex-1">
+        <GenericBoard
+          :snapshot="snapshot"
+          :thinking-player-id="thinkingPlayer"
+          :player-names="playerNames"
+          :loading="replayLoading"
+          empty-hint="等待状态推送…"
+        />
+      </div>
 
-      <!-- Right Panel - collapsible -->
       <Transition name="slide">
-        <div v-if="!rightPanelCollapsed" class="flex w-96 shrink-0 flex-col border-l border-black/[0.06] bg-white">
-          <div class="flex shrink-0 items-center justify-between border-b border-black/[0.06] px-4 py-3">
-            <div class="apple-segmented flex-1">
-              <button :class="rightPanelTab === 'history' ? 'apple-segmented-item-active' : 'apple-segmented-item'" style="flex:1" @click="rightPanelTab = 'history'">出牌记录</button>
-              <button :class="rightPanelTab === 'thinking' ? 'apple-segmented-item-active' : 'apple-segmented-item'" style="flex:1" @click="rightPanelTab = 'thinking'">AI 思考</button>
+        <div
+          v-if="!rightPanelCollapsed"
+          class="flex w-96 shrink-0 flex-col border-l border-ink-obs-border bg-ink-obs-surface"
+        >
+          <div class="flex shrink-0 items-center justify-between border-b border-ink-obs-border px-4 py-3">
+            <div class="inline-flex flex-1 rounded-ink bg-ink-obs-bg p-0.5">
+              <button
+                type="button"
+                class="flex-1 rounded-[6px] px-3 py-1.5 text-sm"
+                :class="
+                  rightPanelTab === 'history'
+                    ? 'bg-ink-obs-surface text-ink-obs-text shadow-[var(--ink-shadow)]'
+                    : 'text-ink-obs-muted'
+                "
+                @click="rightPanelTab = 'history'"
+              >
+                出牌记录
+              </button>
+              <button
+                type="button"
+                class="flex-1 rounded-[6px] px-3 py-1.5 text-sm"
+                :class="
+                  rightPanelTab === 'thinking'
+                    ? 'bg-ink-obs-surface text-ink-obs-text shadow-[var(--ink-shadow)]'
+                    : 'text-ink-obs-muted'
+                "
+                @click="rightPanelTab = 'thinking'"
+              >
+                AI 思考
+              </button>
             </div>
-            <button class="ml-2 rounded-lg p-1.5 text-[#86868b] hover:bg-[#f5f5f7]" title="收起面板" @click="rightPanelCollapsed = true">
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" /></svg>
+            <button
+              type="button"
+              class="ml-2 rounded-ink p-1.5 text-ink-obs-muted hover:bg-ink-obs-bg"
+              title="收起面板"
+              @click="rightPanelCollapsed = true"
+            >
+              ›
             </button>
           </div>
 
-          <div v-show="rightPanelTab === 'history'" ref="historyPanel" class="flex-1 overflow-y-auto p-4">
-            <div v-if="actionHistory.length === 0" class="py-12 text-center text-sm text-[#86868b]">暂无记录</div>
-            <div v-for="(entry, i) in actionHistory" :key="i" class="mb-2 rounded-xl bg-[#f5f5f7] px-3 py-2.5">
-              <div class="mb-1 flex items-center gap-2 text-xs text-[#86868b]">
+          <div
+            v-show="rightPanelTab === 'history'"
+            ref="historyPanel"
+            class="flex-1 overflow-y-auto p-4"
+          >
+            <div v-if="actionHistory.length === 0" class="py-12 text-center text-sm text-ink-obs-muted">
+              暂无记录
+            </div>
+            <div
+              v-for="(entry, i) in actionHistory"
+              :key="i"
+              class="mb-2 rounded-ink bg-ink-obs-bg px-3 py-2.5"
+            >
+              <div class="mb-1 flex items-center gap-2 text-xs text-ink-obs-muted">
                 <span class="font-mono">R{{ entry.round }}</span>
-                <span class="font-medium text-[#1d1d1f]">{{ entry.playerId }}</span>
-                <span v-if="entry.responseTimeMs" class="rounded-full bg-white px-2 py-0.5 text-[#aeaeb2]">
-                  {{ entry.responseTimeMs >= 1000 ? `${(entry.responseTimeMs/1000).toFixed(1)}s` : `${entry.responseTimeMs}ms` }}
+                <span class="font-medium text-ink-obs-text">{{ entry.playerId }}</span>
+                <span v-if="entry.responseTimeMs" class="rounded px-2 py-0.5 text-ink-obs-muted">
+                  {{
+                    entry.responseTimeMs >= 1000
+                      ? `${(entry.responseTimeMs / 1000).toFixed(1)}s`
+                      : `${entry.responseTimeMs}ms`
+                  }}
                 </span>
               </div>
-              <div v-if="entry.actionType === 'PASS'" class="text-sm text-[#aeaeb2]">不出</div>
+              <div v-if="entry.actionType === 'PASS'" class="text-sm text-ink-obs-muted">不出</div>
               <div v-else class="flex flex-wrap gap-1">
                 <span
-                  v-for="(card, j) in entry.cards" :key="j"
+                  v-for="(card, j) in entry.cards"
+                  :key="j"
                   class="inline-block text-sm font-bold"
-                  :class="isRedCard(card) ? 'text-[#ff3b30]' : 'text-[#1d1d1f]'"
-                >{{ displayCard(card) }}</span>
-                <span v-if="entry.cards.length === 0" class="text-xs text-[#86868b]">{{ entry.actionType }}</span>
+                  :class="isRedCard(card) ? 'text-red-400' : 'text-ink-obs-text'"
+                >
+                  {{ displayCard(card) }}
+                </span>
+                <span v-if="entry.cards.length === 0" class="text-xs text-ink-obs-muted">
+                  {{ entry.actionType }}
+                </span>
               </div>
             </div>
           </div>
@@ -401,25 +453,26 @@ onUnmounted(() => {
         </div>
       </Transition>
 
-      <!-- Collapsed panel - expand button -->
-      <div v-if="rightPanelCollapsed" class="flex shrink-0 items-center border-l border-black/[0.06] bg-white px-2">
-        <button class="rounded-lg p-1.5 text-[#86868b] hover:bg-[#f5f5f7]" title="展开面板" @click="rightPanelCollapsed = false">
-          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7" /></svg>
+      <div
+        v-if="rightPanelCollapsed"
+        class="flex shrink-0 items-center border-l border-ink-obs-border bg-ink-obs-surface px-2"
+      >
+        <button
+          type="button"
+          class="rounded-ink p-1.5 text-ink-obs-muted hover:bg-ink-obs-bg"
+          title="展开面板"
+          @click="rightPanelCollapsed = false"
+        >
+          ‹
         </button>
       </div>
     </div>
 
-    <!-- Result Dialog -->
-    <GameResultDialog
-      v-model="showResultDialog"
-      :winner="winner"
-      @back="goBack"
-    />
+    <GameResultDialog v-model="showResultDialog" :winner="winner" @back="goBack" />
   </div>
 </template>
 
 <style scoped>
-/* Slide transition for right panel */
 .slide-enter-active,
 .slide-leave-active {
   transition: all 0.3s ease;

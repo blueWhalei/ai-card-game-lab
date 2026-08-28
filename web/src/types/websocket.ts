@@ -52,11 +52,29 @@ export interface GameEndedData {
 
 // Server-sent WebSocket event payload types (snake_case from backend)
 export interface GameStartedPayload {
-  players?: Record<string, { cardsLeft: number; role: string }>
+  game_type?: string
+  phase?: string
+  round?: number
+  current_player_id?: string | null
+  current_player?: string
+  players?:
+    | Array<{
+        id: string
+        role?: string
+        is_active?: boolean
+        hand_count?: number
+        hand_cards?: string[]
+        badges?: string[]
+        last_action?: { type: string; cards?: string[]; label?: string }
+      }>
+    | Record<string, { cardsLeft?: number; cards_left?: number; role?: string }>
   hands?: Record<string, string[]>
   landlord_cards?: string[]
-  current_player?: string
+  table?: { slots?: Array<{ key: string; label: string; cards?: string[] }> }
+  extras?: Record<string, unknown>
 }
+
+export interface StateUpdatePayload extends GameStartedPayload {}
 
 export interface ThinkingPayload {
   player_id: string
@@ -139,13 +157,6 @@ export interface ActionPayload {
   action_type?: string
   cards?: string[]
   round?: number
-}
-
-export interface StateUpdatePayload {
-  players?: Record<string, { cardsLeft: number; role: string }>
-  hands?: Record<string, string[]>
-  current_player?: string
-  landlord_cards?: string[]
 }
 
 export interface GameEndedPayload {

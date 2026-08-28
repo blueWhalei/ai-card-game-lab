@@ -21,21 +21,23 @@ const tabs: { key: TabType; label: string }[] = [
 
 <template>
   <div class="page-container">
-    <h2 class="page-title mb-6">数据看板</h2>
-
     <!-- Tab Bar -->
-    <div class="mb-6 flex border-b border-[#d2d2d7]">
+    <div class="mb-6 flex border-b border-ink-border">
       <button
         v-for="tab in tabs"
         :key="tab.key"
-        class="relative px-4 py-3 text-sm font-medium transition-colors"
-        :class="activeTab === tab.key ? 'text-[#0071e3]' : 'text-[#86868b] hover:text-[#1d1d1f]'"
+        class="relative px-4 py-3 text-base font-medium transition-colors"
+        :class="
+          activeTab === tab.key
+            ? 'text-ink-primary'
+            : 'text-ink-text-muted hover:text-ink-text'
+        "
         @click="activeTab = tab.key"
       >
         {{ tab.label }}
         <span
           v-if="activeTab === tab.key"
-          class="absolute bottom-0 left-0 right-0 h-0.5 bg-[#0071e3]"
+          class="absolute right-0 bottom-0 left-0 h-0.5 bg-ink-primary"
         />
       </button>
     </div>

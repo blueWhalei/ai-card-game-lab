@@ -1,5 +1,6 @@
 import { ref, computed, nextTick } from 'vue'
 import { useWebSocket } from '@/composables/useWebSocket'
+import { coerceObserverSnapshot, type ObserverSnapshot } from '@/types/observer'
 import type {
   GameStartedPayload,
   ThinkingPayload,
@@ -68,13 +69,13 @@ interface PendingThinkingEntry {
 export function useGameWebSocket(gameId: string) {
   const { isConnected, connect, disconnect, onMessage } = useWebSocket(gameId)
 
+  const snapshot = ref<ObserverSnapshot | null>(null)
   const playerHands = ref<Record<string, string[]>>({})
   const players = ref<Record<string, PlayerInfo>>({})
   const currentPlayer = ref('')
   const lastAction = ref<{ playerId: string; actionType: string; cards: string[] } | null>(null)
   const thinkingPlayer = ref('')
   const thinkingContent = ref('')
-  // 新增：分开存储推理内容和最终答案
   const reasoningContent = ref('')
   const answerContent = ref('')
   const currentThinkingRound = ref<number | undefined>(undefined)
@@ -98,7 +99,6 @@ export function useGameWebSocket(gameId: string) {
   const winner = ref<{ id: string; name: string; role: string; totalRounds: number } | null>(null)
   const historyPanel = ref<HTMLElement | null>(null)
 
-  // Per-player last action derived from actionHistory
   const playerLastActions = computed<Record<string, { actionType: string; cards: string[] }>>(
     () => {
       const map: Record<string, { actionType: string; cards: string[] }> = {}
@@ -109,39 +109,35 @@ export function useGameWebSocket(gameId: string) {
     },
   )
 
-  function normalizePlayers(
-    raw: Record<string, Record<string, unknown>> | undefined,
-  ): Record<string, PlayerInfo> | undefined {
-    if (!raw) return undefined
-    const result: Record<string, PlayerInfo> = {}
-    for (const [pid, info] of Object.entries(raw)) {
-      result[pid] = {
-        cardsLeft: (info.cardsLeft ?? info.cards_left ?? 0) as number,
-        role: (info.role ?? 'unknown') as string,
-      }
+  function applySnapshot(raw: unknown, gameTypeHint = 'doudizhu'): void {
+    const next = coerceObserverSnapshot(raw, gameTypeHint)
+    if (!next) return
+    snapshot.value = next
+    currentPlayer.value = next.current_player_id || ''
+    const hands: Record<string, string[]> = {}
+    const info: Record<string, PlayerInfo> = {}
+    for (const p of next.players) {
+      info[p.id] = { cardsLeft: p.hand_count, role: p.role || 'unknown' }
+      if (p.hand_cards) hands[p.id] = p.hand_cards
     }
-    return result
+    players.value = info
+    if (Object.keys(hands).length > 0) playerHands.value = hands
+    const landlord = next.table?.slots?.find((s) => s.key === 'landlord')
+    if (landlord?.cards) landlordCards.value = landlord.cards
   }
 
   function setupMessageHandlers(): void {
     onMessage('game_started', (d: unknown) => {
-      const data = d as GameStartedPayload
       isStarted.value = true
-      const normalized = normalizePlayers(
-        data.players as Record<string, Record<string, unknown>> | undefined,
-      )
-      if (normalized) players.value = normalized
-      if (data.hands) playerHands.value = data.hands
-      if (data.landlord_cards) landlordCards.value = data.landlord_cards
-      currentPlayer.value = data.current_player || ''
+      applySnapshot(d as GameStartedPayload)
     })
 
     onMessage('thinking', (d: unknown) => {
       const data = d as ThinkingPayload
       thinkingPlayer.value = data.player_id || ''
-      thinkingContent.value = '' // Reset for streaming
-      reasoningContent.value = '' // 新增
-      answerContent.value = '' // 新增
+      thinkingContent.value = ''
+      reasoningContent.value = ''
+      answerContent.value = ''
       currentThinkingRound.value = undefined
       currentThinkingActionType.value = ''
       currentThinkingCards.value = []
@@ -151,23 +147,18 @@ export function useGameWebSocket(gameId: string) {
       currentRawResponseFull.value = ''
     })
 
-    // Handle streaming chunks
     onMessage('thinking_chunk', (d: unknown) => {
       const data = d as ThinkingChunkPayload
-      // 根据类型分别存储
       if (data.chunk_type === 'reasoning') {
         reasoningContent.value += data.chunk
       } else {
         answerContent.value += data.chunk
       }
-      // 保持 thinkingContent 向后兼容
       thinkingContent.value += data.chunk
     })
 
-    // Handle streaming complete
     onMessage('thinking_complete', (d: unknown) => {
       const data = d as ThinkingCompletePayload
-      // Update with final thinking content
       if (data.thinking) {
         thinkingContent.value = data.thinking
       }
@@ -201,12 +192,10 @@ export function useGameWebSocket(gameId: string) {
       if (data.response_time_ms) {
         lastResponseTimeMs.value[pid] = data.response_time_ms
       }
-      // 重置推理和答案内容
       reasoningContent.value = ''
       answerContent.value = ''
     })
 
-    // Legacy handler for backward compatibility
     onMessage('thinking_content', (d: unknown) => {
       const data = d as ThinkingContentPayload
       thinkingContent.value = data.thinking || ''
@@ -300,15 +289,8 @@ export function useGameWebSocket(gameId: string) {
     })
 
     onMessage('state_update', (d: unknown) => {
-      const data = d as StateUpdatePayload
       isStarted.value = true
-      const normalized = normalizePlayers(
-        data.players as Record<string, Record<string, unknown>> | undefined,
-      )
-      if (normalized) players.value = normalized
-      if (data.hands) playerHands.value = data.hands
-      currentPlayer.value = data.current_player || ''
-      if (data.landlord_cards) landlordCards.value = data.landlord_cards
+      applySnapshot(d as StateUpdatePayload)
     })
 
     onMessage('game_ended', (d: unknown) => {
@@ -344,6 +326,8 @@ export function useGameWebSocket(gameId: string) {
     isConnected,
     connect,
     disconnect,
+    snapshot,
+    applySnapshot,
     playerHands,
     players,
     currentPlayer,

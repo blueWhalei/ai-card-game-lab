@@ -27,7 +27,8 @@ if TYPE_CHECKING:
 # ── Reasoning model detection ──────────────────────────────────────────────────
 # Models that output chain-of-thought reasoning before the final answer
 REASONING_MODEL_PATTERNS = [
-    r"deepseek-reasoner",
+    r"deepseek-v4-pro",
+    r"deepseek-reasoner",  # legacy alias (retired)
     r"deepseek-r1",
     r"o1-mini",
     r"o1-preview",
@@ -182,7 +183,7 @@ class PromptBuilder:
         """Select appropriate template version based on model type.
 
         Args:
-            model_name: The model identifier (e.g., "deepseek-reasoner", "gpt-4o")
+            model_name: The model identifier (e.g., "deepseek-v4-flash", "gpt-4o")
 
         Returns:
             Template version to use ("v1", "v2", or "reasoning")

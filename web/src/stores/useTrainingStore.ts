@@ -58,6 +58,22 @@ export const useTrainingStore = defineStore('training', () => {
     models.value = models.value.filter((m) => m.id !== id)
   }
 
+  async function exportModel(
+    id: string,
+    data?: { ollama_tag?: string; merge?: boolean; try_create?: boolean },
+  ): Promise<Record<string, unknown>> {
+    const res = await trainingApi.exportModel(id, data)
+    return res.data
+  }
+
+  async function verifyModel(
+    id: string,
+    data?: { ollama_tag?: string; run_game?: boolean; player_ids?: string[] },
+  ): Promise<Record<string, unknown>> {
+    const res = await trainingApi.verifyModel(id, data)
+    return res.data
+  }
+
   return {
     tasks,
     total,
@@ -70,5 +86,7 @@ export const useTrainingStore = defineStore('training', () => {
     deleteTask,
     fetchModels,
     deleteModel,
+    exportModel,
+    verifyModel,
   }
 })

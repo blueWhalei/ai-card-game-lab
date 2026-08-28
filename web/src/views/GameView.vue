@@ -1,14 +1,28 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
 import { aiPlayerApi } from '@/api/aiPlayerApi'
 import type { GameItem } from '@/api/gameApi'
 import type { AIPlayer } from '@/api/aiPlayerApi'
-import { GAME_TYPE_MAP, GAME_STATUS_MAP } from '@/utils/constants'
+import { GAME_STATUS_MAP } from '@/utils/constants'
+import { formatDateTime } from '@/utils/format'
 import EmptyState from '@/components/common/EmptyState.vue'
+import UiButton from '@/components/ui/Button.vue'
+import UiDialog from '@/components/ui/Dialog.vue'
+import UiSelect from '@/components/ui/Select.vue'
+import UiSwitch from '@/components/ui/Switch.vue'
+import UiInputNumber from '@/components/ui/InputNumber.vue'
+import UiRadioGroup from '@/components/ui/RadioGroup.vue'
+import UiCheckbox from '@/components/ui/Checkbox.vue'
+import UiBadge from '@/components/ui/Badge.vue'
+import UiPagination from '@/components/ui/Pagination.vue'
+import UiSpinner from '@/components/ui/Spinner.vue'
+import type { TableColumn } from '@/components/ui/Table.vue'
+import UiTable from '@/components/ui/Table.vue'
+import { systemApi, gameTypeLabel } from '@/api/systemApi'
 
 const router = useRouter()
 const games = ref<GameItem[]>([])
@@ -26,6 +40,42 @@ const createForm = ref({
   isBatch: false,
   batchCount: 5,
 })
+
+const gameTypeOptions = ref([{ label: '斗地主', value: 'doudizhu' }])
+const modeOptions = [{ label: '实时观察', value: 'realtime' }]
+
+type GameRow = GameItem & Record<string, unknown>
+
+const columns: TableColumn<GameRow>[] = [
+  { key: 'id', label: '对局 ID', class: 'w-60' },
+  { key: 'game_type', label: '游戏类型', class: 'w-28' },
+  { key: 'status', label: '状态', class: 'w-24' },
+  { key: 'player_ids', label: '玩家' },
+  { key: 'total_rounds', label: '总轮次', class: 'w-20' },
+  { key: 'winner_id', label: '赢家', class: 'w-36' },
+  { key: 'created_at', label: '创建时间', class: 'w-44' },
+]
+
+const gameRows = computed(() => games.value as GameRow[])
+
+function statusVariant(status: string): 'muted' | 'success' | 'warning' | 'danger' | 'default' {
+  const type = GAME_STATUS_MAP[status]?.type
+  if (type === 'success') return 'success'
+  if (type === 'warning') return 'warning'
+  if (type === 'danger') return 'danger'
+  if (type === 'info') return 'muted'
+  return 'default'
+}
+
+function togglePlayer(id: string, checked: boolean) {
+  const ids = createForm.value.player_ids
+  if (checked) {
+    if (ids.length >= 3) return
+    if (!ids.includes(id)) createForm.value.player_ids = [...ids, id]
+  } else {
+    createForm.value.player_ids = ids.filter((p) => p !== id)
+  }
+}
 
 async function fetchGames() {
   loading.value = true
@@ -50,14 +100,20 @@ async function fetchPlayers() {
 }
 
 function openCreateDialog() {
-  createForm.value = { game_type: 'doudizhu', player_ids: [], mode: 'realtime', isBatch: false, batchCount: 5 }
+  createForm.value = {
+    game_type: 'doudizhu',
+    player_ids: [],
+    mode: 'realtime',
+    isBatch: false,
+    batchCount: 5,
+  }
   createDialogVisible.value = true
   fetchPlayers()
 }
 
 async function handleCreate() {
   if (createForm.value.player_ids.length !== 3) {
-    ElMessage.warning('斗地主需要选择 3 个 AI 角色')
+    toast.warning('斗地主需要选择 3 个 AI 角色')
     return
   }
   try {
@@ -67,12 +123,12 @@ async function handleCreate() {
         player_ids: createForm.value.player_ids,
         count: createForm.value.batchCount,
       })
-      ElMessage.success(`已创建 ${createForm.value.batchCount} 局对局`)
+      toast.success(`已创建 ${createForm.value.batchCount} 局对局`)
       createDialogVisible.value = false
       await fetchGames()
     } else {
       const res = await gameApi.create(createForm.value)
-      ElMessage.success('对局创建成功')
+      toast.success('对局创建成功')
       createDialogVisible.value = false
       await fetchGames()
       router.push(`/game/${res.data.id}`)
@@ -82,7 +138,7 @@ async function handleCreate() {
   }
 }
 
-function goToGame(game: GameItem) {
+function goToGame(game: GameRow) {
   router.push(`/game/${game.id}`)
 }
 
@@ -91,157 +147,166 @@ function handlePageChange(newPage: number) {
   fetchGames()
 }
 
-import { formatDateTime } from '@/utils/format'
-
-onMounted(fetchGames)
+onMounted(async () => {
+  try {
+    const res = await systemApi.listGameTypes()
+    if (res.data.length > 0) {
+      gameTypeOptions.value = res.data.map((id) => ({
+        label: gameTypeLabel(id),
+        value: id,
+      }))
+      if (!res.data.includes(createForm.value.game_type)) {
+        createForm.value.game_type = res.data[0] ?? 'doudizhu'
+      }
+    }
+  } catch {
+    /* keep fallback options */
+  }
+  await fetchGames()
+})
 </script>
 
 <template>
   <div class="page-container">
-    <div class="mb-8 flex items-center justify-between">
-      <h2 class="page-title">对局管理</h2>
-      <button class="apple-btn" @click="openCreateDialog">创建对局</button>
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-base text-ink-text-secondary">点开列表进入观战；批量创建用于采集。</p>
+      <UiButton @click="openCreateDialog">创建对局</UiButton>
     </div>
 
-    <div class="apple-card">
+    <div class="relative">
+      <UiSpinner v-if="loading" overlay label="加载中…" />
       <EmptyState
         v-if="!loading && games.length === 0"
         title="暂无对局"
         description="还没有创建任何对局"
       >
         <template #action>
-          <button class="apple-btn" @click="openCreateDialog">创建第一局</button>
+          <UiButton @click="openCreateDialog">创建第一局</UiButton>
         </template>
       </EmptyState>
-      <el-table
-        v-else
-        v-loading="loading"
-        :data="games"
-        class="w-full"
-        @row-click="goToGame"
-        style="cursor: pointer"
+      <UiTable
+        v-else-if="!loading || games.length > 0"
+        :columns="columns"
+        :rows="gameRows"
+        row-key="id"
+        class="cursor-pointer"
       >
-      <el-table-column prop="id" label="对局 ID" width="240">
-        <template #default="{ row }">
-          <span class="font-mono text-xs text-blue-600">{{ row.id }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column prop="game_type" label="游戏类型" width="120">
-        <template #default="{ row }">
-          <el-tag size="small">{{ GAME_TYPE_MAP[row.game_type] || row.game_type }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="status" label="状态" width="100">
-        <template #default="{ row }">
-          <el-tag
-            size="small"
-            :type="(GAME_STATUS_MAP[row.status]?.type as any) || 'info'"
+        <template #cell-id="{ row }">
+          <button
+            type="button"
+            class="font-mono text-sm text-ink-primary hover:underline"
+            @click="goToGame(row)"
           >
-            {{ GAME_STATUS_MAP[row.status]?.label || row.status }}
-          </el-tag>
+            {{ row.id }}
+          </button>
         </template>
-      </el-table-column>
-      <el-table-column label="玩家" min-width="200">
-        <template #default="{ row }">
+        <template #cell-game_type="{ row }">
+          <UiBadge>{{ gameTypeLabel(String(row.game_type)) }}</UiBadge>
+        </template>
+        <template #cell-status="{ row }">
+          <UiBadge :variant="statusVariant(String(row.status))">
+            {{ GAME_STATUS_MAP[String(row.status)]?.label || row.status }}
+          </UiBadge>
+        </template>
+        <template #cell-player_ids="{ row }">
           <div class="flex flex-wrap gap-1">
-            <el-tag
-              v-for="pid in row.player_ids"
-              :key="pid"
-              size="small"
-              type="info"
-            >
+            <UiBadge v-for="pid in (row.player_ids as string[])" :key="pid" variant="muted">
               {{ pid }}
-            </el-tag>
+            </UiBadge>
           </div>
         </template>
-      </el-table-column>
-      <el-table-column prop="total_rounds" label="总轮次" width="80" align="center">
-        <template #default="{ row }">
+        <template #cell-total_rounds="{ row }">
           {{ row.total_rounds ?? '-' }}
         </template>
-      </el-table-column>
-      <el-table-column prop="winner_id" label="赢家" width="150">
-        <template #default="{ row }">
-          <span v-if="row.winner_id" class="font-medium text-green-600">
-            {{ row.winner_id }}
-          </span>
-          <span v-else class="text-gray-400">-</span>
+        <template #cell-winner_id="{ row }">
+          <span v-if="row.winner_id" class="font-medium text-ink-success">{{ row.winner_id }}</span>
+          <span v-else class="text-ink-text-muted">-</span>
         </template>
-      </el-table-column>
-      <el-table-column label="创建时间" width="180">
-        <template #default="{ row }">
-          {{ formatDateTime(row.created_at) }}
+        <template #cell-created_at="{ row }">
+          {{ formatDateTime(String(row.created_at)) }}
         </template>
-      </el-table-column>
-    </el-table>
+      </UiTable>
     </div>
 
-    <div v-if="total > pageSize" class="mt-4 flex justify-center">
-      <el-pagination
-        :current-page="page"
+    <div v-if="total > pageSize" class="mt-4">
+      <UiPagination
+        :page="page"
         :page-size="pageSize"
         :total="total"
-        layout="prev, pager, next"
-        @current-change="handlePageChange"
+        @update:page="handlePageChange"
       />
     </div>
 
-    <!-- Create Game Dialog -->
-    <el-dialog v-model="createDialogVisible" title="创建对局" width="500px" destroy-on-close>
-      <el-form :model="createForm" label-width="100px" label-position="top">
-        <el-form-item label="游戏类型">
-          <el-select v-model="createForm.game_type" style="width: 100%" disabled>
-            <el-option label="斗地主" value="doudizhu" />
-          </el-select>
-        </el-form-item>
+    <UiDialog
+      :open="createDialogVisible"
+      title="创建对局"
+      @update:open="createDialogVisible = $event"
+    >
+      <div class="space-y-4">
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">游戏类型</label>
+          <UiSelect
+            v-model="createForm.game_type"
+            :options="gameTypeOptions"
+            disabled
+            class="w-full"
+          />
+        </div>
 
-        <el-form-item label="选择 AI 角色（3个）" required>
-          <el-select
-            v-model="createForm.player_ids"
-            multiple
-            :multiple-limit="3"
-            placeholder="请选择 3 个 AI 角色"
-            style="width: 100%"
-          >
-            <el-option
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+            选择 AI 角色（3个） <span class="text-ink-danger">*</span>
+          </label>
+          <div class="flex flex-col gap-2 rounded-ink border border-ink-border p-3">
+            <UiCheckbox
               v-for="p in players"
               :key="p.id"
-              :label="`${p.avatar} ${p.name}`"
-              :value="p.id"
-            />
-          </el-select>
-          <div v-if="players.length === 0" class="mt-2 text-xs text-orange-500">
+              :model-value="createForm.player_ids.includes(p.id)"
+              :disabled="
+                !createForm.player_ids.includes(p.id) && createForm.player_ids.length >= 3
+              "
+              @update:model-value="(v) => togglePlayer(p.id, v)"
+            >
+              {{ p.avatar }} {{ p.name }}
+            </UiCheckbox>
+          </div>
+          <div v-if="players.length === 0" class="mt-2 text-xs text-ink-accent">
             暂无 AI 角色，请先在「AI 角色」页面创建
           </div>
-        </el-form-item>
+        </div>
 
-        <el-form-item label="模式">
-          <el-radio-group v-model="createForm.mode">
-            <el-radio value="realtime">实时观察</el-radio>
-          </el-radio-group>
-        </el-form-item>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">模式</label>
+          <UiRadioGroup v-model="createForm.mode" name="game-mode" :options="modeOptions" />
+        </div>
 
-        <el-form-item label="批量模式">
-          <el-switch v-model="createForm.isBatch" />
-        </el-form-item>
+        <div class="flex items-center gap-3">
+          <label class="text-sm font-medium text-ink-text">批量模式</label>
+          <UiSwitch v-model="createForm.isBatch" />
+        </div>
 
-        <el-form-item v-if="createForm.isBatch" label="对局数量">
-          <el-input-number
-            v-model="createForm.batchCount"
-            :min="1"
-            :max="50"
-            :step="1"
-          />
-          <span class="ml-2 text-xs text-gray-400">最多 50 局</span>
-        </el-form-item>
-      </el-form>
+        <div v-if="createForm.isBatch">
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">对局数量</label>
+          <div class="flex items-center gap-2">
+            <UiInputNumber
+              :model-value="createForm.batchCount"
+              :min="1"
+              :max="50"
+              :step="1"
+              class="w-28"
+              @update:model-value="(v) => (createForm.batchCount = v ?? 1)"
+            />
+            <span class="text-xs text-ink-text-muted">最多 50 局</span>
+          </div>
+        </div>
+      </div>
 
       <template #footer>
-        <el-button @click="createDialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleCreate">
+        <UiButton variant="secondary" @click="createDialogVisible = false">取消</UiButton>
+        <UiButton @click="handleCreate">
           {{ createForm.isBatch ? `批量创建 ${createForm.batchCount} 局` : '创建并进入' }}
-        </el-button>
+        </UiButton>
       </template>
-    </el-dialog>
+    </UiDialog>
   </div>
 </template>
