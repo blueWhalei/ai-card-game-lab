@@ -43,6 +43,15 @@ async def _seed_dataset(client: AsyncClient) -> str:
     return dataset_id
 
 
+async def _noop_pipeline(
+    _task_id: str,
+    _dataset: dict[str, Any],
+    _cancel_flag: dict[str, bool] | None = None,
+) -> None:
+    """Replace the background pipeline so tests never actually train."""
+    return None
+
+
 async def test_create_training_task_guard_returns_400(client: AsyncClient, monkeypatch) -> None:
     import app.core.training.sft as sft_mod
 
@@ -102,5 +111,79 @@ async def test_cancel_training_task(client: AsyncClient) -> None:
         cancel_res = await client.post(f"/api/v1/training/tasks/{task_id}/cancel")
         assert cancel_res.status_code == 200
         assert cancel_res.json()["data"]["status"] == "cancelled"
+    finally:
+        service._run_pipeline = original_pipeline  # type: ignore[method-assign]
+
+
+async def test_create_training_task_rejects_max_steps_zero(client: AsyncClient) -> None:
+    """C1: max_steps has ge=1; sending 0 must 422 so the FE omits it on Mock."""
+    dataset_id = await _seed_dataset(client)
+    res = await client.post(
+        "/api/v1/training/tasks",
+        json={
+            "name": "zero-steps",
+            "dataset_id": dataset_id,
+            "config": {"use_mock": True, "max_steps": 0},
+        },
+    )
+    assert res.status_code == 422
+
+
+async def test_create_training_task_mock_without_max_steps(client: AsyncClient) -> None:
+    """C1: Mock create with max_steps omitted must succeed (FE contract)."""
+    dataset_id = await _seed_dataset(client)
+    dependencies.get_training_service.cache_clear()
+    service = dependencies.get_training_service()
+    original_pipeline = service._run_pipeline
+    service._run_pipeline = _noop_pipeline  # type: ignore[method-assign]
+    try:
+        res = await client.post(
+            "/api/v1/training/tasks",
+            json={
+                "name": "mock-no-steps",
+                "dataset_id": dataset_id,
+                "config": {"use_mock": True},
+            },
+        )
+        assert res.status_code == 201
+        cfg = res.json()["data"]["config"]
+        assert cfg["use_mock"] is True
+        assert "max_steps" not in cfg or cfg["max_steps"] is None
+    finally:
+        service._run_pipeline = original_pipeline  # type: ignore[method-assign]
+
+
+async def test_cancel_terminal_task_returns_400(client: AsyncClient) -> None:
+    """I4: cancelling a completed task must not overwrite its terminal status."""
+    dataset_id = await _seed_dataset(client)
+    dependencies.get_training_service.cache_clear()
+    service = dependencies.get_training_service()
+    original_pipeline = service._run_pipeline
+    service._run_pipeline = _noop_pipeline  # type: ignore[method-assign]
+    try:
+        create_res = await client.post(
+            "/api/v1/training/tasks",
+            json={
+                "name": "completed-task",
+                "dataset_id": dataset_id,
+                "config": {"use_mock": True},
+            },
+        )
+        task_id = create_res.json()["data"]["id"]
+
+        # Force the task into a terminal state.
+        await service._update(
+            task_id, "completed", progress=1.0, finished_at=datetime.now(tz=UTC).isoformat()
+        )
+
+        cancel_res = await client.post(f"/api/v1/training/tasks/{task_id}/cancel")
+        assert cancel_res.status_code == 400
+        body = cancel_res.json()
+        assert body["code"] == "TRAINING_GUARD_FAILED"
+        assert "already 'completed'" in body["message"]
+
+        # The terminal status must be preserved.
+        get_res = await client.get(f"/api/v1/training/tasks/{task_id}")
+        assert get_res.json()["data"]["status"] == "completed"
     finally:
         service._run_pipeline = original_pipeline  # type: ignore[method-assign]

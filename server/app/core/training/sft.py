@@ -49,20 +49,45 @@ def should_cancel(cancel_flag: dict[str, bool] | None) -> bool:
     return bool(cancel_flag is not None and cancel_flag.get("cancel"))
 
 
-def lower_process_priority() -> None:
+def lower_process_priority() -> Any:
     """Drop process priority so CPU smoke training does not freeze the host.
 
     Best-effort: any failure is logged and swallowed so training still runs.
+    Returns a restore callable that reverts the priority change (also
+    best-effort); callers should invoke it in a ``finally`` block. Returns
+    ``None`` when no change was applied, in which case there is nothing to
+    restore.
     """
     try:
         if sys.platform == "win32":
             import psutil
 
-            psutil.Process().nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+            proc = psutil.Process()
+            prev = proc.nice()
+            proc.nice(psutil.BELOW_NORMAL_PRIORITY_CLASS)
+
+            def _restore() -> None:
+                try:
+                    proc.nice(prev)
+                except Exception as exc:  # restore is best-effort
+                    logger.warning("restore_process_priority_failed", error=str(exc))
+
+            return _restore
         else:
+            prev_nice = os.nice(0)
             os.nice(5)
+
+            def _restore() -> None:
+                try:
+                    # os.nice takes a delta; push back toward the previous value.
+                    os.nice(prev_nice - os.nice(0))
+                except Exception as exc:  # restore is best-effort
+                    logger.warning("restore_process_priority_failed", error=str(exc))
+
+            return _restore
     except Exception as exc:  # priority is best-effort
         logger.warning("lower_process_priority_failed", error=str(exc))
+        return None
 
 
 def training_deps_available() -> bool:
@@ -172,7 +197,12 @@ def _run_lora_sft_sync(
 
         config = clamp_cpu_smoke_config(config, base_model=base_model)
 
-    lower_process_priority()
+    # Only lower process priority for CPU smoke runs, and restore it after
+    # training finishes so the whole uvicorn process is not permanently
+    # demoted for other request paths.
+    restore_priority: Any = None
+    if config.get("cpu_smoke"):
+        restore_priority = lower_process_priority()
 
     logger.info(
         "lora_sft_start",
@@ -183,109 +213,113 @@ def _run_lora_sft_sync(
         cpu_smoke=bool(config.get("cpu_smoke")),
     )
 
-    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+    try:
+        tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
 
-    texts = _load_chatml_texts(sft_data_path, tokenizer)
-    if not texts:
-        raise ValueError(f"No usable ChatML samples in {sft_data_path}")
-    texts = truncate_texts(texts, config.get("max_samples"))
+        texts = _load_chatml_texts(sft_data_path, tokenizer)
+        if not texts:
+            raise ValueError(f"No usable ChatML samples in {sft_data_path}")
+        texts = truncate_texts(texts, config.get("max_samples"))
 
-    max_seq_length = int(config.get("max_seq_length", 512))
+        max_seq_length = int(config.get("max_seq_length", 512))
 
-    def tokenize(batch: dict[str, list[str]]) -> dict[str, Any]:
-        return tokenizer(
-            batch["text"],
-            truncation=True,
-            max_length=max_seq_length,
-            padding=False,
+        def tokenize(batch: dict[str, list[str]]) -> dict[str, Any]:
+            return tokenizer(
+                batch["text"],
+                truncation=True,
+                max_length=max_seq_length,
+                padding=False,
+            )
+
+        dataset = Dataset.from_dict({"text": texts}).map(
+            tokenize,
+            batched=True,
+            remove_columns=["text"],
         )
 
-    dataset = Dataset.from_dict({"text": texts}).map(
-        tokenize,
-        batched=True,
-        remove_columns=["text"],
-    )
+        model = AutoModelForCausalLM.from_pretrained(
+            base_model,
+            trust_remote_code=True,
+            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
+        )
+        lora = LoraConfig(
+            task_type=TaskType.CAUSAL_LM,
+            r=int(config.get("lora_r", 8)),
+            lora_alpha=int(config.get("lora_alpha", 16)),
+            lora_dropout=float(config.get("lora_dropout", 0.05)),
+            target_modules=config.get(
+                "lora_target_modules",
+                ["q_proj", "k_proj", "v_proj", "o_proj"],
+            ),
+        )
+        model = get_peft_model(model, lora)
 
-    model = AutoModelForCausalLM.from_pretrained(
-        base_model,
-        trust_remote_code=True,
-        torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-    )
-    lora = LoraConfig(
-        task_type=TaskType.CAUSAL_LM,
-        r=int(config.get("lora_r", 8)),
-        lora_alpha=int(config.get("lora_alpha", 16)),
-        lora_dropout=float(config.get("lora_dropout", 0.05)),
-        target_modules=config.get(
-            "lora_target_modules",
-            ["q_proj", "k_proj", "v_proj", "o_proj"],
-        ),
-    )
-    model = get_peft_model(model, lora)
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
 
-    out = Path(output_dir)
-    out.mkdir(parents=True, exist_ok=True)
+        max_steps = int(config.get("max_steps") or 0)
+        ta_kwargs: dict[str, Any] = {
+            "output_dir": str(out / "checkpoints"),
+            "num_train_epochs": float(config.get("num_epochs", 3)),
+            "per_device_train_batch_size": int(config.get("batch_size", 1)),
+            "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
+            "learning_rate": float(config.get("learning_rate", 2e-5)),
+            "logging_steps": 1,
+            "save_strategy": "no",
+            "report_to": [],
+            "remove_unused_columns": False,
+            "fp16": torch.cuda.is_available(),
+            "gradient_checkpointing": bool(config.get("gradient_checkpointing", False)),
+        }
+        if max_steps > 0:
+            ta_kwargs["max_steps"] = max_steps
+        args = TrainingArguments(**ta_kwargs)
 
-    max_steps = int(config.get("max_steps") or 0)
-    ta_kwargs: dict[str, Any] = {
-        "output_dir": str(out / "checkpoints"),
-        "num_train_epochs": float(config.get("num_epochs", 3)),
-        "per_device_train_batch_size": int(config.get("batch_size", 1)),
-        "gradient_accumulation_steps": int(config.get("gradient_accumulation_steps", 1)),
-        "learning_rate": float(config.get("learning_rate", 2e-5)),
-        "logging_steps": 1,
-        "save_strategy": "no",
-        "report_to": [],
-        "remove_unused_columns": False,
-        "fp16": torch.cuda.is_available(),
-        "gradient_checkpointing": bool(config.get("gradient_checkpointing", False)),
-    }
-    if max_steps > 0:
-        ta_kwargs["max_steps"] = max_steps
-    args = TrainingArguments(**ta_kwargs)
+        class _ProgressCallback(TrainerCallback):
+            def on_log(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
+                max_steps_cb = max(int(getattr(state, "max_steps", 0) or 0), 1)
+                progress_state["p"] = min(1.0, float(state.global_step) / max_steps_cb)
 
-    class _ProgressCallback(TrainerCallback):
-        def on_log(self, args: Any, state: Any, control: Any, **kwargs: Any) -> None:
-            max_steps_cb = max(int(getattr(state, "max_steps", 0) or 0), 1)
-            progress_state["p"] = min(1.0, float(state.global_step) / max_steps_cb)
+        class _CancelCallback(TrainerCallback):
+            def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> Any:
+                if should_cancel(cancel_flag):
+                    control.should_training_stop = True
+                return control
 
-    class _CancelCallback(TrainerCallback):
-        def on_step_end(self, args: Any, state: Any, control: Any, **kwargs: Any) -> Any:
-            if should_cancel(cancel_flag):
-                control.should_training_stop = True
-            return control
+        data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
+        trainer = Trainer(
+            model=model,
+            args=args,
+            train_dataset=dataset,
+            data_collator=data_collator,
+            callbacks=[_ProgressCallback(), _CancelCallback()],
+        )
+        train_result = trainer.train()
+        progress_state["p"] = 1.0
 
-    data_collator = DataCollatorForLanguageModeling(tokenizer=tokenizer, mlm=False)
-    trainer = Trainer(
-        model=model,
-        args=args,
-        train_dataset=dataset,
-        data_collator=data_collator,
-        callbacks=[_ProgressCallback(), _CancelCallback()],
-    )
-    train_result = trainer.train()
-    progress_state["p"] = 1.0
+        adapter_dir = out / "adapter"
+        adapter_dir.mkdir(parents=True, exist_ok=True)
+        model.save_pretrained(str(adapter_dir))
+        tokenizer.save_pretrained(str(adapter_dir))
 
-    adapter_dir = out / "adapter"
-    adapter_dir.mkdir(parents=True, exist_ok=True)
-    model.save_pretrained(str(adapter_dir))
-    tokenizer.save_pretrained(str(adapter_dir))
-
-    metrics = getattr(train_result, "metrics", {}) or {}
-    result = {
-        "mock": False,
-        "base_model": base_model,
-        "adapter_path": str(adapter_dir),
-        "sample_count": len(texts),
-        "train_loss": metrics.get("train_loss"),
-        "train_runtime": metrics.get("train_runtime"),
-        "epochs": config.get("num_epochs", 3),
-        "lora_r": config.get("lora_r", 8),
-    }
-    logger.info("lora_sft_done", task_id=task_id, result=result)
-    return result
+        metrics = getattr(train_result, "metrics", {}) or {}
+        result = {
+            "mock": False,
+            "base_model": base_model,
+            "adapter_path": str(adapter_dir),
+            "sample_count": len(texts),
+            "train_loss": metrics.get("train_loss"),
+            "train_runtime": metrics.get("train_runtime"),
+            "epochs": config.get("num_epochs", 3),
+            "lora_r": config.get("lora_r", 8),
+        }
+        logger.info("lora_sft_done", task_id=task_id, result=result)
+        return result
+    finally:
+        if restore_priority is not None:
+            restore_priority()
 
 
 async def run_lora_sft(

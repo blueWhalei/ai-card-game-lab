@@ -3,11 +3,21 @@
 from __future__ import annotations
 
 import asyncio
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from app.config import Settings
 from app.core.engine.registry import GameEngineRegistry
+
+
+@lru_cache(maxsize=1)
+def _cached_training_deps_available() -> bool:
+    """Probe training deps once per process; cached to avoid re-importing the
+    torch/transformers/peft/datasets stack on every config read."""
+    from app.core.training.sft import training_deps_available
+
+    return training_deps_available()
 
 
 class SystemService:
@@ -95,8 +105,6 @@ class SystemService:
 
     def get_config(self) -> dict[str, object]:
         """Return non-sensitive app configuration."""
-        from app.core.training.sft import training_deps_available
-
         return {
             "app_name": self._settings.app_name,
             "version": "0.1.0",
@@ -109,7 +117,7 @@ class SystemService:
             "prompt_ab_test_enabled": self._settings.prompt_ab_test_enabled,
             "prompt_ab_test_ratio": self._settings.prompt_ab_test_ratio,
             "training_use_mock": self._settings.training_use_mock,
-            "training_deps_available": training_deps_available(),
+            "training_deps_available": _cached_training_deps_available(),
             "default_base_models": [
                 "Qwen/Qwen2.5-1.5B",
                 "Qwen/Qwen2.5-3B",

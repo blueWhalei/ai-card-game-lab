@@ -306,3 +306,101 @@ async def test_export_model_rejects_mock_placeholder(tmp_path: Path) -> None:
 
     with pytest.raises(ValueError, match="Mock model cannot export"):
         await service.export_model(task_id)
+
+
+@pytest.mark.asyncio
+async def test_cancel_task_refuses_terminal_status(tmp_path: Path) -> None:
+    """I4: cancel_task must not overwrite a terminal status."""
+    sqlite_path = str(tmp_path / "guards.db")
+    await init_db(sqlite_path)
+    dataset_id = await _seed_dataset(sqlite_path, tmp_path)
+
+    service = TrainingService(
+        sqlite_path=sqlite_path,
+        data_dir=str(tmp_path),
+        models_dir=str(tmp_path / "models"),
+        training_use_mock=True,
+    )
+    _no_pipeline(service)
+
+    request = CreateTrainingTaskRequest(
+        name="terminal",
+        dataset_id=dataset_id,
+        config=TrainingConfig(use_mock=True),
+    )
+    task = await service.create_task(request)
+    task_id = task["id"]
+
+    # Force the task into each terminal state and assert cancel refuses.
+    for terminal in ("completed", "failed", "cancelled"):
+        await service._update(task_id, terminal)
+        with pytest.raises(ValueError, match="already '"):
+            await service.cancel_task(task_id)
+        # Status preserved.
+        refreshed = await service.get_task(task_id)
+        assert refreshed["status"] == terminal
+
+
+@pytest.mark.asyncio
+async def test_apply_cpu_smoke_guards_runs_probes_off_event_loop(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """I2: heavy probes must run via asyncio.to_thread, not inline on the loop."""
+    sqlite_path = str(tmp_path / "guards.db")
+    await init_db(sqlite_path)
+
+    service = TrainingService(
+        sqlite_path=sqlite_path,
+        data_dir=str(tmp_path),
+        models_dir=str(tmp_path / "models"),
+        training_use_mock=False,
+    )
+
+    import app.core.training.runtime_stats as stats_mod
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+
+    class _FakeTorch:
+        class cuda:  # noqa: N801
+            @staticmethod
+            def is_available() -> bool:
+                return False
+
+    monkeypatch.setitem(__import__("sys").modules, "torch", _FakeTorch)
+    monkeypatch.setattr(
+        stats_mod,
+        "get_runtime_stats",
+        lambda: {
+            "memory_available_mb": 16384.0,
+            "cpu_percent": 0.0,
+            "memory_total_mb": 0.0,
+            "memory_used_mb": 0.0,
+        },
+    )
+
+    # Track whether probes were dispatched to a worker thread.
+    real_to_thread = asyncio.to_thread
+    expected_funcs = {
+        sft_mod.training_deps_available,
+        svc_mod._probe_cuda_available,
+        stats_mod.get_runtime_stats,
+    }
+    seen_funcs: list[Any] = []
+
+    async def _spy_to_thread(func, *args, **kwargs):
+        if func in expected_funcs:
+            seen_funcs.append(func)
+        return await real_to_thread(func, *args, **kwargs)
+
+    monkeypatch.setattr(svc_mod.asyncio, "to_thread", _spy_to_thread)
+
+    cfg = await service._apply_cpu_smoke_guards(
+        {"batch_size": 8, "num_epochs": 3, "max_steps": 999},
+        base_model="Qwen/Qwen2.5-0.5B",
+    )
+    assert cfg["cpu_smoke"] is True
+    assert cfg["batch_size"] == 1
+    # All three heavy probes must have run off the event loop.
+    assert set(seen_funcs) == expected_funcs

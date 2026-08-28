@@ -29,6 +29,27 @@ from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
 
+# Terminal states that cancel_task must not overwrite.
+_TERMINAL_STATUSES: frozenset[str] = frozenset(
+    {"completed", "failed", "cancelled"}
+)
+_ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "exporting", "training"})
+
+
+def _probe_cuda_available() -> bool:
+    """Return True if a CUDA GPU is available to torch.
+
+    Imported lazily and executed in a worker thread by the guards so the
+    event loop is never blocked by the (slow) first torch import.
+    """
+    try:
+        import torch
+
+        return bool(torch.cuda.is_available())
+    except ImportError:
+        # deps check passed but torch import failed — treat as CPU smoke.
+        return False
+
 
 class TrainingService:
     """Manages training task lifecycle."""
@@ -99,7 +120,7 @@ class TrainingService:
         if use_mock:
             cfg["use_mock"] = True
         else:
-            cfg = self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
+            cfg = await self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
             cfg["use_mock"] = False
 
         # Validate dataset exists
@@ -137,25 +158,24 @@ class TrainingService:
         self._running_tasks[task_id] = bg
         return task
 
-    def _apply_cpu_smoke_guards(self, cfg: dict[str, Any], *, base_model: str) -> dict[str, Any]:
+    async def _apply_cpu_smoke_guards(
+        self, cfg: dict[str, Any], *, base_model: str
+    ) -> dict[str, Any]:
         """Enforce non-mock CPU safety: deps present, RAM ≥ 8GB, clamped config.
 
-        Raises ``ValueError`` (mapped to HTTP 400 by the API layer) when the
-        environment is unsafe. Returns the (possibly clamped) config dict.
+        Heavy probes (``training_deps_available`` + ``torch.cuda.is_available``)
+        run off the event loop via ``asyncio.to_thread`` so concurrent requests
+        are not blocked. Raises ``ValueError`` (mapped to HTTP 400 by the API
+        layer) when the environment is unsafe. Returns the (possibly clamped)
+        config dict.
         """
         from app.core.training.sft import training_deps_available
 
-        if not training_deps_available():
+        deps_ok = await asyncio.to_thread(training_deps_available)
+        if not deps_ok:
             raise ValueError("Training deps missing: poetry install --with training")
 
-        cuda = False
-        try:
-            import torch
-
-            cuda = bool(torch.cuda.is_available())
-        except ImportError:
-            # deps check passed but torch import failed — treat as CPU smoke.
-            cuda = False
+        cuda = await asyncio.to_thread(_probe_cuda_available)
 
         if not cuda:
             from app.core.training.cpu_smoke import (
@@ -164,7 +184,8 @@ class TrainingService:
             )
             from app.core.training.runtime_stats import get_runtime_stats
 
-            assert_memory_available_for_smoke(float(get_runtime_stats()["memory_available_mb"]))
+            stats = await asyncio.to_thread(get_runtime_stats)
+            assert_memory_available_for_smoke(float(stats["memory_available_mb"]))
             cfg = clamp_cpu_smoke_config(cfg, base_model=base_model)
             # still allow non-whitelist base_model but keep clamps; FE already warned
         return cfg
@@ -172,10 +193,27 @@ class TrainingService:
     async def cancel_task(self, task_id: str) -> dict[str, Any]:
         """Cooperatively cancel a running training task.
 
+        Only transitions tasks in active states (``pending``, ``exporting``,
+        ``training``). For terminal states (``completed``, ``failed``,
+        ``cancelled``) raises ``ValueError`` so the API layer returns 400
+        instead of overwriting the terminal status.
+
         Sets the per-task cancel flag (the LoRA Trainer loop checks it each
         step) and cancels the background asyncio task. Then marks the task
         ``cancelled`` in the DB and returns the refreshed task row.
         """
+        current = await self.get_task(task_id)
+        status = str(current.get("status") or "")
+        if status in _TERMINAL_STATUSES:
+            raise ValueError(
+                f"Task {task_id} is already '{status}'; cannot cancel a terminal task"
+            )
+        if status not in _ACTIVE_STATUSES:
+            raise ValueError(
+                f"Task {task_id} has unknown status '{status}'; expected one of "
+                f"{sorted(_ACTIVE_STATUSES)}"
+            )
+
         flag = self._cancel_flags.get(task_id)
         if flag is not None:
             flag["cancel"] = True
