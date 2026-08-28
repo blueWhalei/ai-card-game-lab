@@ -1,37 +1,42 @@
 :root {
-  /* ── Ink Lab — Workbench (warm paper) ── */
-  --ink-paper: #f3efe6;
-  --ink-paper-elevated: #faf7f0;
-  --ink-surface: #ffffff;
-  --ink-surface-muted: #ebe6db;
-  --ink-border: rgba(28, 42, 38, 0.12);
-  --ink-border-strong: rgba(28, 42, 38, 0.22);
+  color-scheme: light;
 
-  --ink-text: #1c2a26;
-  --ink-text-secondary: #4a5c56;
-  --ink-text-muted: #5c6e67;
-  --ink-text-inverse: #f3efe6;
+  /*
+   * Ink Lab — cool lab stone (not warm cream / terracotta).
+   * All chrome colors are semantic tokens so light/dark can swap via data-theme.
+   */
+  --ink-paper: #f2f4f3;
+  --ink-paper-elevated: #f7f8f7;
+  --ink-surface: #ffffff;
+  --ink-surface-muted: #e8ebe9;
+  --ink-border: rgba(26, 34, 32, 0.1);
+  --ink-border-strong: rgba(26, 34, 32, 0.2);
+
+  --ink-text: #1a2220;
+  --ink-text-secondary: #4a5552;
+  --ink-text-muted: #6b7572;
+  --ink-text-inverse: #f2f4f3;
 
   /* Teal / slate primary — lab signal (not Apple blue) */
   --ink-primary: #1a6b5c;
   --ink-primary-hover: #155a4e;
   --ink-primary-muted: rgba(26, 107, 92, 0.12);
-  --ink-primary-fg: #f3efe6;
+  --ink-primary-fg: #f7faf9;
 
-  /* Amber — in progress / attention */
-  --ink-accent: #c47a1a;
-  --ink-accent-muted: rgba(196, 122, 26, 0.14);
+  /* Cool steel — in progress / attention (not amber) */
+  --ink-accent: #3a6d82;
+  --ink-accent-muted: rgba(58, 109, 130, 0.14);
 
   --ink-success: #2d7a4f;
   --ink-danger: #b33a2e;
-  --ink-warning: #c47a1a;
-  --ink-info: #4a5c56;
+  --ink-warning: #3a6d82;
+  --ink-info: #4a5552;
 
   --ink-radius-sm: 6px;
   --ink-radius: 8px;
   --ink-radius-md: 10px;
-  --ink-shadow: 0 1px 2px rgba(28, 42, 38, 0.06);
-  --ink-shadow-md: 0 2px 8px rgba(28, 42, 38, 0.08);
+  --ink-shadow: 0 1px 2px rgba(26, 34, 32, 0.05);
+  --ink-shadow-md: 0 2px 8px rgba(26, 34, 32, 0.07);
 
   --ink-font-sans: 'IBM Plex Sans', 'Noto Sans SC', system-ui, sans-serif;
   --ink-font-cn: 'Noto Sans SC', 'IBM Plex Sans', system-ui, sans-serif;
@@ -39,13 +44,49 @@
   --ink-font-size: 16px;
 
   /* ── Observer shell (dark charcoal / ink) ── */
-  --ink-obs-bg: #141a18;
-  --ink-obs-surface: #1e2623;
-  --ink-obs-border: rgba(243, 239, 230, 0.12);
-  --ink-obs-text: #e8e4db;
-  --ink-obs-muted: #9aaba3;
+  --ink-obs-bg: #121816;
+  --ink-obs-surface: #1c2421;
+  --ink-obs-border: rgba(242, 244, 243, 0.1);
+  --ink-obs-text: #e6ebe9;
+  --ink-obs-muted: #8fa39a;
   --ink-obs-accent: #3d9b86;
   --ink-obs-pulse: rgba(61, 155, 134, 0.35);
+}
+
+/*
+ * Dark workbench — ready for a future theme toggle on <html data-theme="dark">.
+ * Observer already uses --ink-obs-*; workbench tokens flip here.
+ */
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ink-paper: #121816;
+  --ink-paper-elevated: #1a211e;
+  --ink-surface: #222a27;
+  --ink-surface-muted: #2a3330;
+  --ink-border: rgba(230, 235, 233, 0.1);
+  --ink-border-strong: rgba(230, 235, 233, 0.2);
+
+  --ink-text: #e6ebe9;
+  --ink-text-secondary: #a8b5b0;
+  --ink-text-muted: #8fa39a;
+  --ink-text-inverse: #121816;
+
+  --ink-primary: #3d9b86;
+  --ink-primary-hover: #4aaf98;
+  --ink-primary-muted: rgba(61, 155, 134, 0.18);
+  --ink-primary-fg: #0e1513;
+
+  --ink-accent: #6a9eb0;
+  --ink-accent-muted: rgba(106, 158, 176, 0.18);
+
+  --ink-success: #4caf7a;
+  --ink-danger: #e06b5c;
+  --ink-warning: #6a9eb0;
+  --ink-info: #a8b5b0;
+
+  --ink-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --ink-shadow-md: 0 2px 10px rgba(0, 0, 0, 0.4);
 }
 
 @theme inline {

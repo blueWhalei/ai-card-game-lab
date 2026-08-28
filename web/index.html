@@ -5,8 +5,25 @@
     <link rel="icon" href="/favicon.ico">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Card Game Lab</title>
+    <script>
+      ;(function () {
+        try {
+          var stored = localStorage.getItem('ink-theme')
+          var mode =
+            stored === 'dark' || stored === 'light'
+              ? stored
+              : window.matchMedia('(prefers-color-scheme: dark)').matches
+                ? 'dark'
+                : 'light'
+          document.documentElement.setAttribute('data-theme', mode)
+          document.documentElement.style.background = mode === 'dark' ? '#121816' : '#f2f4f3'
+        } catch (e) {
+          document.documentElement.setAttribute('data-theme', 'light')
+        }
+      })()
+    </script>
   </head>
-  <body style="background: #f3efe6; margin: 0">
+  <body style="margin: 0">
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>

@@ -164,10 +164,10 @@ type ObserverSnapshot = {
 
 | Token | 意图 |
 |-------|------|
-| Workbench 背景 | 浅暖纸色（非 Apple `#f5f5f7`，非奶油 terracotta 套装） |
+| Workbench 背景 | 冷青石灰（非暖奶油纸、非 terracotta）；语义 token，可切 `data-theme` |
 | Observer 背景 | 深炭/墨绿桌面感，高对比文字 |
 | 主色 | 墨绿 / 青石（实验室信号）；**禁用** `#0071e3` 作为品牌主色 |
-| 强调色 | 琥珀：进行中 / 需注意 |
+| 强调色 | 冷钢青：进行中 / 需注意（不用琥珀作品牌脸） |
 | 字体 | 中文 Noto Sans SC（或等价）；西文 IBM Plex Sans / Source Sans 3；**禁用**以 Inter/SF Pro 为品牌脸 |
 | 圆角 | 6–10px；少用全胶囊 pill 堆砌 |
 | 阴影 | 单层轻阴影或分割线；禁止多层 glow / 霓虹 |

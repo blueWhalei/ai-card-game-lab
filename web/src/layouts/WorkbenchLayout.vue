@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { cn } from '@/lib/cn'
+import ThemeToggle from '@/components/common/ThemeToggle.vue'
 
 type NavItem = { path: string; label: string; icon: string }
 type NavGroup = { id: string; label: string; items: NavItem[] }
@@ -145,7 +146,8 @@ function go(path: string): void {
         >
           <Icon :icon="mobileOpen ? 'lucide:x' : 'lucide:menu'" class="h-5 w-5" />
         </button>
-        <span class="text-base font-semibold">{{ pageTitle }}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-semibold">{{ pageTitle }}</span>
+        <ThemeToggle />
       </header>
 
       <!-- Mobile drawer -->
@@ -187,8 +189,13 @@ function go(path: string): void {
       </div>
 
       <header class="hidden border-b border-ink-border px-6 pt-6 pb-4 md:block md:px-8 xl:px-10">
-        <h1 class="page-title">{{ pageTitle }}</h1>
-        <p v-if="pageHint" class="page-subtitle">{{ pageHint }}</p>
+        <div class="flex items-start justify-between gap-4">
+          <div class="min-w-0">
+            <h1 class="page-title">{{ pageTitle }}</h1>
+            <p v-if="pageHint" class="page-subtitle">{{ pageHint }}</p>
+          </div>
+          <ThemeToggle class="-mt-0.5" />
+        </div>
       </header>
 
       <main class="flex-1">
