@@ -3,8 +3,9 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { dataApi } from '@/api/dataApi'
-import { trainingApi } from '@/api/trainingApi'
+import { trainingApi, type ModelItem, type TrainingTask } from '@/api/trainingApi'
 import { decisionApi } from '@/api/decision'
+import { systemApi } from '@/api/systemApi'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import { showApiError } from '@/utils/error'
@@ -25,6 +26,38 @@ type Stage = {
 const router = useRouter()
 const loading = ref(true)
 const stages = ref<Stage[]>([])
+
+function isMockArtifact(
+  modelPath: string | null,
+  task?: Pick<TrainingTask, 'config' | 'result'>,
+): boolean {
+  if (modelPath?.endsWith('model.bin')) return true
+  if (task?.result && typeof task.result === 'object' && task.result.mock === true) return true
+  if (task?.config?.use_mock === true && modelPath) return true
+  return false
+}
+
+function isLoraReady(
+  modelPath: string | null,
+  task?: Pick<TrainingTask, 'config' | 'result'>,
+): boolean {
+  if (!modelPath) return false
+  return !isMockArtifact(modelPath, task)
+}
+
+function taskByModelPath(models: ModelItem[], tasks: TrainingTask[]): Map<string, TrainingTask> {
+  const byPath = new Map<string, TrainingTask>()
+  for (const task of tasks) {
+    if (task.model_path) byPath.set(task.model_path, task)
+  }
+  for (const model of models) {
+    if (model.model_path && !byPath.has(model.model_path)) {
+      const match = tasks.find((t) => t.id === model.id)
+      if (match) byPath.set(model.model_path, match)
+    }
+  }
+  return byPath
+}
 
 const statusLabel: Record<StageStatus, string> = {
   idle: '待开始',
@@ -49,23 +82,72 @@ const nextCta = computed(() => {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const [statsRes, tasksRes, modelsRes, decisionListRes] = await Promise.all([
+    const [statsRes, tasksRes, modelsRes, decisionListRes, configRes] = await Promise.all([
       dataApi.stats(),
       trainingApi.listTasks({ page: 1, page_size: 5 }),
       trainingApi.listModels(),
       decisionApi.list({ train_usable: true, limit: 1 }).catch(() => null),
+      systemApi.getConfig().catch(() => null),
     ])
 
     const stats = statsRes.data
     const tasks = tasksRes.data.items
     const models = modelsRes.data
+    const taskLookup = taskByModelPath(models, tasks)
     const games = stats.total_games ?? 0
     const hasUsable = Array.isArray(decisionListRes?.data) && decisionListRes.data.length > 0
-    const running = tasks.some((t: { status: string }) =>
-      ['pending', 'exporting', 'training'].includes(t.status),
+    const running = tasks.some((t) => ['pending', 'exporting', 'training'].includes(t.status))
+    const completedTasks = tasks.filter((t) => t.status === 'completed')
+    const completed = completedTasks.length > 0 || models.length > 0
+    const trainingDepsAvailable = configRes?.data.training_deps_available ?? false
+    const trainingUseMock = configRes?.data.training_use_mock ?? true
+    const wantsRealTraining = !trainingUseMock
+    const trainingBlocked = wantsRealTraining && !trainingDepsAvailable && hasUsable && !completed
+
+    const loraModels = models.filter((m) =>
+      isLoraReady(m.model_path, m.model_path ? taskLookup.get(m.model_path) : undefined),
     )
-    const completed =
-      tasks.some((t: { status: string }) => t.status === 'completed') || models.length > 0
+    const hasLora = loraModels.length > 0
+    const hasMockOnly =
+      completed &&
+      !hasLora &&
+      (models.some((m) => isMockArtifact(m.model_path, taskLookup.get(m.model_path ?? ''))) ||
+        completedTasks.some((t) => isMockArtifact(t.model_path, t)))
+
+    let trainMeta = '等待数据集'
+    if (running) {
+      trainMeta = '任务进行中'
+    } else if (trainingBlocked) {
+      trainMeta = '未安装训练依赖，无法 CPU 冒烟（poetry install --with training）'
+    } else if (hasLora) {
+      trainMeta = 'LoRA 就绪'
+    } else if (hasMockOnly || completed) {
+      trainMeta = 'Mock 演示就绪'
+    }
+
+    let trainStatus: StageStatus = 'idle'
+    if (running) {
+      trainStatus = 'attention'
+    } else if (trainingBlocked) {
+      trainStatus = 'attention'
+    } else if (completed) {
+      trainStatus = 'done'
+    } else if (hasUsable) {
+      trainStatus = 'ready'
+    }
+
+    let deployMeta = '完成 LoRA 训练后可用'
+    let deployStatus: StageStatus = 'idle'
+    let deployCtaLabel = '查看模型'
+    if (hasLora) {
+      deployMeta = '可导出部署包与 Ollama 验证'
+      deployStatus = 'ready'
+      deployCtaLabel = '导出部署包'
+    } else if (hasMockOnly) {
+      deployMeta = 'Mock 产物不可导出，需先 CPU 冒烟真训（约 5 分钟、不为牌力）'
+      deployStatus = 'ready'
+      deployCtaLabel = '去 CPU 冒烟'
+    }
 
     stages.value = [
       {
@@ -90,8 +172,8 @@ async function load(): Promise<void> {
         id: 'train',
         title: '训练',
         blurb: 'SFT / LoRA 或 Mock 演练',
-        status: running ? 'attention' : completed ? 'done' : hasUsable ? 'ready' : 'idle',
-        meta: running ? '任务进行中' : completed ? `${models.length} 个模型` : '等待数据集',
+        status: trainStatus,
+        meta: trainMeta,
         ctaLabel: '训练台',
         ctaPath: '/training',
       },
@@ -99,9 +181,9 @@ async function load(): Promise<void> {
         id: 'deploy',
         title: '部署',
         blurb: 'GGUF / Ollama 验证闭环',
-        status: models.length > 0 ? 'ready' : 'idle',
-        meta: models.length > 0 ? '可导出与验证' : '完成训练后可用',
-        ctaLabel: '查看模型',
+        status: deployStatus,
+        meta: deployMeta,
+        ctaLabel: deployCtaLabel,
         ctaPath: '/training',
       },
     ]

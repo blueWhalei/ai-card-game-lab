@@ -72,6 +72,8 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
 [4] 创建数据集 + 训练任务（默认 Mock，安全无 GPU）
   poetry run python scripts/e2e_pipeline.py train --mock
   # 真实 LoRA：先 poetry install --with training，TRAINING_USE_MOCK=false，再 --no-mock
+  # CPU Smoke（无 GPU）：前端取消 Mock → 确认 → 观察现场面板 → 可取消 → 导出 deploy/
+  #   详见 docs/E2E_PIPELINE.md「CPU Smoke（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
 
 [5] 部署（真实 LoRA 产物）
   - 前端「模型仓库」→ 导出部署包

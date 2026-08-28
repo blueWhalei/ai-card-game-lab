@@ -85,3 +85,36 @@ poetry run python scripts/e2e_pipeline.py all --count 1 --mock
 - **导出 count=0**：等对局 `completed`；确认决策点已写入。  
 - **Mock 无法「导出部署包」**：需 `use_mock=false` 的真实 LoRA。  
 - **验证找不到 tag**：先转 GGUF 再 `ollama create`。
+
+## CPU Smoke（无 GPU）
+
+在无 CUDA 的本机上验证「关 Mock → 真 LoRA → 导出」路径，**不为牌力**，墙钟目标 **≤ 5 分钟**。
+
+### 准备
+
+```bash
+cd server && poetry install --with training
+```
+
+`.env` 可选 `TRAINING_USE_MOCK=false`（前端创建任务时取消 Mock 亦可）。
+
+### 前端步骤
+
+1. **训练台** → 创建任务，**取消勾选 Mock**  
+2. 若未装 training 依赖 → 页面阻断并提示 `poetry install --with training`  
+3. 确认对话框：「CPU 冒烟模式 · 约数分钟 · 不为牌力」→ 开始  
+4. 观察 **现场面板**（CPU / 内存 / 进度）；可随时 **取消**  
+5. 完成后 **模型仓库** → **导出部署包** → 按 `deploy/` 内脚本转 GGUF / `ollama create`  
+6. **验证决策** 或 **测一局**
+
+默认基座 `Qwen/Qwen2.5-0.5B`、`max_steps=20`，样本截断，避免 OOM。
+
+### CLI 提示
+
+Mock 一键仍推荐：
+
+```bash
+poetry run python scripts/e2e_pipeline.py all --count 1 --mock
+```
+
+真实 LoRA 需 `--no-mock` 且已装 training 组；**不建议**在无 GPU CI 中拉 HF 权重做全量 e2e。
