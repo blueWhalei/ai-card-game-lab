@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-CPU_SMOKE_BASE_MODELS = [
+CPU_SMOKE_BASE_MODELS: list[str] = [
     "Qwen/Qwen2.5-0.5B",
     "Qwen/Qwen2.5-0.5B-Instruct",
 ]
