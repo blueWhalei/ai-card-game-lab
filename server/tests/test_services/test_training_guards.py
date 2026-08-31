@@ -1,11 +1,10 @@
-"""Guards + cancel for TrainingService (Task 4).
+"""Guards + cancel for TrainingService.
 
 Covers:
-- create_task refuses non-mock CPU path when deps missing or RAM < 8GB.
+- create_task refuses when deps missing or RAM < 8GB.
 - create_task applies CPU smoke clamps and persists clamped config.
-- mock path remains unchanged (no guards fired).
 - cancel_task sets the per-task cancel flag and cancels the bg asyncio task.
-- export_model refuses a mock ``model.bin`` placeholder.
+- export_model refuses a non-adapter file path.
 """
 
 from __future__ import annotations
@@ -53,6 +52,15 @@ async def _seed_dataset(sqlite_path: str, tmp_path: Path) -> str:
     return dataset_id
 
 
+def _pass_training_guards(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Skip env probes so tests can create tasks without torch/RAM."""
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
+
 def _no_pipeline(service: TrainingService) -> None:
     """Replace the background pipeline with a noop so tests never train."""
 
@@ -74,7 +82,6 @@ async def test_create_task_rejects_when_deps_missing(tmp_path: Path, monkeypatch
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path / "data"),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=False,
     )
     _no_pipeline(service)
 
@@ -85,7 +92,7 @@ async def test_create_task_rejects_when_deps_missing(tmp_path: Path, monkeypatch
     request = CreateTrainingTaskRequest(
         name="no-deps",
         dataset_id="dataset_any",
-        config=TrainingConfig(use_mock=False),
+        config=TrainingConfig(),
     )
     with pytest.raises(ValueError, match="Training deps missing"):
         await service.create_task(request)
@@ -99,7 +106,6 @@ async def test_create_task_rejects_low_memory(tmp_path: Path, monkeypatch) -> No
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path / "data"),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=False,
     )
     _no_pipeline(service)
 
@@ -129,7 +135,7 @@ async def test_create_task_rejects_low_memory(tmp_path: Path, monkeypatch) -> No
     request = CreateTrainingTaskRequest(
         name="low-mem",
         dataset_id="dataset_any",
-        config=TrainingConfig(use_mock=False),
+        config=TrainingConfig(),
     )
     with pytest.raises(ValueError, match="8192"):
         await service.create_task(request)
@@ -145,7 +151,6 @@ async def test_create_task_applies_cpu_smoke_clamp(tmp_path: Path, monkeypatch) 
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=False,
     )
     _no_pipeline(service)
 
@@ -176,11 +181,10 @@ async def test_create_task_applies_cpu_smoke_clamp(tmp_path: Path, monkeypatch) 
         name="cpu-smoke",
         dataset_id=dataset_id,
         base_model="Qwen/Qwen2.5-1.5B",
-        config=TrainingConfig(use_mock=False, batch_size=8, num_epochs=3),
+        config=TrainingConfig(batch_size=8, num_epochs=3),
     )
     task = await service.create_task(request)
     cfg = task["config"]
-    assert cfg["use_mock"] is False
     assert cfg["cpu_smoke"] is True
     assert cfg["batch_size"] == 1
     assert cfg["max_steps"] <= 20
@@ -192,7 +196,9 @@ async def test_create_task_applies_cpu_smoke_clamp(tmp_path: Path, monkeypatch) 
 
 
 @pytest.mark.asyncio
-async def test_create_task_mock_path_unchanged(tmp_path: Path, monkeypatch) -> None:
+async def test_cancel_task_sets_flag_and_cancels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sqlite_path = str(tmp_path / "guards.db")
     await init_db(sqlite_path)
     dataset_id = await _seed_dataset(sqlite_path, tmp_path)
@@ -201,36 +207,8 @@ async def test_create_task_mock_path_unchanged(tmp_path: Path, monkeypatch) -> N
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=True,
     )
-    _no_pipeline(service)
-
-    # Guards must NOT fire on mock path: leave real get_runtime_stats intact.
-    request = CreateTrainingTaskRequest(
-        name="mock-run",
-        dataset_id=dataset_id,
-        config=TrainingConfig(use_mock=True, batch_size=8),
-    )
-    task = await service.create_task(request)
-    assert task["config"]["use_mock"] is True
-    # cpu_smoke clamp must not be applied on mock path
-    assert task["config"].get("cpu_smoke") is not True
-    assert task["config"]["batch_size"] == 8
-    assert task["id"] in service._cancel_flags
-
-
-@pytest.mark.asyncio
-async def test_cancel_task_sets_flag_and_cancels(tmp_path: Path) -> None:
-    sqlite_path = str(tmp_path / "guards.db")
-    await init_db(sqlite_path)
-    dataset_id = await _seed_dataset(sqlite_path, tmp_path)
-
-    service = TrainingService(
-        sqlite_path=sqlite_path,
-        data_dir=str(tmp_path),
-        models_dir=str(tmp_path / "models"),
-        training_use_mock=True,
-    )
+    _pass_training_guards(monkeypatch)
 
     # Replace pipeline with a long sleep so we can cancel mid-flight.
     async def slow_pipeline(
@@ -249,7 +227,7 @@ async def test_cancel_task_sets_flag_and_cancels(tmp_path: Path) -> None:
     request = CreateTrainingTaskRequest(
         name="cancel-me",
         dataset_id=dataset_id,
-        config=TrainingConfig(use_mock=True),
+        config=TrainingConfig(),
     )
     task = await service.create_task(request)
     task_id = task["id"]
@@ -268,7 +246,9 @@ async def test_cancel_task_sets_flag_and_cancels(tmp_path: Path) -> None:
 
 
 @pytest.mark.asyncio
-async def test_export_model_rejects_mock_placeholder(tmp_path: Path) -> None:
+async def test_export_model_rejects_non_adapter_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     sqlite_path = str(tmp_path / "guards.db")
     await init_db(sqlite_path)
     dataset_id = await _seed_dataset(sqlite_path, tmp_path)
@@ -277,19 +257,18 @@ async def test_export_model_rejects_mock_placeholder(tmp_path: Path) -> None:
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=True,
     )
+    _pass_training_guards(monkeypatch)
     _no_pipeline(service)
 
     request = CreateTrainingTaskRequest(
-        name="mock-export",
+        name="bad-export",
         dataset_id=dataset_id,
-        config=TrainingConfig(use_mock=True),
+        config=TrainingConfig(),
     )
     task = await service.create_task(request)
     task_id = task["id"]
 
-    # Simulate a completed mock run that produced model.bin.
     async with aiosqlite.connect(sqlite_path) as db:
         db.row_factory = aiosqlite.Row
         from app.repositories.training_repo import TrainingTaskRepository
@@ -300,16 +279,18 @@ async def test_export_model_rejects_mock_placeholder(tmp_path: Path) -> None:
             "completed",
             progress=1.0,
             model_path=str(Path(tmp_path / "models" / task_id / "model.bin")),
-            result={"mock": True},
+            result={"train_loss": 0.1},
             finished_at=datetime.now(tz=UTC).isoformat(),
         )
 
-    with pytest.raises(ValueError, match="Mock model cannot export"):
+    with pytest.raises(ValueError, match="not a LoRA adapter directory"):
         await service.export_model(task_id)
 
 
 @pytest.mark.asyncio
-async def test_cancel_task_refuses_terminal_status(tmp_path: Path) -> None:
+async def test_cancel_task_refuses_terminal_status(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """I4: cancel_task must not overwrite a terminal status."""
     sqlite_path = str(tmp_path / "guards.db")
     await init_db(sqlite_path)
@@ -319,14 +300,14 @@ async def test_cancel_task_refuses_terminal_status(tmp_path: Path) -> None:
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=True,
     )
+    _pass_training_guards(monkeypatch)
     _no_pipeline(service)
 
     request = CreateTrainingTaskRequest(
         name="terminal",
         dataset_id=dataset_id,
-        config=TrainingConfig(use_mock=True),
+        config=TrainingConfig(),
     )
     task = await service.create_task(request)
     task_id = task["id"]
@@ -353,7 +334,6 @@ async def test_apply_cpu_smoke_guards_runs_probes_off_event_loop(
         sqlite_path=sqlite_path,
         data_dir=str(tmp_path),
         models_dir=str(tmp_path / "models"),
-        training_use_mock=False,
     )
 
     import app.core.training.runtime_stats as stats_mod

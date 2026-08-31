@@ -62,7 +62,8 @@ export const experimentConfigApi = {
   update: (id: string, data: UpdateExperimentConfigRequest) =>
     apiClient.put<never, ApiResponse<ExperimentConfig>>(`/api/v1/experiment-configs/${id}`, data),
 
-  delete: (id: string) => apiClient.delete(`/api/v1/experiment-configs/${id}`),
+  delete: (id: string) =>
+    apiClient.delete('/api/v1/experiment-configs', { params: { id } }),
 
   getStats: (id: string) =>
     apiClient.get<never, ApiResponse<ExperimentConfigStats>>(

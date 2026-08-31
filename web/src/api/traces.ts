@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { ApiResponse } from './types'
+import type { ApiResponse, PaginatedData } from './types'
 
 export interface Trace {
   id: string
@@ -54,15 +54,26 @@ export interface CompareResult {
 }
 
 export const tracesApi = {
-  list: (params?: { game_id?: string; player_id?: string; limit?: number; offset?: number }) =>
-    apiClient.get<never, ApiResponse<Trace[]>>('/api/v1/traces', { params }),
+  list: (params?: {
+    game_id?: string
+    experiment_id?: string
+    player_id?: string
+    model?: string
+    parser_ok?: boolean
+    page?: number
+    page_size?: number
+  }) =>
+    apiClient.get<never, ApiResponse<PaginatedData<Trace>>>('/api/v1/traces', { params }),
 
   get: (traceId: string) =>
     apiClient.get<never, ApiResponse<Trace>>(`/api/v1/traces/${traceId}`),
 
   metrics: (params?: {
     game_id?: string
+    experiment_id?: string
+    player_id?: string
     model?: string
+    parser_ok?: boolean
     start_time?: string
     end_time?: string
   }) =>

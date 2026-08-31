@@ -1,10 +1,8 @@
-"""SFT training entrypoints: PEFT LoRA (real) + mock fallback.
+"""SFT training entrypoint: PEFT LoRA only.
 
-Install real training deps with::
+Install training deps with::
 
     cd server && poetry install --with training
-
-Then set ``TRAINING_USE_MOCK=false`` (or ``config.use_mock=false``) to run LoRA.
 """
 
 from __future__ import annotations
@@ -19,9 +17,6 @@ from typing import Any, Protocol
 import structlog
 
 logger = structlog.get_logger()
-
-MOCK_STEPS = 20
-MOCK_STEP_DELAY = 0.05  # keep mock fast for tests / UI demos
 
 
 class ProgressCallback(Protocol):
@@ -100,32 +95,6 @@ def training_deps_available() -> bool:
     except ImportError:
         return False
     return True
-
-
-async def run_mock_training(
-    task_id: str,
-    sft_data_path: str,
-    config: dict[str, Any],
-    on_progress: ProgressCallback,
-) -> dict[str, Any]:
-    """Simulate an SFT training run (CI / no GPU / missing deps)."""
-    logger.info("mock_training_start", task_id=task_id, config=config)
-
-    for step in range(1, MOCK_STEPS + 1):
-        await asyncio.sleep(MOCK_STEP_DELAY)
-        progress = step / MOCK_STEPS
-        await on_progress(progress, step=step, total_steps=MOCK_STEPS)
-        logger.debug("mock_training_step", task_id=task_id, step=step, progress=progress)
-
-    result = {
-        "train_loss": 0.42,
-        "eval_loss": 0.51,
-        "total_steps": MOCK_STEPS,
-        "epochs": config.get("num_epochs", 3),
-        "mock": True,
-    }
-    logger.info("mock_training_done", task_id=task_id, result=result)
-    return result
 
 
 def _load_chatml_texts(sft_data_path: str, tokenizer: Any) -> list[str]:
@@ -306,7 +275,6 @@ def _run_lora_sft_sync(
 
         metrics = getattr(train_result, "metrics", {}) or {}
         result = {
-            "mock": False,
             "base_model": base_model,
             "adapter_path": str(adapter_dir),
             "sample_count": len(texts),
@@ -373,29 +341,9 @@ async def run_sft_training(
     config: dict[str, Any],
     on_progress: ProgressCallback,
     *,
-    default_use_mock: bool = True,
     cancel_flag: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
-    """Dispatch to LoRA or mock based on config and dependency availability.
-
-    ``config.use_mock``:
-    - True / False → honor explicitly
-    - None / missing → use ``default_use_mock`` (from settings)
-    """
-    if "use_mock" in config and config["use_mock"] is not None:
-        use_mock = bool(config["use_mock"])
-    else:
-        use_mock = default_use_mock
-    if use_mock:
-        result = await run_mock_training(task_id, sft_data_path, config, on_progress)
-        # Write a placeholder so the pipeline still has an artifact path
-        out = Path(output_dir)
-        out.mkdir(parents=True, exist_ok=True)
-        placeholder = out / "model.bin"
-        placeholder.write_text("mock model placeholder", encoding="utf-8")
-        result["adapter_path"] = str(placeholder)
-        return result
-
+    """Run PEFT LoRA SFT. Missing training deps raise ``RuntimeError``."""
     return await run_lora_sft(
         task_id=task_id,
         sft_data_path=sft_data_path,

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 import { dismissToast, useToast, type ToastKind } from './toast'
 
+const { t } = useI18n()
 const { items } = useToast()
 
 const kindClass: Record<ToastKind, string> = {
@@ -40,7 +42,7 @@ const kindIcon: Record<ToastKind, string> = {
       <button
         type="button"
         class="rounded p-0.5 text-ink-text-muted hover:text-ink-text"
-        aria-label="关闭"
+        :aria-label="t('common.close')"
         @click="dismissToast(item.id)"
       >
         <Icon icon="lucide:x" class="h-3.5 w-3.5" />

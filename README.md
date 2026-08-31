@@ -4,11 +4,12 @@ AI 卡牌游戏实验室数据采集与训练平台 —— 面向 AI 研究的�
 
 ## 核心能力
 
+- **实验工作台**：以「实验」为第一公民——选手人数由游戏引擎 min/max 决定，在详情页采集、观战、登记训练、开对照、跨实验对比
 - **通用游戏引擎**：抽象卡牌游戏共性，支持快速接入新游戏（首发：斗地主）
 - **实时思考链观察**：通过 WebSocket 实时推送 AI 决策的思考过程，含流式推理输出、Token 用量统计
-- **数据采集闭环**：JSONL 全量归档 + SQLite 元数据索引，支持多维度筛选导出
-- **数据看板**：Token 用量统计、对局质量分析、AI 表现对比、响应时间分析等多维度统计图表
-- **模型蒸馏训练**：可选 PEFT LoRA + Mock；一键脚本串起采集→导出→训练→部署提示
+- **数据采集闭环**：JSONL 全量归档 + SQLite 元数据索引；决策点可按实验过滤导出 ChatML
+- **数据看板**：Token 用量、对局质量、AI 表现、响应时间等多维度统计
+- **模型蒸馏训练**：PEFT LoRA（无 GPU 走 CPU 冒烟）；训练产物可登记为 Ollama 选手并开对照实验
 
 ## 技术栈
 
@@ -19,16 +20,16 @@ AI 卡牌游戏实验室数据采集与训练平台 —— 面向 AI 研究的�
 | AI 调用 | OpenAI / Ollama / DashScope / DeepSeek / Kimi / ZhipuAI / Yi / Baichuan / MiniMax 统一适配 |
 | 元数据库 | SQLite（索引/查询/统计） |
 | 数据归档 | JSONL 本地文件 |
-| 训练框架 | Mock 默认可用；可选 `poetry install --with training` 启用 PEFT LoRA（Transformers） |
+| 训练框架 | `poetry install --with training` 启用 PEFT LoRA（Transformers）；无 GPU 走 CPU 冒烟 |
 
 ## 快速开始
 
 ### 环境要求
 
 - Python 3.11+
-- Node.js 18+
+- Node.js 20.19+ 或 22.12+
 - Poetry（Python 依赖管理）
-- 可选：Ollama（本地大模型推理）
+- 可选：Ollama（本地大模型推理，零 Key 路径）
 
 ### 安装与启动
 
@@ -38,8 +39,10 @@ git clone https://github.com/blueWhalei/ai-card-game-lab.git
 cd ai-card-game-lab
 
 # 2. 复制环境变量配置
-cp .env.example .env
-# 编辑 .env 填入你的 API Key
+cp .env.example .env          # macOS / Linux
+# copy .env.example .env      # Windows cmd
+# 编辑 .env：默认 seed 使用 DeepSeek，至少填写 DEEPSEEK_API_KEY
+# 或改用实验配置「Ollama 本地」（需本机已启动 ollama）
 
 # 3. 安装 Python 依赖
 cd server
@@ -54,14 +57,33 @@ npm install
 npm run dev
 ```
 
-### 一小时闭环（推荐）
+### 首次运行检查清单
 
-后端起来后，在仓库根目录：
+1. `.env` 已复制，并至少满足其一：`DEEPSEEK_API_KEY`，或其他云厂商 Key，或本机 Ollama。
+2. 默认实验配置是 DeepSeek 温度对照；无 DeepSeek Key 时，用「Ollama 本地」或到「实验配置」改 provider。
+3. 后端启动后可访问 http://localhost:8000/api/v1/system/startup-check 查看警告。
+4. 采集对局会校验所选配置的 API Key；未配置会被拒绝，而不是开局后静默失败。
+5. 训练需 `cd server && poetry install --with training`。缺依赖时无法创建任务；无 GPU 自动走 CPU 冒烟。
+6. 无 Key 时可在首页点「加载演示对局」体验观战与回放（演示局不挂实验）。
+
+### 研究者主路径（推荐）
+
+打开 http://localhost:5173 —— 首页即**实验列表**。
+
+1. **新建实验**：按引擎要求选择实验配置 + 目标局数 → 进入详情（**不会**自动开局，避免误打 Key）
+2. **开始采集 / 再开 n 局**：在详情页批量开局；进行中可点进观战，结束可回放
+3. **登记并开训**：可训决策 > 0 时一键登记 ChatML 并创建训练任务（缺训练依赖则只登记）
+4. **训练台 · 模型仓库**：导出部署包 →（本机 GGUF + `ollama create`）→ **登记为选手**
+5. **开对照实验**：详情「开对照实验」选新选手 + 与引擎槽位数相同的基线 → 新建实验后继续采集；「对比实验」并排看胜率 CI / 延迟 / Token
+
+侧栏「对局」仍可用于散局创建；「决策点 / 追踪」可用 `?experiment_id=` 深链到本实验。
+
+也可用脚本闭环（不经实验对象）：
 
 ```powershell
-.\scripts\e2e_pipeline.ps1 guide          # 打印清单
-.\scripts\e2e_pipeline.ps1 check          # 健康检查
-.\scripts\e2e_pipeline.ps1 all -Count 1   # 采集→导出→Mock 训练
+.\scripts\e2e_pipeline.ps1 guide
+.\scripts\e2e_pipeline.ps1 check
+.\scripts\e2e_pipeline.ps1 all -Count 1   # 采集→导出→真训（需 training 依赖）
 ```
 
 完整说明见 [端到端闭环指南](docs/E2E_PIPELINE.md)。
@@ -69,13 +91,11 @@ npm run dev
 ### 访问地址
 
 - 前端界面：http://localhost:5173（开发模式）
-  - **Ink Lab 双壳**：默认进管道总览；`/game/:id` 为全屏观战（GenericBoard），无工作台侧栏
+  - **Ink Lab 双壳**：默认进实验列表；`/experiments/:id` 为实验工作台；`/game/:id` 为全屏观战（GenericBoard）
 - API 文档：http://localhost:8000/docs（Swagger UI）
 - API 备选文档：http://localhost:8000/redoc（ReDoc）
 
-### 创建第一个 AI 对局
-
-#### 步骤 1：配置实验参数
+### 配置实验参数
 
 运行时配置保存在 **SQLite**（前端「实验配置」页增删改）。`config/experiment_configs.yaml` 仅在首次启动时作为 **seed** 导入，之后以数据库为准。
 
@@ -87,66 +107,34 @@ configs:
     name: "Temp 0.9"
     notes: "较高 temperature 对照"
     model_config:
-      provider: "deepseek"           # LLM 供应商
-      model_name: "deepseek-v4-flash"
-      temperature: 0.9               # 高温度 = 更随机
-      top_p: 0.95
-      max_tokens: 1024
-
-  - id: "cfg_temp_06"
-    name: "Temp 0.6"
-    notes: "较低 temperature 对照"
-    model_config:
       provider: "deepseek"
       model_name: "deepseek-v4-flash"
-      temperature: 0.6               # 低温度 = 更保守
-      top_p: 0.9
+      temperature: 0.9
+      top_p: 0.95
       max_tokens: 1024
 ```
 
-#### 步骤 2：配置 API Key
+### 配置 API Key
 
-编辑项目根目录的 `.env` 文件，填入你的 LLM API Key：
+编辑项目根目录的 `.env` 文件：
 
 ```bash
-# DeepSeek（推荐，性价比高）
 DEEPSEEK_API_KEY=sk-your-deepseek-key
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 
-# 或使用 OpenAI
+# 或 OpenAI / 本地 Ollama
 OPENAI_API_KEY=sk-your-openai-key
-OPENAI_BASE_URL=https://api.openai.com/v1
-
-# 或使用本地 Ollama
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-#### 步骤 3：创建对局
+### 散局创建（可选）
 
-1. 打开前端界面 http://localhost:5173
-2. 进入「对局」页面
-3. 点击「创建对局」按钮
-4. 选择游戏类型：斗地主
-5. 选择 3 个实验配置（如：Temp 0.9、Temp 0.6、Temp 1.2）
-6. 点击「开始」
+「对局」页仍可创建不挂实验的散局（1–50 局批量），数据同样进入决策点与看板。挂实验请走实验详情采集，便于按实验过滤与对照。
 
-#### 步骤 4：观战对局
+### 观战
 
-创建对局后，系统自动跳转到观战页面：
-
-- **实时观察**：通过 WebSocket 实时推送 AI 决策过程
-- **思考链展示**：查看 AI 的完整推理过程，含每轮 Token 用量统计
-- **牌桌可视化**：直观展示手牌、出牌历史、角色手牌（观察者模式透明）
-- **回放功能**：对局结束后可逐步回放
-
-#### 步骤 5：批量创建对局
-
-用于数据采集场景：
-
-1. 在创建对局时设置「批量数量」（1-50 局）
-2. 系统自动依次执行所有对局
-3. 对局数据自动保存到 `data/games/` 目录
-4. 可在「数据」页面查看统计和导出数据集
+- **实时观察**：WebSocket 推送决策与思考链
+- **牌桌**：GenericBoard 列表观战；结束后可逐步回放
 
 ### 配置实验参数示例
 
@@ -191,7 +179,7 @@ model_config:
 | [目录结构](docs/PROJECT_STRUCTURE.md) | 目录规划与模块职责 |
 | [编码规范](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue 编码标准 |
 | [API 设计](docs/API_DESIGN.md) | RESTful API + WebSocket 接口规范 |
-| [详细设计说明书](AI卡牌游戏实验室%20-%20详细设计说明书.md) | 完整的功能设计文档 |
+| [详细设计说明书](AI卡牌游戏实验室%20-%20详细设计说明书.md) | 完整的功能设计文档（历史基线；产品以本 README 与代码为准） |
 
 ## 开发路线图
 
@@ -206,28 +194,34 @@ model_config:
 - [x] 数据统计看板
 - [x] 数据集筛选导出
 - [x] 决策点 `train_usable` 过滤 + ChatML 导出（默认不含思考链）
-- [x] 训练任务管理界面（Mock 默认 + 可选 PEFT LoRA）
+- [x] 训练任务管理界面（PEFT LoRA / CPU 冒烟）
 - [x] 模型仓库管理
 - [x] 接入真实 SFT 训练（可选依赖组 `training`：Transformers + PEFT）
 - [x] 模型导出部署包（merge + Modelfile + llama.cpp GGUF 脚本）+ Ollama 验证 / 测一局
 - [x] 一键体验脚本串起采集→训练→部署提示（`scripts/e2e_pipeline.*`）
 
-> **说明**：决策点上的 `quality_score` 仅为终局胜负代理（胜 0.8 / 负 0.3 / 平 0.5），**不是**推理质量分。SFT 样本筛选以 `train_usable` 为准；导出默认 `include_thinking=false`，避免伪思考链污染训练集。
+### 第三阶段：实验主线
+- [x] 实验列表 / 详情工作台（采集、概要指标、深链决策与追踪）
+- [x] 按实验过滤决策导出与「登记并开训」
+- [x] 训练产物登记为 Ollama 选手 + 开对照实验
+
+> **说明**：决策点上的 `quality_score` 是**终局结果分**（胜 0.8 / 负 0.3 / 平 0.5），不是招法质量分。SFT 筛选以 `train_usable` 为准。实验详情可「登记并开训」；决策点页亦可登记。导出默认 `include_thinking=false`。
 >
-> **真实训练**：`cd server && poetry install --with training`，设置 `TRAINING_USE_MOCK=false`（或创建任务时取消「使用 Mock」）。产物为 `models/<task_id>/adapter/` LoRA 权重。
+> **真实训练**：`cd server && poetry install --with training`。产物为 `models/<task_id>/adapter/` LoRA 权重。无 GPU 时自动限制步数与样本（CPU 冒烟）。
 >
-> **本地部署（M3）**：
-> 1. 训练页对 LoRA 模型点「导出部署包」→ `models/<id>/deploy/`（含 `merged/`、`Modelfile`、`convert_gguf.ps1`）
+> **本地部署**：
+> 1. 训练页对 LoRA 模型点「导出部署包」→ `models/<id>/deploy/`
 > 2. 设置 `LLAMA_CPP_DIR` 后运行转换脚本得到 `model.gguf`
-> 3. `ollama create <tag> -f Modelfile`
-> 4. 点「验证决策」或「测一局」
+> 3. `ollama create <tag> -f Modelfile`（tag 与「登记为选手」约定一致，形如 `acgl-…`）
+> 4. 「登记为选手」→ 实验详情「开对照实验」
 >
-> **一键闭环（M4）**：见 [docs/E2E_PIPELINE.md](docs/E2E_PIPELINE.md)，`.\scripts\e2e_pipeline.ps1 all -Count 1`
+> **脚本闭环**：见 [docs/E2E_PIPELINE.md](docs/E2E_PIPELINE.md)
 
 ### 第四阶段：扩展与优化（持续）
 - [ ] 新增游戏引擎（三国杀等）
 - [ ] 强化训练能力（如 PPO 等）
-- [ ] A/B 测试与模型评估
+- [ ] 实验间对比与评测台
+- [ ] 一键 merge→GGUF→ollama create
 
 ## License
 

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { formatMs } from '@/utils/card'
 import UiBadge from '@/components/ui/Badge.vue'
 
@@ -39,6 +40,7 @@ const props = defineProps<{
   currentAnswer?: string
 }>()
 
+const { t } = useI18n()
 const expandedSet = defineModel<Set<number>>('expandedSet', { default: () => new Set<number>() })
 
 function toggleExpand(index: number): void {
@@ -70,12 +72,12 @@ const isActivelyStreaming = computed(() => {
       <div v-if="currentReasoning" class="mb-3">
         <div class="mb-2 flex items-center gap-2">
           <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
-          <span class="text-sm font-medium text-ink-obs-accent">推理过程</span>
+          <span class="text-sm font-medium text-ink-obs-accent">{{ t('game.reasoning') }}</span>
           <UiBadge v-if="currentRound" class="!bg-ink-obs-surface !text-ink-obs-muted">
             R{{ currentRound }}
           </UiBadge>
           <span v-if="isActivelyStreaming && !currentAnswer" class="text-xs text-ink-obs-muted">
-            生成中...
+            {{ t('game.generating') }}
           </span>
         </div>
         <div
@@ -91,7 +93,7 @@ const isActivelyStreaming = computed(() => {
 
       <div v-if="currentAnswer || (!currentReasoning && currentThinking)">
         <div class="mb-2 flex items-center gap-2">
-          <span class="text-sm font-medium text-ink-obs-text">最终决策</span>
+          <span class="text-sm font-medium text-ink-obs-text">{{ t('game.finalDecision') }}</span>
         </div>
         <div
           class="rounded-ink border border-ink-obs-border bg-ink-obs-surface/80 p-3 text-sm leading-relaxed text-ink-obs-text"
@@ -102,7 +104,7 @@ const isActivelyStreaming = computed(() => {
           v-if="currentActionType || (currentCards && currentCards.length > 0)"
           class="mt-2 text-xs text-ink-obs-muted"
         >
-          动作: {{ currentActionType || '-'
+          {{ t('game.actionLabel', { type: currentActionType || '-' })
           }}<template v-if="currentCards && currentCards.length > 0">
             · {{ currentCards.join(' ') }}
           </template>
@@ -114,7 +116,7 @@ const isActivelyStreaming = computed(() => {
         class="mt-2 text-xs text-ink-obs-muted"
       >
         <summary class="cursor-pointer select-none text-ink-obs-muted hover:text-ink-obs-text">
-          查看完整 Prompt
+          {{ t('game.viewPrompt') }}
         </summary>
         <pre
           class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-ink bg-ink-obs-surface p-2 text-xs text-ink-obs-muted"
@@ -123,7 +125,7 @@ const isActivelyStreaming = computed(() => {
       </details>
       <details v-if="currentRawResponseFull" class="mt-2 text-xs text-ink-obs-muted">
         <summary class="cursor-pointer select-none text-ink-obs-muted hover:text-ink-obs-text">
-          查看完整原始响应
+          {{ t('game.viewRaw') }}
         </summary>
         <pre
           class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-ink bg-ink-obs-surface p-2 text-xs text-ink-obs-muted"
@@ -138,14 +140,16 @@ const isActivelyStreaming = computed(() => {
       class="flex items-center gap-2 border-b border-ink-obs-border p-4"
     >
       <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
-      <span class="text-sm text-ink-obs-accent">{{ currentPlayerId }} 思考中...</span>
+      <span class="text-sm text-ink-obs-accent">{{
+        t('game.playerThinking', { id: currentPlayerId })
+      }}</span>
       <span class="animate-blink ml-1 inline-block h-3 w-0.5 bg-ink-obs-accent" />
     </div>
 
     <!-- 历史思考链 -->
     <div class="flex-1 overflow-y-auto p-4">
       <div v-if="history.length === 0" class="py-8 text-center text-ink-obs-muted">
-        暂无思考记录
+        {{ t('game.noThinking') }}
       </div>
       <div
         v-for="(entry, i) in [...history].reverse()"
@@ -184,13 +188,13 @@ const isActivelyStreaming = computed(() => {
         </div>
 
         <div v-if="!expandedSet.has(history.length - 1 - i)" class="mt-1 text-xs text-ink-obs-muted">
-          动作: {{ entry.actionType }}
+          {{ t('game.actionLabel', { type: entry.actionType }) }}
           <span v-if="entry.cards && entry.cards.length > 0"> · {{ entry.cards.join(' ') }}</span>
         </div>
 
         <div v-else class="mt-2 space-y-2">
           <div v-if="entry.reasoning" class="rounded-ink bg-ink-obs-bg p-2">
-            <div class="mb-1 text-xs font-medium text-ink-obs-accent">推理过程</div>
+            <div class="mb-1 text-xs font-medium text-ink-obs-accent">{{ t('game.reasoning') }}</div>
             <div
               class="max-h-32 overflow-y-auto whitespace-pre-wrap text-sm leading-relaxed text-ink-obs-text"
             >
@@ -202,7 +206,7 @@ const isActivelyStreaming = computed(() => {
             v-if="entry.answer"
             class="rounded-ink border border-ink-obs-border bg-ink-obs-bg/60 p-2"
           >
-            <div class="mb-1 text-xs font-medium text-ink-obs-text">最终决策</div>
+            <div class="mb-1 text-xs font-medium text-ink-obs-text">{{ t('game.finalDecision') }}</div>
             <div class="whitespace-pre-wrap text-sm leading-relaxed text-ink-obs-text">
               {{ entry.answer }}
             </div>
@@ -231,7 +235,7 @@ const isActivelyStreaming = computed(() => {
             class="text-xs text-ink-obs-muted"
           >
             <summary class="cursor-pointer select-none hover:text-ink-obs-text">
-              查看完整 Prompt
+              {{ t('game.viewPrompt') }}
             </summary>
             <pre
               class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-ink bg-ink-obs-bg p-2 text-xs text-ink-obs-muted"
@@ -240,7 +244,7 @@ const isActivelyStreaming = computed(() => {
           </details>
           <details v-if="entry.rawResponseFull" class="text-xs text-ink-obs-muted">
             <summary class="cursor-pointer select-none hover:text-ink-obs-text">
-              查看完整原始响应
+              {{ t('game.viewRaw') }}
             </summary>
             <pre
               class="mt-1 max-h-64 overflow-y-auto whitespace-pre-wrap rounded-ink bg-ink-obs-bg p-2 text-xs text-ink-obs-muted"

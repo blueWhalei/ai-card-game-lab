@@ -14,8 +14,10 @@ from app.config import Settings
 from app.database import init_db, open_db_connection
 from app.core.ai.prompts.registry import get_registry
 from app.dependencies import get_experiment_config_service
+from app.services.startup_recovery import recover_orphaned_runtime
 from app.utils.exceptions import AppError
 from app.utils.logger import setup_logging
+from app.utils.runtime_dirs import ensure_runtime_dirs
 
 logger = structlog.get_logger()
 
@@ -32,7 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     setup_logging(debug=settings.app_debug)
     logger.info("application_starting", name=settings.app_name)
 
+    ensure_runtime_dirs(settings)
     await init_db(settings.sqlite_path)
+    recovered = await recover_orphaned_runtime(settings.sqlite_path)
+    if recovered["games"] or recovered["training_tasks"]:
+        logger.warning("startup_orphans_closed", **recovered)
     db = await open_db_connection(settings.sqlite_path)
     try:
         seeded = await get_registry().seed_defaults(db)

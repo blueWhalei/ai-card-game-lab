@@ -1,7 +1,5 @@
 <script setup lang="ts">
 import {
-  AlertDialogAction,
-  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogOverlay,
@@ -11,13 +9,14 @@ import {
 } from 'reka-ui'
 import Button from './Button.vue'
 import { confirmState, finishConfirm } from './confirm'
+
+function onOpenChange(open: boolean): void {
+  if (!open) finishConfirm(false)
+}
 </script>
 
 <template>
-  <AlertDialogRoot
-    :open="confirmState.open"
-    @update:open="(v) => { if (!v) finishConfirm(false) }"
-  >
+  <AlertDialogRoot :open="confirmState.open" @update:open="onOpenChange">
     <AlertDialogPortal>
       <AlertDialogOverlay class="fixed inset-0 z-[60] bg-black/40" />
       <AlertDialogContent
@@ -30,19 +29,15 @@ import { confirmState, finishConfirm } from './confirm'
           {{ confirmState.message }}
         </AlertDialogDescription>
         <div class="mt-5 flex justify-end gap-2">
-          <AlertDialogCancel as-child>
-            <Button variant="secondary" @click="finishConfirm(false)">
-              {{ confirmState.cancelText }}
-            </Button>
-          </AlertDialogCancel>
-          <AlertDialogAction as-child>
-            <Button
-              :variant="confirmState.danger ? 'danger' : 'primary'"
-              @click="finishConfirm(true)"
-            >
-              {{ confirmState.confirmText }}
-            </Button>
-          </AlertDialogAction>
+          <Button variant="secondary" @click="finishConfirm(false)">
+            {{ confirmState.cancelText }}
+          </Button>
+          <Button
+            :variant="confirmState.danger ? 'danger' : 'primary'"
+            @click="finishConfirm(true)"
+          >
+            {{ confirmState.confirmText }}
+          </Button>
         </div>
       </AlertDialogContent>
     </AlertDialogPortal>

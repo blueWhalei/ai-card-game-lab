@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_experiment_config_service
 from app.schemas.common import ApiResponse
@@ -94,13 +94,26 @@ async def update_experiment_config(
     return ApiResponse(data=config)
 
 
+async def _delete_config(config_id: str, service: ExperimentConfigService) -> Response:
+    try:
+        await service.delete_config(config_id)
+    except KeyError as e:
+        raise ExperimentConfigNotFoundError(config_id or "(empty)") from e
+    return Response(status_code=204)
+
+
+@router.delete("", status_code=204, response_class=Response)
+async def delete_experiment_config_by_query(
+    id: str = Query(..., description="Config id; send empty string to remove a blank-id row"),
+    service: ExperimentConfigService = Depends(get_experiment_config_service),
+) -> Response:
+    """Delete by query so blank ids are addressable (path DELETE /{id} cannot encode '')."""
+    return await _delete_config(id, service)
+
+
 @router.delete("/{config_id}", status_code=204, response_class=Response)
 async def delete_experiment_config(
     config_id: str,
     service: ExperimentConfigService = Depends(get_experiment_config_service),
 ) -> Response:
-    try:
-        await service.delete_config(config_id)
-    except KeyError as e:
-        raise ExperimentConfigNotFoundError(config_id) from e
-    return Response(status_code=204)
+    return await _delete_config(config_id, service)

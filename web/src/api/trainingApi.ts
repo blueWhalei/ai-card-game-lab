@@ -6,7 +6,6 @@ export interface TrainingConfig {
   batch_size: number
   num_epochs: number
   output_format: string
-  use_mock?: boolean
   lora_r?: number
   lora_alpha?: number
   lora_dropout?: number
@@ -21,6 +20,7 @@ export interface CreateTaskRequest {
   training_type?: string
   base_model?: string
   config?: Partial<TrainingConfig>
+  experiment_id?: string
 }
 
 export interface TrainingTask {
@@ -36,6 +36,7 @@ export interface TrainingTask {
   model_path: string | null
   created_at: string
   finished_at: string | null
+  experiment_id?: string | null
 }
 
 export interface ModelItem {
@@ -80,6 +81,15 @@ export const trainingApi = {
   ) =>
     apiClient.post<never, ApiResponse<Record<string, unknown>>>(
       `/api/v1/models/${id}/export`,
+      data ?? {},
+    ),
+
+  pushToOllama: (
+    id: string,
+    data?: { ollama_tag?: string; force_convert?: boolean },
+  ) =>
+    apiClient.post<never, ApiResponse<Record<string, unknown>>>(
+      `/api/v1/models/${id}/push-ollama`,
       data ?? {},
     ),
 

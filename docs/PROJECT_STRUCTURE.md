@@ -24,6 +24,7 @@ ai-card-game-lab/
 │   │   │   └── v1/                      # API v1 版本
 │   │   │       ├── __init__.py
 │   │   │       ├── game.py             # 对局 CRUD + 控制
+│   │   │       ├── experiment.py               # 实验（run）CRUD / 采集
 │   │   │       ├── experiment_config.py        # 实验配置管理
 │   │   │       ├── experiment_config_stats.py  # 实验配置统计 API
 │   │   │       ├── data.py             # 数据统计 + 数据集管理
@@ -51,6 +52,7 @@ ai-card-game-lab/
 │   │   │   ├── game_orchestration_service.py # 对局执行编排（引擎调用 + AI 调度）
 │   │   │   ├── game_replay_service.py # 对局回放服务
 │   │   │   ├── ai_service.py          # AI 调用业务编排（重试 + 解析）
+│   │   │   ├── experiment_service.py          # 实验（run）编排 / 采集 / summary
 │   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite + YAML seed）
 │   │   │   ├── experiment_config_stats_service.py  # 实验配置战绩统计
 │   │   │   ├── data_service.py        # 数据统计 + 数据集导出
@@ -68,6 +70,7 @@ ai-card-game-lab/
 │   │   │   ├── dataset_repo.py        # 数据集元数据访问 (SQLite)
 │   │   │   ├── training_repo.py       # 训练任务数据访问 (SQLite)
 │   │   │   ├── prompt_repo.py         # 提示词模板数据访问 (SQLite)
+│   │   │   ├── experiment_repo.py             # 实验（run）数据访问
 │   │   │   ├── experiment_config_repo.py       # 实验配置数据访问 (SQLite)
 │   │   │   └── experiment_config_stats_repo.py # 实验配置战绩统计 (SQLite)
 │   │   │
@@ -115,7 +118,7 @@ ai-card-game-lab/
 │   │   │   │
 │   │   │   └── training/              # 训练模块
 │   │   │       ├── __init__.py
-│   │   │       ├── sft.py             # Mock SFT 训练器（模拟进度推进）
+│   │   │       ├── sft.py             # PEFT LoRA SFT（缺依赖则拒绝）
 │   │   │       └── exporter.py        # JSONL → ChatML SFT 格式导出
 │   │   │
 │   │   ├── websocket/                   # ---------- WebSocket ----------
@@ -171,6 +174,7 @@ ai-card-game-lab/
 │   │   │   ├── client.ts              # Axios 实例 + 拦截器
 │   │   │   ├── types.ts               # API 类型定义（对齐后端 Schema）
 │   │   │   ├── gameApi.ts
+│   │   │   ├── experimentApi.ts           # 实验（run）API
 │   │   │   ├── experimentConfigApi.ts
 │   │   │   ├── dataApi.ts
 │   │   │   ├── trainingApi.ts
@@ -193,6 +197,15 @@ ai-card-game-lab/
 │   │   │   │   ├── AppSidebar.vue
 │   │   │   │   ├── LoadingSpinner.vue
 │   │   │   │   └── EmptyState.vue
+│   │   │   │
+│   │   │   ├── experiment/            # 实验详情拆出的 Tab / 对话框
+│   │   │   │   ├── ExperimentGamesTab.vue
+│   │   │   │   ├── ExperimentPlayersTab.vue
+│   │   │   │   ├── ExperimentTrainingTab.vue
+│   │   │   │   └── ExperimentControlDialog.vue
+│   │   │   │
+│   │   │   ├── training/              # 训练台任务 / 模型 / 实时日志
+│   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
 │   │   │   │   ├── PlayerCard.vue    # 玩家卡片（角色/手牌/思考状态/耗时）
@@ -217,7 +230,9 @@ ai-card-game-lab/
 │   │   ├── views/                      # 页面级组件（路由对应）
 │   │   │   ├── GameView.vue           # 对局列表 + 创建
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
-│   │   │   ├── PipelineView.vue       # 管道总览（默认首页）
+│   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /；/pipeline 重定向至此）
+│   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
+│   │   │   ├── ExperimentDetailView.vue # 实验工作台 /experiments/:id
 │   │   │   ├── ExperimentConfigView.vue  # 实验配置 CRUD
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练控制台（任务列表 + 模型仓库 + 创建对话框）
@@ -242,8 +257,7 @@ ai-card-game-lab/
 │   │       ├── websocket.ts           # WebSocket 消息类型
 │   │       └── env.d.ts               # 环境变量类型声明
 │   │
-│   └── tests/                          # 前端测试（Vitest）
-│       └── components/
+│   └── src/**/*.spec.ts               # 前端单测（Vitest，与源码同目录）
 │
 ├── config/                              # ===== 运行时配置 =====
 │   ├── experiment_configs.yaml         # 实验配置 seed

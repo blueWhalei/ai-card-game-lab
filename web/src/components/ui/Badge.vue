@@ -25,7 +25,7 @@ const variantClass: Record<string, string> = {
   <span
     :class="
       cn(
-        'inline-flex items-center rounded-[6px] px-2 py-0.5 text-sm font-medium',
+        'inline-flex items-center justify-center rounded-[6px] px-2 py-0.5 text-sm font-medium leading-none',
         variantClass[variant],
         props.class,
       )

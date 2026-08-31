@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { PlayerInfoProps } from '@/types/game'
 
 const props = withDefaults(defineProps<PlayerInfoProps>(), {
@@ -10,13 +11,13 @@ const props = withDefaults(defineProps<PlayerInfoProps>(), {
   responseTimeMs: undefined,
 })
 
+const { t } = useI18n()
+
 const roleDisplay = computed(() => {
-  const roleMap: Record<string, string> = {
-    landlord: '地主',
-    peasant: '农民',
-    unknown: '未知',
-  }
-  return roleMap[props.role] || props.role
+  if (props.role === 'landlord') return t('game.landlord')
+  if (props.role === 'peasant') return t('game.peasant')
+  if (props.role === 'unknown') return t('game.roleUnknown')
+  return props.role
 })
 
 const roleColor = computed(() => {
@@ -61,7 +62,7 @@ const formattedResponseTime = computed(() => {
           v-if="showCardsLeft"
           class="text-sm text-gray-500"
         >
-          {{ cardsLeft }} 张
+          {{ t('game.cardsCount', { n: cardsLeft }) }}
         </span>
         <span
           v-if="formattedResponseTime"
@@ -77,7 +78,7 @@ const formattedResponseTime = computed(() => {
           <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
           <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
         </svg>
-        思考中...
+        {{ t('game.thinkingDots') }}
       </span>
     </div>
   </div>

@@ -4,12 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-import aiosqlite
-import structlog
-
+from app.database import connect_sqlite
 from app.repositories.experiment_config_stats_repo import ExperimentConfigStatsRepository
-
-logger = structlog.get_logger()
 
 
 class ExperimentConfigStatsService:
@@ -20,8 +16,7 @@ class ExperimentConfigStatsService:
 
     async def get_all_stats(self, config_ids: list[str]) -> list[dict[str, Any]]:
         """Get statistics for the provided experiment config IDs."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = ExperimentConfigStatsRepository(db)
 
             stats: list[dict[str, Any]] = []
@@ -34,8 +29,7 @@ class ExperimentConfigStatsService:
 
     async def get_config_stats(self, config_id: str) -> dict[str, Any]:
         """Get statistics for a single experiment config."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = ExperimentConfigStatsRepository(db)
             return await self._build_config_stats(
                 repo,

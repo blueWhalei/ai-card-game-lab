@@ -11,6 +11,7 @@ from app.schemas.common import ApiResponse, PaginatedData
 from app.schemas.training import (
     CreateTrainingTaskRequest,
     ExportModelRequest,
+    PushOllamaRequest,
     VerifyModelRequest,
 )
 from app.services.training_service import TrainingService
@@ -31,11 +32,17 @@ class ModelExportError(AppError):
 @router.get("/training/tasks")
 async def list_training_tasks(
     status: str | None = Query(None),
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(10, ge=1, le=100),
     service: TrainingService = Depends(get_training_service),
 ) -> ApiResponse[PaginatedData[dict[str, Any]]]:
-    items, total = await service.list_tasks(status=status, page=page, page_size=page_size)
+    items, total = await service.list_tasks(
+        status=status,
+        experiment_id=experiment_id,
+        page=page,
+        page_size=page_size,
+    )
     return ApiResponse(
         data=PaginatedData(items=items, total=total, page=page, page_size=page_size),
     )
@@ -120,6 +127,22 @@ async def export_model(
         raise
     except ValueError as exc:
         raise ModelExportError(str(exc)) from exc
+    return ApiResponse(data=result)
+
+
+@router.post("/models/{model_id}/push-ollama")
+async def push_model_to_ollama(
+    model_id: str,
+    body: PushOllamaRequest | None = None,
+    service: TrainingService = Depends(get_training_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Merge LoRA → GGUF → ollama create (sync; requires LLAMA_CPP_DIR when converting)."""
+    req = body or PushOllamaRequest()
+    result = await service.push_to_ollama(
+        model_id,
+        ollama_tag=req.ollama_tag,
+        force_convert=req.force_convert,
+    )
     return ApiResponse(data=result)
 
 

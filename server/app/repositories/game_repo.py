@@ -24,12 +24,15 @@ class GameRepository:
         created_at: str,
         status: str = "created",
         metadata: dict[str, Any] | None = None,
+        experiment_id: str | None = None,
     ) -> dict[str, Any]:
         """Insert a new game record and return it as a dict."""
         await self._db.execute(
             """
-            INSERT INTO games (id, game_type, status, player_ids, data_file, created_at, metadata)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO games (
+                id, game_type, status, player_ids, data_file, created_at, metadata, experiment_id
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 game_id,
@@ -39,6 +42,7 @@ class GameRepository:
                 data_file,
                 created_at,
                 json.dumps(metadata) if metadata else None,
+                experiment_id,
             ),
         )
         await self._db.commit()

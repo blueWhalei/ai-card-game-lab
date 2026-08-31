@@ -2,7 +2,7 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, Response
+from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_data_service
 from app.schemas.common import ApiResponse
@@ -14,10 +14,11 @@ router = APIRouter()
 
 @router.get("/data/stats")
 async def data_stats(
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     service: DataService = Depends(get_data_service),
 ) -> ApiResponse[dict[str, Any]]:
     """Overall data statistics."""
-    stats = await service.get_stats()
+    stats = await service.get_stats(experiment_id=experiment_id)
     return ApiResponse(data=stats)
 
 

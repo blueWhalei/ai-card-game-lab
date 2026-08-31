@@ -154,6 +154,43 @@ class TestDecisionServiceStats:
         assert stats["total"] == 0
         assert stats["avg_quality"] == 0
 
+    @pytest.mark.asyncio
+    async def test_get_stats_filters_by_experiment(
+        self, decision_service: DecisionService, tmp_path: Path
+    ) -> None:
+        from app.database import open_db_connection
+
+        db_path = str(tmp_path / "test.db")
+        conn = await open_db_connection(db_path)
+        try:
+            await conn.execute(
+                """
+                INSERT INTO experiments (id, name, notes, game_type, player_ids,
+                                        target_games, created_at, updated_at)
+                VALUES ('exp-1', 'e', '', 'doudizhu', '[]', 1,
+                        '2026-08-30T00:00:00+00:00', '2026-08-30T00:00:00+00:00')
+                """
+            )
+            await conn.execute(
+                """
+                INSERT INTO games (id, game_type, status, player_ids, data_file,
+                                   created_at, experiment_id)
+                VALUES ('game-exp', 'doudizhu', 'finished', '[]', 'a.jsonl',
+                        '2026-08-30T00:00:00+00:00', 'exp-1')
+                """
+            )
+            await conn.commit()
+        finally:
+            await conn.close()
+
+        await _create_sample(decision_service, game_id="game-exp")
+        await _create_sample(decision_service, game_id="game-other")
+
+        scoped = await decision_service.get_stats(experiment_id="exp-1")
+        assert scoped["total"] == 1
+        all_stats = await decision_service.get_stats()
+        assert all_stats["total"] == 2
+
 
 class TestDecisionServiceUpdateOutcome:
     """Test updating decision outcomes."""

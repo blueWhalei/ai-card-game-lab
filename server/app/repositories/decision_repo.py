@@ -139,6 +139,7 @@ class DecisionRepository:
         self,
         *,
         game_id: str | None = None,
+        experiment_id: str | None = None,
         player_id: str | None = None,
         min_quality: float | None = None,
         max_quality: float | None = None,
@@ -152,6 +153,11 @@ class DecisionRepository:
         conditions: list[str] = []
         params: list[Any] = []
 
+        if experiment_id:
+            conditions.append(
+                "game_id IN (SELECT id FROM games WHERE experiment_id = ?)"
+            )
+            params.append(experiment_id)
         if game_id:
             conditions.append("game_id = ?")
             params.append(game_id)
@@ -204,21 +210,26 @@ class DecisionRepository:
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
 
-    async def count_total(self) -> int:
-        """Count total decision points."""
-        return await self._scalar("SELECT COUNT(*) FROM decision_points")
+    async def count_total(self, experiment_id: str | None = None) -> int:
+        """Count total decision points, optionally scoped to an experiment."""
+        where, params = self._experiment_where(experiment_id)
+        return await self._scalar(f"SELECT COUNT(*) FROM decision_points{where}", params)
 
-    async def get_quality_stats(self) -> dict[str, Any]:
+    async def get_quality_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Return avg/min/max quality scores."""
+        where, params = self._experiment_where(
+            experiment_id, extra="quality_score IS NOT NULL"
+        )
         cursor = await self._db.execute(
-            """
+            f"""
             SELECT
                 AVG(quality_score) as avg_quality,
                 MIN(quality_score) as min_quality,
                 MAX(quality_score) as max_quality
             FROM decision_points
-            WHERE quality_score IS NOT NULL
-            """
+            {where}
+            """,
+            params,
         )
         row = await cursor.fetchone()
         return {
@@ -227,30 +238,52 @@ class DecisionRepository:
             "max_quality": row["max_quality"] if row and row["max_quality"] else 0,
         }
 
-    async def get_outcome_counts(self) -> dict[str, int]:
+    async def get_outcome_counts(self, experiment_id: str | None = None) -> dict[str, int]:
         """Return counts grouped by outcome."""
+        where, params = self._experiment_where(experiment_id, extra="outcome IS NOT NULL")
         cursor = await self._db.execute(
-            """
+            f"""
             SELECT outcome, COUNT(*) as count
             FROM decision_points
-            WHERE outcome IS NOT NULL
+            {where}
             GROUP BY outcome
-            """
+            """,
+            params,
         )
         rows = await cursor.fetchall()
         return {row["outcome"]: row["count"] for row in rows}
 
-    async def get_phase_counts(self) -> dict[str, int]:
+    async def get_phase_counts(self, experiment_id: str | None = None) -> dict[str, int]:
         """Return counts grouped by game_phase."""
+        where, params = self._experiment_where(experiment_id)
         cursor = await self._db.execute(
-            """
+            f"""
             SELECT game_phase, COUNT(*) as count
             FROM decision_points
+            {where}
             GROUP BY game_phase
-            """
+            """,
+            params,
         )
         rows = await cursor.fetchall()
         return {row["game_phase"]: row["count"] for row in rows}
+
+    def _experiment_where(
+        self,
+        experiment_id: str | None,
+        *,
+        extra: str | None = None,
+    ) -> tuple[str, list[Any]]:
+        clauses: list[str] = []
+        params: list[Any] = []
+        if experiment_id:
+            clauses.append("game_id IN (SELECT id FROM games WHERE experiment_id = ?)")
+            params.append(experiment_id)
+        if extra:
+            clauses.append(extra)
+        if not clauses:
+            return "", []
+        return " WHERE " + " AND ".join(clauses), params
 
     async def _scalar(self, sql: str, params: list[Any] | None = None) -> Any:
         cursor = await self._db.execute(sql, params or [])

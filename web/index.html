@@ -17,8 +17,11 @@
                 : 'light'
           document.documentElement.setAttribute('data-theme', mode)
           document.documentElement.style.background = mode === 'dark' ? '#121816' : '#f2f4f3'
+          var loc = localStorage.getItem('ink-locale')
+          document.documentElement.lang = loc === 'en' ? 'en' : 'zh-CN'
         } catch (e) {
           document.documentElement.setAttribute('data-theme', 'light')
+          document.documentElement.lang = 'zh-CN'
         }
       })()
     </script>

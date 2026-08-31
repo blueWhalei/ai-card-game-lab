@@ -150,6 +150,24 @@ WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 &sort_order=desc
 ```
 
+### 2.1a 实验（run）
+
+```
+GET    /api/v1/experiments                   # 实验列表
+POST   /api/v1/experiments                   # 创建实验（选手人数由引擎 min/max 校验）
+GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率）
+GET    /api/v1/experiments/{id}              # 实验详情 + summary
+POST   /api/v1/experiments/{id}/collect      # 按实验配置批量开局
+```
+
+#### GET /api/v1/experiments/compare
+
+**Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
+
+**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`。
+
+数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含散局。
+
 ### 2.2 实验配置管理
 
 ```
@@ -306,6 +324,7 @@ GET    /api/v1/system/health                 # 健康检查
 GET    /api/v1/system/config                 # 系统配置（脱敏）
 PATCH  /api/v1/system/config                 # 更新系统配置
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
+GET    /api/v1/system/engines                # 引擎元数据（min/max players）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
 ```
@@ -455,7 +474,7 @@ GET    /api/v1/prompts/active/{template_key} # 获取当前激活版本
 ### 2.10 AI 决策追踪
 
 ```
-GET    /api/v1/traces                        # 追踪列表（支持 game_id、player_id 筛选）
+GET    /api/v1/traces                        # 追踪列表（支持 game_id、experiment_id、player_id 筛选）
 GET    /api/v1/traces/{trace_id}             # 追踪详情（含子操作 spans）
 GET    /api/v1/traces/metrics                # 聚合性能指标
 GET    /api/v1/traces/compare                # Prompt 版本对比

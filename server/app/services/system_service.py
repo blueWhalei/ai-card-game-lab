@@ -9,6 +9,8 @@ from typing import Any
 
 from app.config import Settings
 from app.core.engine.registry import GameEngineRegistry
+from app.utils.providers import is_provider_configured
+from app.utils.runtime_dirs import ensure_runtime_dirs
 
 
 @lru_cache(maxsize=1)
@@ -35,6 +37,10 @@ class SystemService:
         """Return registered game engine types."""
         return self._registry.list_game_types()
 
+    def list_engines(self) -> list[dict[str, Any]]:
+        """Return registered engines with player-count constraints."""
+        return self._registry.describe_engines()
+
     def list_providers(self) -> list[dict[str, Any]]:
         """Return available LLM providers with configuration status."""
         return [
@@ -42,63 +48,63 @@ class SystemService:
                 "id": "openai",
                 "name": "OpenAI",
                 "description": "GPT-4o, GPT-4o-mini 等",
-                "configured": bool(self._settings.openai_api_key),
+                "configured": is_provider_configured(self._settings, "openai"),
                 "default_model": "gpt-4o-mini",
             },
             {
                 "id": "deepseek",
                 "name": "DeepSeek",
                 "description": "deepseek-v4-flash（默认）/ deepseek-v4-pro",
-                "configured": bool(self._settings.deepseek_api_key),
+                "configured": is_provider_configured(self._settings, "deepseek"),
                 "default_model": self._settings.deepseek_model or "deepseek-v4-flash",
             },
             {
                 "id": "kimi",
                 "name": "Kimi / Moonshot",
                 "description": "Moonshot-v1 系列",
-                "configured": bool(self._settings.kimi_api_key),
+                "configured": is_provider_configured(self._settings, "kimi"),
                 "default_model": "moonshot-v1-8k",
             },
             {
                 "id": "dashscope",
                 "name": "DashScope",
                 "description": "阿里云通义千问系列",
-                "configured": bool(self._settings.dashscope_api_key),
+                "configured": is_provider_configured(self._settings, "dashscope"),
                 "default_model": "qwen-plus",
             },
             {
                 "id": "zhipu",
                 "name": "智谱 AI",
                 "description": "GLM-4 系列",
-                "configured": bool(self._settings.zhipu_api_key),
+                "configured": is_provider_configured(self._settings, "zhipu"),
                 "default_model": "glm-4-flash",
             },
             {
                 "id": "minimax",
                 "name": "MiniMax",
                 "description": "MiniMax-Text-01 等",
-                "configured": bool(self._settings.minimax_api_key),
+                "configured": is_provider_configured(self._settings, "minimax"),
                 "default_model": "MiniMax-Text-01",
             },
             {
                 "id": "yi",
                 "name": "零一万物",
                 "description": "Yi-Lightning 等",
-                "configured": bool(self._settings.yi_api_key),
+                "configured": is_provider_configured(self._settings, "yi"),
                 "default_model": "yi-lightning",
             },
             {
                 "id": "baichuan",
                 "name": "百川智能",
                 "description": "Baichuan4 系列",
-                "configured": bool(self._settings.baichuan_api_key),
+                "configured": is_provider_configured(self._settings, "baichuan"),
                 "default_model": "Baichuan4-Turbo",
             },
             {
                 "id": "ollama",
                 "name": "Ollama",
                 "description": "本地部署的开源模型",
-                "configured": True,
+                "configured": is_provider_configured(self._settings, "ollama"),
                 "default_model": "llama3.2",
             },
         ]
@@ -116,9 +122,10 @@ class SystemService:
             "prompt_version": self._settings.prompt_version,
             "prompt_ab_test_enabled": self._settings.prompt_ab_test_enabled,
             "prompt_ab_test_ratio": self._settings.prompt_ab_test_ratio,
-            "training_use_mock": self._settings.training_use_mock,
+            "max_concurrent_games": self._settings.max_concurrent_games,
             "training_deps_available": _cached_training_deps_available(),
             "default_base_models": [
+                "Qwen/Qwen2.5-0.5B",
                 "Qwen/Qwen2.5-1.5B",
                 "Qwen/Qwen2.5-3B",
                 "Qwen/Qwen2.5-7B",
@@ -132,6 +139,32 @@ class SystemService:
         return await asyncio.to_thread(
             _compute_storage_stats, db_path, data_dir
         )
+
+    def get_startup_check(self) -> dict[str, Any]:
+        """Return first-run readiness: dirs, providers, and collectability."""
+        ensure_runtime_dirs(self._settings)
+        providers = self.list_providers()
+        cloud_ready = any(
+            bool(item["configured"]) and item["id"] != "ollama" for item in providers
+        )
+        warnings: list[str] = []
+        if not cloud_ready:
+            warnings.append(
+                "未配置云端 API 密钥。默认选手配置使用 DeepSeek；"
+                "可填写 DEEPSEEK_API_KEY，或把选手配置改成 ollama。"
+            )
+        if not _cached_training_deps_available():
+            warnings.append(
+                "未安装训练依赖，无法创建训练任务。"
+                "请执行：cd server && poetry install --with training"
+            )
+        return {
+            "data_dirs_ready": True,
+            "can_collect": cloud_ready,
+            "seed_provider": "deepseek",
+            "providers": providers,
+            "warnings": warnings,
+        }
 
     def get_runtime_stats(self) -> dict[str, object]:
         from app.core.training.runtime_stats import get_runtime_stats as _snap

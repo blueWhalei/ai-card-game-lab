@@ -56,8 +56,12 @@ export interface CreateDatasetFromDecisionsRequest {
   name: string
   game_type?: string
   game_id?: string | null
+  experiment_id?: string | null
+  player_id?: string | null
   min_quality?: number | null
   outcome?: string | null
+  game_phase?: string | null
+  train_usable?: boolean | null
   train_usable_only?: boolean
   include_thinking?: boolean
 }
@@ -73,7 +77,8 @@ export interface DatasetItem {
 }
 
 export const dataApi = {
-  stats: () => apiClient.get<never, ApiResponse<DataStats>>('/api/v1/data/stats'),
+  stats: (params?: { experiment_id?: string }) =>
+    apiClient.get<never, ApiResponse<DataStats>>('/api/v1/data/stats', { params }),
 
   listDatasets: () => apiClient.get<never, ApiResponse<DatasetItem[]>>('/api/v1/datasets'),
 

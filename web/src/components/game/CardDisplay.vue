@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import type { CardDisplayProps } from '@/types/game'
 import { getCardInfo, isRedSuit, RANK_ORDER } from '@/utils/card'
 
@@ -16,6 +17,8 @@ const props = withDefaults(defineProps<CardDisplayProps>(), {
 const emit = defineEmits<{
   toggle: [card: string]
 }>()
+
+const { t } = useI18n()
 
 function isSelected(card: string): boolean {
   return props.selected.includes(card)
@@ -63,7 +66,7 @@ const sizeClass = computed(() =>
 <template>
   <div class="card-display">
     <div v-if="showCount && cards.length > 0" class="mb-1 text-sm text-gray-500">
-      {{ cards.length }} 张
+      {{ t('game.cardsCount', { n: cards.length }) }}
     </div>
     <div
       class="card-container"
@@ -102,7 +105,7 @@ const sizeClass = computed(() =>
         </div>
       </div>
     </div>
-    <div v-if="cards.length === 0" class="text-sm text-gray-400">无</div>
+    <div v-if="cards.length === 0" class="text-sm text-gray-400">{{ t('common.none') }}</div>
   </div>
 </template>
 

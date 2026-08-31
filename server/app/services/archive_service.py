@@ -15,9 +15,9 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import aiosqlite
 import structlog
 
+from app.database import connect_sqlite
 from app.repositories.archive_repo import ArchiveRepository
 from app.schemas.archive import ArchiveRequest, ArchiveResult, CleanupRequest, CleanupResult
 
@@ -35,8 +35,7 @@ class ArchiveService:
 
     async def get_archive_stats(self) -> dict[str, Any]:
         """Get statistics about archivable data."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = ArchiveRepository(db)
 
             total_games = await repo.count_games()
@@ -68,8 +67,7 @@ class ArchiveService:
         cutoff = datetime.now(UTC) - timedelta(days=request.days_old)
         cutoff_str = cutoff.isoformat()
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = ArchiveRepository(db)
 
             games = await repo.fetch_old_games(cutoff_str, request.game_type)
@@ -131,8 +129,7 @@ class ArchiveService:
         cutoff = datetime.now(UTC) - timedelta(days=request.days_old)
         cutoff_str = cutoff.isoformat()
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = ArchiveRepository(db)
 
             old_games = await repo.fetch_old_games(cutoff_str, request.game_type)

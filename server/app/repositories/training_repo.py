@@ -19,8 +19,8 @@ class TrainingTaskRepository:
             """
             INSERT INTO training_tasks
                 (id, name, dataset_id, base_model, training_type,
-                 config, status, progress, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                 config, status, progress, created_at, experiment_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 data["id"],
@@ -32,6 +32,7 @@ class TrainingTaskRepository:
                 data.get("status", "pending"),
                 data.get("progress", 0),
                 data["created_at"],
+                data.get("experiment_id"),
             ),
         )
         await self._db.commit()
@@ -46,21 +47,28 @@ class TrainingTaskRepository:
         if row is None:
             raise KeyError(f"Training task {task_id} not found")
         return self._normalize(dict(row))
+
     async def list_all(
         self,
         status: str | None = None,
+        experiment_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated training tasks, newest first."""
-        where = ""
+        conditions: list[str] = []
         params: list[Any] = []
         if status:
-            where = "WHERE status = ?"
+            conditions.append("status = ?")
             params.append(status)
+        if experiment_id:
+            conditions.append("experiment_id = ?")
+            params.append(experiment_id)
+        where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
         count_cur = await self._db.execute(
-            f"SELECT COUNT(*) FROM training_tasks {where}", params,
+            f"SELECT COUNT(*) FROM training_tasks {where}",
+            params,
         )
         total = (await count_cur.fetchone())[0]
 

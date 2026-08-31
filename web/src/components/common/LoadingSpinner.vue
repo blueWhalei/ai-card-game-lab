@@ -1,15 +1,15 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
 interface Props {
   text?: string
 }
 
-withDefaults(defineProps<Props>(), {
-  text: '加载中...',
-})
+const { t } = useI18n()
+const props = defineProps<Props>()
 </script>
 
 <template>
-  <UiSpinner size="lg" :label="text" class="py-12" />
+  <UiSpinner size="lg" :label="props.text ?? t('common.loadingEllipsis')" class="py-12" />
 </template>

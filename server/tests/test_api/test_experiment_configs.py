@@ -4,6 +4,11 @@ from __future__ import annotations
 
 from httpx import AsyncClient
 
+from app.config import Settings
+from app.database import open_db_connection
+from app.dependencies import get_experiment_config_service
+from app.repositories.experiment_config_repo import ExperimentConfigRepository
+
 
 async def test_list_and_stats(client: AsyncClient) -> None:
     response = await client.get("/api/v1/experiment-configs")
@@ -77,3 +82,66 @@ async def test_create_conflict(client: AsyncClient) -> None:
     second = await client.post("/api/v1/experiment-configs", json=payload)
     assert second.status_code == 409
     assert second.json()["code"] == "EXPERIMENT_CONFIG_CONFLICT"
+
+
+async def test_create_rejects_blank_id(client: AsyncClient) -> None:
+    payload = {
+        "id": "   ",
+        "name": "Blank",
+        "notes": "",
+        "model_config_data": {
+            "provider": "openai",
+            "model_name": "gpt-4o-mini",
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "max_tokens": 256,
+        },
+    }
+    response = await client.post("/api/v1/experiment-configs", json=payload)
+    assert response.status_code == 422
+
+
+async def test_delete_by_query_and_blank_id(client: AsyncClient, test_settings: Settings) -> None:
+    payload = {
+        "id": "query_del_cfg",
+        "name": "Query Delete",
+        "notes": "",
+        "model_config_data": {
+            "provider": "openai",
+            "model_name": "gpt-4o-mini",
+            "temperature": 0.5,
+            "top_p": 0.9,
+            "max_tokens": 256,
+        },
+    }
+    created = await client.post("/api/v1/experiment-configs", json=payload)
+    assert created.status_code == 201
+
+    missing_query = await client.delete("/api/v1/experiment-configs")
+    assert missing_query.status_code == 422
+
+    deleted = await client.delete("/api/v1/experiment-configs", params={"id": "query_del_cfg"})
+    assert deleted.status_code == 204
+
+    service = get_experiment_config_service()
+    db = await open_db_connection(test_settings.sqlite_path)
+    try:
+        await ExperimentConfigRepository(db).upsert(
+            {
+                "id": "",
+                "name": "legacy blank",
+                "notes": "pre-validation row",
+                "model_config": payload["model_config_data"],
+            }
+        )
+    finally:
+        await db.close()
+    await service.initialize()
+
+    blank_deleted = await client.delete("/api/v1/experiment-configs", params={"id": ""})
+    assert blank_deleted.status_code == 204
+
+    listed = await client.get("/api/v1/experiment-configs")
+    ids = [row["id"] for row in listed.json()["data"]]
+    assert "" not in ids
+    assert "query_del_cfg" not in ids

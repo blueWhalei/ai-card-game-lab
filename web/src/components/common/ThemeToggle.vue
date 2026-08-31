@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { Icon } from '@iconify/vue'
+import { useI18n } from 'vue-i18n'
 import { useTheme } from '@/composables/useTheme'
 import { cn } from '@/lib/cn'
 
@@ -10,6 +11,7 @@ const props = withDefaults(
   {},
 )
 
+const { t } = useI18n()
 const { isDark, toggleTheme } = useTheme()
 </script>
 
@@ -22,8 +24,8 @@ const { isDark, toggleTheme } = useTheme()
         props.class,
       )
     "
-    :aria-label="isDark ? '切换到浅色模式' : '切换到深色模式'"
-    :title="isDark ? '浅色模式' : '深色模式'"
+    :aria-label="isDark ? t('theme.toLight') : t('theme.toDark')"
+    :title="isDark ? t('theme.light') : t('theme.dark')"
     @click="toggleTheme"
   >
     <Icon :icon="isDark ? 'lucide:sun' : 'lucide:moon'" class="h-[18px] w-[18px]" />

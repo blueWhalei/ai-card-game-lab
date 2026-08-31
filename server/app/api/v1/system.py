@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from fastapi import APIRouter, Depends
 
-from app.dependencies import get_archive_service, get_system_service
+from app.dependencies import get_archive_service, get_demo_seed_service, get_system_service
 from app.schemas.archive import ArchiveRequest, ArchiveResult, CleanupRequest, CleanupResult
 from app.schemas.common import ApiResponse
-from app.services.archive_service import ArchiveService
-from app.services.system_service import SystemService
+
+if TYPE_CHECKING:
+    from app.services.archive_service import ArchiveService
+    from app.services.demo_seed_service import DemoSeedService
+    from app.services.system_service import SystemService
 
 router = APIRouter()
 
@@ -27,6 +30,13 @@ async def list_game_types(
     return ApiResponse(data=service.list_game_types())
 
 
+@router.get("/engines")
+async def list_engines(
+    service: SystemService = Depends(get_system_service),
+) -> ApiResponse[list[dict[str, Any]]]:
+    return ApiResponse(data=service.list_engines())
+
+
 @router.get("/providers")
 async def list_providers(
     service: SystemService = Depends(get_system_service),
@@ -39,6 +49,20 @@ async def get_config(
     service: SystemService = Depends(get_system_service),
 ) -> ApiResponse[dict[str, object]]:
     return ApiResponse(data=service.get_config())
+
+
+@router.get("/startup-check")
+async def startup_check(
+    service: SystemService = Depends(get_system_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=service.get_startup_check())
+
+
+@router.post("/seed-demo")
+async def seed_demo(
+    service: DemoSeedService = Depends(get_demo_seed_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.seed_demo())
 
 
 @router.get("/storage")

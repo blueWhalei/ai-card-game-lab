@@ -105,7 +105,9 @@ class ExperimentConfigService:
 
     async def create_config(self, data: dict[str, Any]) -> dict[str, Any]:
         self._ensure_ready()
-        cid = data["id"]
+        cid = str(data.get("id") or "").strip()
+        if not cid:
+            raise ValueError("Config id is required")
         if cid in self._configs:
             raise ValueError(f"Config '{cid}' already exists")
         config = {
@@ -182,6 +184,4 @@ class ExperimentConfigService:
 
     def _ensure_ready(self) -> None:
         if not self._ready:
-            raise RuntimeError(
-                "ExperimentConfigService not initialized; call await initialize()"
-            )
+            raise RuntimeError("ExperimentConfigService not initialized; call await initialize()")

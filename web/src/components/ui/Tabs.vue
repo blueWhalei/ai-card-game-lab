@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
+import { TabsList, TabsRoot, TabsTrigger } from 'reka-ui'
 import { cn } from '@/lib/cn'
 
 export type TabItem = {
@@ -37,7 +37,3 @@ const emit = defineEmits<{
     <slot />
   </TabsRoot>
 </template>
-
-<script lang="ts">
-export { TabsContent }
-</script>

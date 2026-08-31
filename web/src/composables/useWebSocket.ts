@@ -1,4 +1,4 @@
-import { ref, onUnmounted } from 'vue'
+import { ref, onUnmounted, toValue, watch, type MaybeRefOrGetter } from 'vue'
 import type { WsMessage } from '@/types/websocket'
 
 const MAX_RECONNECT_ATTEMPTS = 5
@@ -7,14 +7,19 @@ const HEARTBEAT_INTERVAL_MS = 30000
 
 type MessageHandler = (data: unknown) => void
 
-export function useWebSocket(gameId: string) {
+export function useWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
   const isConnected = ref(false)
   const lastMessage = ref<WsMessage | null>(null)
   let ws: WebSocket | null = null
   let reconnectAttempts = 0
   let reconnectTimer: ReturnType<typeof setTimeout> | null = null
   let heartbeatTimer: ReturnType<typeof setInterval> | null = null
+  let socketGeneration = 0
   const handlers = new Map<string, MessageHandler[]>()
+
+  function currentGameId(): string {
+    return String(toValue(gameIdSource) ?? '')
+  }
 
   function onMessage(type: string, handler: MessageHandler): void {
     const list = handlers.get(type) || []
@@ -39,28 +44,33 @@ export function useWebSocket(gameId: string) {
   }
 
   function connect(): void {
+    const gameId = currentGameId()
+    if (!gameId) return
+
+    const generation = ++socketGeneration
+    reconnectAttempts = 0
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     ws = new WebSocket(`${protocol}//${host}/api/v1/games/ws/${gameId}`)
 
     ws.onopen = () => {
+      if (generation !== socketGeneration) return
       isConnected.value = true
       reconnectAttempts = 0
       startHeartbeat()
     }
 
     ws.onmessage = (event: MessageEvent) => {
+      if (generation !== socketGeneration) return
       try {
         const msg = JSON.parse(event.data as string) as WsMessage
         lastMessage.value = msg
-        // Dispatch to typed handlers
         const typeHandlers = handlers.get(msg.type)
         if (typeHandlers) {
           for (const h of typeHandlers) {
             h(msg.data)
           }
         }
-        // Also dispatch to wildcard handlers
         const wildcardHandlers = handlers.get('*')
         if (wildcardHandlers) {
           for (const h of wildcardHandlers) {
@@ -68,7 +78,6 @@ export function useWebSocket(gameId: string) {
           }
         }
       } catch (error) {
-        // Log malformed messages for debugging
         console.warn('WebSocket message parse failed:', {
           data: event.data,
           error: error instanceof Error ? error.message : String(error),
@@ -77,33 +86,36 @@ export function useWebSocket(gameId: string) {
     }
 
     ws.onclose = () => {
+      if (generation !== socketGeneration) return
       isConnected.value = false
       stopHeartbeat()
-      // Auto-reconnect
       if (reconnectAttempts < MAX_RECONNECT_ATTEMPTS) {
         reconnectAttempts++
-        reconnectTimer = setTimeout(connect, RECONNECT_DELAY_MS)
+        reconnectTimer = setTimeout(() => {
+          if (generation !== socketGeneration) return
+          connect()
+        }, RECONNECT_DELAY_MS)
       }
     }
 
     ws.onerror = () => {
+      if (generation !== socketGeneration) return
       ws?.close()
     }
   }
 
   function disconnect(): void {
-    reconnectAttempts = MAX_RECONNECT_ATTEMPTS // prevent reconnect
+    socketGeneration++
+    reconnectAttempts = MAX_RECONNECT_ATTEMPTS
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
       reconnectTimer = null
     }
     stopHeartbeat()
-    // Close WebSocket with proper cleanup
     if (ws) {
       try {
-        // Only close if still connecting or open
         if (ws.readyState === WebSocket.CONNECTING || ws.readyState === WebSocket.OPEN) {
-          ws.close(1000, 'Component unmounted') // 1000 = Normal Closure
+          ws.close(1000, 'Component unmounted')
         }
       } catch (error) {
         console.warn('WebSocket close failed:', error)
@@ -121,6 +133,15 @@ export function useWebSocket(gameId: string) {
       ws.send(JSON.stringify(message))
     }
   }
+
+  watch(
+    () => currentGameId(),
+    (next, prev) => {
+      if (!next || next === prev) return
+      disconnect()
+      connect()
+    },
+  )
 
   onUnmounted(disconnect)
 

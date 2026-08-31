@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import { formatMs } from '@/utils/card'
 import CardDisplay from '@/components/game/CardDisplay.vue'
 
@@ -17,6 +18,7 @@ const props = defineProps<{
   mini?: boolean
 }>()
 
+const { t } = useI18n()
 </script>
 
 <template>
@@ -44,16 +46,20 @@ const props = defineProps<{
 
     <div :class="mini ? 'text-xs font-semibold text-gray-800 truncate' : 'text-sm font-semibold text-gray-800'">{{ props.name || playerId }}</div>
     <div v-if="!mini" class="mt-1 flex flex-wrap items-center justify-center gap-1 text-[11px] text-gray-500">
-      <template v-if="info?.role === 'landlord'">地主</template>
-      <template v-else-if="info?.role === 'peasant'">农民</template>
+      <template v-if="info?.role === 'landlord'">{{ t('game.landlord') }}</template>
+      <template v-else-if="info?.role === 'peasant'">{{ t('game.peasant') }}</template>
       <span v-if="modelName" class="rounded-full bg-black/5 px-2 py-0.5 text-[10px] text-gray-600">{{ modelName }}</span>
     </div>
     <div :class="mini ? 'mt-0.5 text-base font-bold text-gray-700' : 'mt-1 text-lg font-bold text-gray-700'">
       🃏 {{ info?.cardsLeft ?? '?' }}
     </div>
     <div v-if="!mini && (roundTokens || totalTokens)" class="mt-2 flex flex-wrap justify-center gap-1 text-[11px]">
-      <span v-if="roundTokens" class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">本回 {{ roundTokens }}</span>
-      <span v-if="totalTokens" class="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">累计 {{ totalTokens }}</span>
+      <span v-if="roundTokens" class="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-700">{{
+        t('game.roundTokens', { n: roundTokens })
+      }}</span>
+      <span v-if="totalTokens" class="rounded-full bg-emerald-50 px-2 py-0.5 font-medium text-emerald-700">{{
+        t('game.totalTokens', { n: totalTokens })
+      }}</span>
     </div>
     <!-- Mini mode: show total tokens inline -->
     <div v-if="mini && totalTokens" class="mt-0.5 text-[10px] text-amber-600">
@@ -73,7 +79,7 @@ const props = defineProps<{
       v-if="isThinking"
       class="mt-2 flex items-center justify-center gap-1 rounded bg-blue-50 px-2 py-1 text-xs text-blue-600"
     >
-      <span>💭 思考中</span>
+      <span>{{ t('game.thinkingNow') }}</span>
       <span class="thinking-dots">
         <span class="dot"></span>
         <span class="dot"></span>
@@ -95,9 +101,9 @@ const props = defineProps<{
       class="action-bubble"
       :class="`action-${lastAction}`"
     >
-      <template v-if="lastAction === 'play'">出牌</template>
-      <template v-else-if="lastAction === 'pass'">不出</template>
-      <template v-else-if="lastAction === 'grab'">抢地主</template>
+      <template v-if="lastAction === 'play'">{{ t('game.play') }}</template>
+      <template v-else-if="lastAction === 'pass'">{{ t('game.pass') }}</template>
+      <template v-else-if="lastAction === 'grab'">{{ t('game.grab') }}</template>
     </div>
   </div>
 </template>

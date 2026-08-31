@@ -8,11 +8,11 @@ import time
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
-import aiosqlite
 import structlog
 
 from app.core.ai.stream_chunk import StreamChunk
 from app.core.events import EventBus, GameEndedEvent
+from app.database import bind_game_connection, connect_sqlite
 from app.repositories.game_repo import GameRepository
 from app.repositories.round_repo import RoundRepository
 from app.utils.exceptions import GameNotFoundError
@@ -50,6 +50,7 @@ class GameOrchestrationService:
         event_bus: EventBus,
         decision_service: DecisionService | None = None,
         trace_service: TraceService | None = None,
+        max_concurrent_games: int = 5,
     ) -> None:
         self._engine_registry = engine_registry
         self._collector = collector
@@ -62,6 +63,7 @@ class GameOrchestrationService:
         self._states: dict[str, GameState] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._pause_events: dict[str, asyncio.Event] = {}
+        self._game_slots = asyncio.Semaphore(max(1, max_concurrent_games))
 
     def has_active_game(self, game_id: str) -> bool:
         """Check if a game is currently active."""
@@ -113,54 +115,58 @@ class GameOrchestrationService:
 
     async def _run_game_loop(self, game_id: str) -> None:
         """Run the main game loop until completion."""
+        logger.info("game_loop_waiting_slot", game_id=game_id)
+        async with self._game_slots:
+            await self._run_game_loop_locked(game_id)
+
+    async def _run_game_loop_locked(self, game_id: str) -> None:
+        """Execute one game after a concurrency slot has been acquired."""
         logger.info("game_loop_entering", game_id=game_id)
 
-        # Use aiosqlite.connect directly with async context manager
-        # This avoids the "threads can only be started once" error
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
-            logger.info("game_loop_db_connected", game_id=game_id)
+        async with connect_sqlite(self._sqlite_path) as db:
+            async with bind_game_connection(db):
+                logger.info("game_loop_db_connected", game_id=game_id)
 
-            bg_game_repo = GameRepository(db)
-            bg_round_repo = RoundRepository(db)
+                bg_game_repo = GameRepository(db)
+                bg_round_repo = RoundRepository(db)
 
-            state = self._states.get(game_id)
-            if state is None:
-                logger.error("game_loop_state_not_found", game_id=game_id)
-                return
+                state = self._states.get(game_id)
+                if state is None:
+                    logger.error("game_loop_state_not_found", game_id=game_id)
+                    return
 
-            engine = self._engine_registry.get(state.game_type)
-            logger.info("game_loop_starting", game_id=game_id, game_type=state.game_type)
+                engine = self._engine_registry.get(state.game_type)
+                logger.info("game_loop_starting", game_id=game_id, game_type=state.game_type)
 
-            try:
-                while not engine.is_terminal(state):
-                    event = self._pause_events.get(game_id)
-                    if event:
-                        await event.wait()
+                try:
+                    while not engine.is_terminal(state):
+                        event = self._pause_events.get(game_id)
+                        if event:
+                            await event.wait()
 
-                    state = await self._run_round(game_id, state, engine, bg_round_repo)
-                    self._states[game_id] = state
+                        state = await self._run_round(game_id, state, engine, bg_round_repo)
+                        self._states[game_id] = state
 
-                    await asyncio.sleep(0.5)
+                        await asyncio.sleep(0.5)
 
-                await self._finish_game(game_id, state, engine, bg_game_repo)
-            except asyncio.CancelledError:
-                logger.info("game_loop_cancelled", game_id=game_id)
-                await self._abort_game(
-                    game_id,
-                    bg_game_repo,
-                    status="cancelled",
-                    message="对局已取消",
-                )
-                raise
-            except Exception as exc:
-                logger.exception("game_loop_error", game_id=game_id)
-                await self._abort_game(
-                    game_id,
-                    bg_game_repo,
-                    status="failed",
-                    message=f"对局循环出错: {type(exc).__name__}: {exc}",
-                )
+                    await self._finish_game(game_id, state, engine, bg_game_repo)
+                except asyncio.CancelledError:
+                    logger.info("game_loop_cancelled", game_id=game_id)
+                    await self._abort_game(
+                        game_id,
+                        bg_game_repo,
+                        status="cancelled",
+                        message="对局已取消",
+                    )
+                    raise
+                except Exception as exc:
+                    logger.exception("game_loop_error", game_id=game_id)
+                    await self._abort_game(
+                        game_id,
+                        bg_game_repo,
+                        status="failed",
+                        message=f"对局循环出错: {type(exc).__name__}: {exc}",
+                    )
 
     async def _abort_game(
         self,
@@ -418,7 +424,13 @@ class GameOrchestrationService:
                 output_data={
                     "action_type": str(decision.action.action_type),
                     "cards": decision.action.cards,
+                    "target": decision.action.target,
                     "thinking": decision.thinking[:500],
+                    "action": {
+                        "action_type": str(decision.action.action_type),
+                        "cards": decision.action.cards,
+                        "target": decision.action.target,
+                    },
                 },
                 metrics={
                     "response_time_ms": elapsed_ms,
@@ -540,8 +552,7 @@ class GameOrchestrationService:
         if not event:
             raise GameNotFoundError(game_id)
         event.clear()
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = GameRepository(db)
             await repo.update_status(game_id, "paused")
         await ws_manager.broadcast(game_id, {
@@ -555,8 +566,7 @@ class GameOrchestrationService:
         if not event:
             raise GameNotFoundError(game_id)
         event.set()
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = GameRepository(db)
             await repo.update_status(game_id, "running")
         await ws_manager.broadcast(game_id, {

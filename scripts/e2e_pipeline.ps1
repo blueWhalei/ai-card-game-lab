@@ -10,7 +10,6 @@ param(
 
     [string]$BaseUrl = "http://localhost:8000",
     [int]$Count = 1,
-    [switch]$NoMock,
     [switch]$NoWait
 )
 
@@ -26,7 +25,6 @@ if (-not (Test-Path $Script)) {
 Push-Location $Server
 try {
     $argv = @($Command, "--base-url", $BaseUrl, "--count", "$Count")
-    if ($NoMock) { $argv += "--no-mock" }
     if ($NoWait) { $argv += "--no-wait" }
     poetry run python scripts/e2e_pipeline.py @argv
     exit $LASTEXITCODE

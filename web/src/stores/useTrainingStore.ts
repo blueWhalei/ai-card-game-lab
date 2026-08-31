@@ -10,10 +10,15 @@ export const useTrainingStore = defineStore('training', () => {
   const isLoading = ref(false)
   const currentTask = ref<TrainingTask | null>(null)
 
-  async function fetchTasks(params?: { page?: number; status?: string }): Promise<void> {
+  async function fetchTasks(params?: {
+    page?: number
+    page_size?: number
+    status?: string
+    experiment_id?: string
+  }): Promise<void> {
     isLoading.value = true
     try {
-      const res = await trainingApi.listTasks(params)
+      const res = await trainingApi.listTasks({ page_size: 100, ...params })
       tasks.value = res.data.items
       total.value = res.data.total
     } finally {
@@ -76,6 +81,14 @@ export const useTrainingStore = defineStore('training', () => {
     return res.data
   }
 
+  async function pushToOllama(
+    id: string,
+    data?: { ollama_tag?: string; force_convert?: boolean },
+  ): Promise<Record<string, unknown>> {
+    const res = await trainingApi.pushToOllama(id, data)
+    return res.data
+  }
+
   async function verifyModel(
     id: string,
     data?: { ollama_tag?: string; run_game?: boolean; player_ids?: string[] },
@@ -98,6 +111,7 @@ export const useTrainingStore = defineStore('training', () => {
     fetchModels,
     deleteModel,
     exportModel,
+    pushToOllama,
     verifyModel,
   }
 })

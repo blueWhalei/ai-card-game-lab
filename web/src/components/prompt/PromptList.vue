@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { confirmDialog } from '@/components/ui/confirm'
 import type { PromptTemplateResponse } from '@/api/prompts'
 import { TEMPLATE_KEY_LABELS } from '@/utils/constants'
@@ -23,19 +24,28 @@ const emit = defineEmits<{
   create: []
 }>()
 
+const { t } = useI18n()
+
 const groupedTemplates = computed(() => {
   const groups: Record<string, PromptTemplateResponse[]> = {}
-  for (const t of props.templates) {
-    const key = t.template_key
+  for (const item of props.templates) {
+    const key = item.template_key
     if (!groups[key]) {
       groups[key] = []
     }
-    groups[key]!.push(t)
+    groups[key]!.push(item)
   }
   return groups
 })
 
 const templateKeys = computed(() => Object.keys(groupedTemplates.value))
+
+const tableHeaders = computed(() => [
+  t('prompt.version'),
+  t('common.status'),
+  t('common.updatedAt'),
+  t('common.actions'),
+])
 
 function getTemplateKeyLabel(key: string): string {
   return TEMPLATE_KEY_LABELS[key] || key
@@ -43,9 +53,12 @@ function getTemplateKeyLabel(key: string): string {
 
 async function handleDelete(template: PromptTemplateResponse) {
   const ok = await confirmDialog({
-    message: `确定删除模板 "${getTemplateKeyLabel(template.template_key)} v${template.version}" 吗？`,
-    title: '删除确认',
-    confirmText: '删除',
+    message: t('prompt.deleteConfirm', {
+      name: getTemplateKeyLabel(template.template_key),
+      version: template.version,
+    }),
+    title: t('common.confirm'),
+    confirmText: t('common.delete'),
     danger: true,
   })
   if (!ok) return
@@ -67,9 +80,9 @@ function handleSelect(template: PromptTemplateResponse) {
 
 <template>
   <div class="relative min-h-[120px]">
-    <UiSpinner v-if="loading" overlay label="加载中…" />
-    <UiEmpty v-if="!loading && templates.length === 0" title="暂无提示词模板">
-      <UiButton variant="ghost" size="sm" @click="emit('create')">创建第一个模板</UiButton>
+    <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
+    <UiEmpty v-if="!loading && templates.length === 0" :title="t('prompt.empty')">
+      <UiButton variant="ghost" size="sm" @click="emit('create')">{{ t('prompt.createFirst') }}</UiButton>
     </UiEmpty>
 
     <div v-else-if="!loading" class="space-y-6">
@@ -81,19 +94,21 @@ function handleSelect(template: PromptTemplateResponse) {
         <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
           <div class="flex items-center gap-3">
             <h3 class="text-base font-semibold text-ink-text">{{ getTemplateKeyLabel(key) }}</h3>
-            <UiBadge variant="muted">{{ groupedTemplates[key]?.length ?? 0 }} 个版本</UiBadge>
+            <UiBadge variant="muted">{{
+              t('prompt.versionCount', { n: groupedTemplates[key]?.length ?? 0 })
+            }}</UiBadge>
           </div>
-          <UiButton size="sm" @click="emit('create')">新建版本</UiButton>
+          <UiButton size="sm" @click="emit('create')">{{ t('prompt.newVersion') }}</UiButton>
         </div>
 
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-ink-border text-left text-xs text-ink-text-muted">
-                <th class="pb-2 font-medium">版本</th>
-                <th class="pb-2 font-medium">状态</th>
-                <th class="pb-2 font-medium">更新时间</th>
-                <th class="pb-2 text-right font-medium">操作</th>
+                <th class="pb-2 font-medium">{{ tableHeaders[0] }}</th>
+                <th class="pb-2 font-medium">{{ tableHeaders[1] }}</th>
+                <th class="pb-2 font-medium">{{ tableHeaders[2] }}</th>
+                <th class="pb-2 text-right font-medium">{{ tableHeaders[3] }}</th>
               </tr>
             </thead>
             <tbody>
@@ -107,7 +122,7 @@ function handleSelect(template: PromptTemplateResponse) {
                 <td class="py-3 font-medium text-ink-text">v{{ template.version }}</td>
                 <td class="py-3">
                   <UiBadge :variant="template.is_active ? 'success' : 'muted'">
-                    {{ template.is_active ? '已激活' : '未激活' }}
+                    {{ template.is_active ? t('prompt.active') : t('prompt.inactive') }}
                   </UiBadge>
                 </td>
                 <td class="py-3 text-ink-text-muted">{{ formatDateTime(template.updated_at) }}</td>
@@ -120,7 +135,7 @@ function handleSelect(template: PromptTemplateResponse) {
                       :variant="template.is_active ? 'secondary' : 'primary'"
                       @click.stop="handleActivate(template)"
                     >
-                      {{ template.is_active ? '停用' : '激活' }}
+                      {{ template.is_active ? t('prompt.deactivate') : t('prompt.activate') }}
                     </UiButton>
                     <UiButton
                       size="sm"
@@ -128,7 +143,7 @@ function handleSelect(template: PromptTemplateResponse) {
                       class="text-ink-danger"
                       @click.stop="handleDelete(template)"
                     >
-                      删除
+                      {{ t('common.delete') }}
                     </UiButton>
                   </div>
                 </td>

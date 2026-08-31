@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { useRoute } from 'vue-router'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { showApiError } from '@/utils/error'
@@ -8,34 +9,63 @@ import { useTrainingStore } from '@/stores/useTrainingStore'
 import { dataApi } from '@/api/dataApi'
 import type { DatasetItem } from '@/api/dataApi'
 import { TRAINING_STATUS_MAP } from '@/utils/constants'
-import { formatDateTime } from '@/utils/format'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiSelect from '@/components/ui/Select.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
-import UiCheckbox from '@/components/ui/Checkbox.vue'
-import UiBadge from '@/components/ui/Badge.vue'
-import UiProgress from '@/components/ui/Progress.vue'
-import UiSpinner from '@/components/ui/Spinner.vue'
-import UiEmpty from '@/components/ui/Empty.vue'
-import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import { systemApi } from '@/api/systemApi'
+import { experimentConfigApi } from '@/api/experimentConfigApi'
+import type { ModelItem } from '@/api/trainingApi'
+import {
+  configIdForModel,
+  configNameForModel,
+  ollamaTagForModel,
+} from '@/utils/adapterConfig'
 import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
+import TrainingModelsPanel from '@/components/training/TrainingModelsPanel.vue'
+import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
 
+const { t } = useI18n()
 const store = useTrainingStore()
 const route = useRoute()
+const router = useRouter()
 const datasets = ref<DatasetItem[]>([])
 const showCreateDialog = ref(false)
 const activeTab = ref<'tasks' | 'models'>('tasks')
 const trainingDepsAvailable = ref(false)
 const cancelling = ref(false)
+const pushingModelId = ref<string | null>(null)
+const registerAfterPush = ref(false)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
+const experimentIdFilter = computed(() => {
+  const v = route.query.experiment_id
+  return typeof v === 'string' && v ? v : undefined
+})
+
 function applyTabFromRoute(): void {
-  if (route.query.tab === 'models') {
-    activeTab.value = 'models'
+  activeTab.value = route.query.tab === 'models' ? 'models' : 'tasks'
+}
+
+async function refreshTasks(): Promise<void> {
+  await store.fetchTasks(
+    experimentIdFilter.value ? { experiment_id: experimentIdFilter.value } : undefined,
+  )
+}
+
+function setTab(tab: 'tasks' | 'models'): void {
+  activeTab.value = tab
+  const query = { ...route.query }
+  if (tab === 'models') {
+    query.tab = 'models'
+  } else {
+    delete query.tab
+  }
+  void router.replace({ query })
+  if (tab === 'models') {
+    void store.fetchModels()
   }
 }
 
@@ -45,21 +75,20 @@ const CPU_SMOKE_MAX_STEPS = 20
 const createForm = ref({
   name: '',
   dataset_id: '',
-  base_model: 'Qwen/Qwen2.5-1.5B',
+  base_model: CPU_SMOKE_BASE_MODEL,
   training_type: 'sft',
   learning_rate: 2e-5,
   batch_size: 1,
   num_epochs: 1,
-  use_mock: true,
   lora_r: 8,
-  max_steps: 0,
+  max_steps: CPU_SMOKE_MAX_STEPS,
 })
 
 const baseModelOptions = ref([
   { label: 'Qwen2.5-1.5B', value: 'Qwen/Qwen2.5-1.5B' },
   { label: 'Qwen2.5-7B', value: 'Qwen/Qwen2.5-7B' },
   { label: 'Llama-3.2-3B', value: 'meta-llama/Llama-3.2-3B' },
-  { label: 'Qwen2.5-0.5B (CPU 冒烟)', value: CPU_SMOKE_BASE_MODEL },
+  { label: t('training.cpuSmoke'), value: CPU_SMOKE_BASE_MODEL },
 ])
 
 const datasetOptions = computed(() =>
@@ -74,15 +103,30 @@ const datasetOptions = computed(() =>
 
 type TaskRow = (typeof store.tasks)[number] & Record<string, unknown>
 
-const taskColumns: TableColumn<TaskRow>[] = [
-  { key: 'name', label: '任务名称' },
-  { key: 'base_model', label: '基座模型', class: 'w-48' },
-  { key: 'status', label: '状态', class: 'w-40' },
-  { key: 'progress', label: '进度', class: 'w-40' },
-  { key: 'created_at', label: '创建时间', class: 'w-44' },
-]
+const taskColumns = computed(
+  (): TableColumn<TaskRow>[] => [
+    { key: 'name', label: t('training.colTaskName') },
+    { key: 'base_model', label: t('training.colBase'), class: 'w-48' },
+    { key: 'status', label: t('common.status'), class: 'w-40' },
+    { key: 'progress', label: t('common.progress'), class: 'w-40' },
+    { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
+  ],
+)
 
 const taskRows = computed(() => store.tasks as TaskRow[])
+
+type ModelRow = ModelItem & Record<string, unknown>
+
+const modelColumns = computed(
+  (): TableColumn<ModelRow>[] => [
+    { key: 'name', label: t('common.name') },
+    { key: 'base_model', label: t('training.colBaseShort'), class: 'w-48' },
+    { key: 'model_path', label: t('common.path') },
+    { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
+  ],
+)
+
+const modelRows = computed(() => store.models as ModelRow[])
 
 function statusVariant(status: string): 'muted' | 'success' | 'warning' | 'danger' | 'default' {
   const type = TRAINING_STATUS_MAP[status]?.type
@@ -98,7 +142,7 @@ async function fetchDatasets() {
     const res = await dataApi.listDatasets()
     datasets.value = res.data
   } catch (e: unknown) {
-    showApiError(e, '加载数据集失败')
+    showApiError(e, t('training.loadDatasetsFailed'))
   }
 }
 
@@ -106,63 +150,46 @@ function openCreateDialog() {
   createForm.value = {
     name: '',
     dataset_id: '',
-    base_model: 'Qwen/Qwen2.5-1.5B',
+    base_model: CPU_SMOKE_BASE_MODEL,
     training_type: 'sft',
     learning_rate: 2e-5,
     batch_size: 1,
     num_epochs: 1,
-    use_mock: true,
     lora_r: 8,
-    max_steps: 0,
+    max_steps: CPU_SMOKE_MAX_STEPS,
   }
   showCreateDialog.value = true
   fetchDatasets()
 }
 
-function onUseMockChange(checked: boolean) {
-  if (!checked) {
-    // Switching off Mock → CPU smoke defaults
-    createForm.value.base_model = CPU_SMOKE_BASE_MODEL
-    createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
-  }
-}
-
 async function handleCreate() {
   if (!createForm.value.name.trim()) {
-    toast.warning('请输入任务名称')
+    toast.warning(t('training.needTaskName'))
     return
   }
   if (!createForm.value.dataset_id) {
-    toast.warning('请选择数据集')
+    toast.warning(t('training.needDataset'))
     return
   }
-  if (!createForm.value.use_mock) {
-    if (!trainingDepsAvailable.value) {
-      toast.warning(
-        '未安装训练依赖，无法运行真实训练。请先执行：poetry install --with training',
-      )
-      return
-    }
-    const ok = await confirmDialog({
-      title: '确认 CPU 冒烟训练',
-      message:
-        '将以 CPU 冒烟模式运行（约数分钟、不为牌力）。可用内存不足会拒绝启动。',
-      confirmText: '开始训练',
-      cancelText: '取消',
-    })
-    if (!ok) return
+  if (!trainingDepsAvailable.value) {
+    toast.warning(t('training.noDepsToast'))
+    return
   }
-  // Schema requires max_steps >= 1 when present; omit on Mock (or when <= 0)
-  // to avoid 422. The backend treats missing max_steps as "no cap".
+  const ok = await confirmDialog({
+    title: t('training.confirmStartTitle'),
+    message: t('training.confirmStartMsg'),
+    confirmText: t('training.startTrain'),
+    cancelText: t('common.cancel'),
+  })
+  if (!ok) return
   const trainingConfig: Record<string, unknown> = {
     learning_rate: createForm.value.learning_rate,
     batch_size: createForm.value.batch_size,
     num_epochs: createForm.value.num_epochs,
     output_format: 'pytorch',
-    use_mock: createForm.value.use_mock,
     lora_r: createForm.value.lora_r,
   }
-  if (!createForm.value.use_mock && createForm.value.max_steps > 0) {
+  if (createForm.value.max_steps > 0) {
     trainingConfig.max_steps = createForm.value.max_steps
   }
   try {
@@ -173,51 +200,59 @@ async function handleCreate() {
       training_type: createForm.value.training_type,
       config: trainingConfig,
     })
-    toast.success('训练任务已创建')
+    toast.success(t('training.taskCreated'))
     showCreateDialog.value = false
   } catch (e: unknown) {
-    showApiError(e, '创建失败')
+    showApiError(e, t('error.createFailed'))
   }
 }
 
 async function handleCancelTask(id: string) {
   const ok = await confirmDialog({
-    title: '取消训练',
-    message: '确定取消该训练任务？进行中的 CPU 冒烟会尽快停止。',
-    confirmText: '取消训练',
+    title: t('training.cancelTitle'),
+    message: t('training.cancelMsg'),
+    confirmText: t('training.cancelTrain'),
     danger: true,
   })
   if (!ok) return
   cancelling.value = true
   try {
     await store.cancelTask(id)
-    toast.success('已请求取消训练任务')
+    toast.success(t('training.cancelRequested'))
   } catch (e: unknown) {
-    showApiError(e, '取消失败')
+    showApiError(e, t('training.cancelFailed'))
   } finally {
     cancelling.value = false
   }
 }
 
 async function handleDeleteTask(id: string) {
-  const ok = await confirmDialog({ message: '确定删除此训练任务？', title: '确认', danger: true })
+  const ok = await confirmDialog({
+    message: t('training.deleteTask'),
+    title: t('common.confirm'),
+    danger: true,
+  })
   if (!ok) return
   try {
     await store.deleteTask(id)
-    toast.success('已删除')
+    toast.success(t('error.deleted'))
   } catch (e: unknown) {
-    showApiError(e, '删除失败')
+    showApiError(e, t('error.deleteFailed'))
   }
 }
 
 async function handleDeleteModel(id: string) {
-  const ok = await confirmDialog({ message: '确定删除此模型？', title: '确认', danger: true })
+  const ok = await confirmDialog({
+    message: t('training.deleteModel'),
+    title: t('common.confirm'),
+    danger: true,
+  })
   if (!ok) return
   try {
     await store.deleteModel(id)
-    toast.success('已删除')
+    toast.success(t('error.deleted'))
   } catch (e: unknown) {
-    showApiError(e, '删除失败')
+    showApiError(e, t('error.deleteFailed'))
   }
 }
 
@@ -229,11 +264,35 @@ async function handleExportModel(id: string) {
     const merged = result.merged === true
     toast.success(
       merged
-        ? `已导出到 ${deployDir}（含 merged）。转 GGUF 后: ollama create ${tag} -f Modelfile`
-        : `已导出脚本到 ${deployDir}。安装 training 依赖后可合并 LoRA；详见目录内 README`,
+        ? t('training.exportedMerged', { dir: deployDir, tag })
+        : t('training.exportedScript', { dir: deployDir }),
     )
   } catch (e: unknown) {
-    showApiError(e, '导出失败（Mock 模型无法导出）')
+    showApiError(e, t('training.exportFailed'))
+  }
+}
+
+function isLoraModel(m: ModelItem): boolean {
+  return Boolean(m.model_path && !m.model_path.endsWith('model.bin'))
+}
+
+async function handlePushToOllama(m: ModelItem) {
+  if (!isLoraModel(m)) {
+    toast.warning(t('training.notLora'))
+    return
+  }
+  pushingModelId.value = m.id
+  try {
+    const result = await store.pushToOllama(m.id)
+    const tag = String(result.ollama_tag ?? ollamaTagForModel(m.id))
+    toast.success(t('training.pushed', { tag }))
+    if (registerAfterPush.value) {
+      await handleRegisterAsPlayer(m)
+    }
+  } catch (e: unknown) {
+    showApiError(e, t('training.pushFailed'))
+  } finally {
+    pushingModelId.value = null
   }
 }
 
@@ -243,13 +302,61 @@ async function handleVerifyModel(id: string, runGame: boolean) {
     if (result.ok) {
       const gameId = (result.game as { game_id?: string } | undefined)?.game_id
       toast.success(
-        runGame && gameId ? `验证通过，测试对局 ${gameId}` : '决策冒烟验证通过',
+        runGame && gameId
+          ? t('training.verifiedGame', { id: gameId })
+          : t('training.verifiedSmoke'),
       )
     } else {
-      toast.warning(String(result.error || '验证未通过，请先完成 GGUF + ollama create'))
+      toast.warning(String(result.error || t('training.verifyNeedOllama')))
     }
   } catch (e: unknown) {
-    showApiError(e, '验证失败')
+    showApiError(e, t('training.verifyFailed'))
+  }
+}
+
+async function handleRegisterAsPlayer(m: ModelItem) {
+  if (!m.model_path || m.model_path.endsWith('model.bin')) {
+    toast.warning(t('training.notLoraPlayer'))
+    return
+  }
+  const configId = configIdForModel(m.id)
+  const tag = ollamaTagForModel(m.id)
+  const name = configNameForModel(m.name)
+  const notes = [
+    `from training task ${m.id}`,
+    `base_model=${m.base_model}`,
+    `adapter=${m.model_path}`,
+    `ollama_tag=${tag}`,
+    t('training.ollamaNeedTag'),
+  ].join('; ')
+
+  try {
+    const existing = await experimentConfigApi.get(configId).catch(() => null)
+    if (existing?.data) {
+      toast.info(t('training.playerExists', { name: existing.data.name, id: configId }))
+      void router.push('/experiment-configs')
+      return
+    }
+  } catch {
+    /* treat as missing */
+  }
+
+  try {
+    await experimentConfigApi.create({
+      id: configId,
+      name,
+      notes,
+      model_config_data: {
+        provider: 'ollama',
+        model_name: tag,
+        temperature: 0.3,
+        top_p: 0.9,
+        max_tokens: 256,
+      },
+    })
+    toast.success(t('training.playerAdded', { name, tag }))
+  } catch (e: unknown) {
+    showApiError(e, t('training.addPlayerFailed'))
   }
 }
 
@@ -259,11 +366,11 @@ function formatProgress(p: number): string {
 
 function startPolling() {
   pollTimer = setInterval(async () => {
-    const hasRunning = store.tasks.some((t) =>
-      ['pending', 'exporting', 'training'].includes(t.status),
+    const hasRunning = store.tasks.some((task) =>
+      ['pending', 'exporting', 'training'].includes(task.status),
     )
     if (hasRunning) {
-      await store.fetchTasks()
+      await refreshTasks()
     }
   }, 3000)
 }
@@ -279,25 +386,29 @@ onMounted(async () => {
       }))
       createForm.value.base_model = models[0] ?? createForm.value.base_model
     }
-    if (typeof cfg.data.training_use_mock === 'boolean') {
-      createForm.value.use_mock = cfg.data.training_use_mock
-      if (!cfg.data.training_use_mock) {
-        createForm.value.base_model = CPU_SMOKE_BASE_MODEL
-        createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
-      }
-    }
+    createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
     trainingDepsAvailable.value = cfg.data.training_deps_available === true
   } catch (e: unknown) {
-    // Non-blocking: keep hardcoded base models / mock defaults
-    showApiError(e, '加载系统配置失败，已使用本地默认值')
+    showApiError(e, t('training.configFallback'))
   }
   applyTabFromRoute()
   if (activeTab.value === 'models') {
     void store.fetchModels()
   }
-  store.fetchTasks()
+  await refreshTasks()
   store.fetchModels()
   startPolling()
+})
+
+watch(
+  () => route.query.tab,
+  () => {
+    applyTabFromRoute()
+  },
+)
+
+watch(experimentIdFilter, () => {
+  void refreshTasks()
 })
 
 onUnmounted(() => {
@@ -306,17 +417,51 @@ onUnmounted(() => {
     pollTimer = null
   }
 })
+
 </script>
 
 <template>
   <div class="page-container">
-    <div class="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <p class="text-base text-ink-text-secondary">
-        推荐：决策点页「登记为训练数据集」(ChatML) → 本页创建任务。也可用 JSONL 对局筛选数据集。默认 Mock；真实 LoRA 需
-        <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-sm">poetry install --with training</code>
-        并关闭「使用 Mock」。
+    <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <p class="min-w-0 text-sm text-ink-text-secondary">
+        {{ t('training.subtitle') }}
       </p>
-      <UiButton @click="openCreateDialog">创建训练任务</UiButton>
+      <UiButton
+        class="shrink-0 whitespace-nowrap self-start"
+        :disabled="!trainingDepsAvailable"
+        @click="openCreateDialog"
+      >
+        {{ t('training.createTask') }}
+      </UiButton>
+    </div>
+
+    <div
+      v-if="!trainingDepsAvailable"
+      class="mb-5 rounded-ink-md border border-ink-accent/40 bg-ink-surface px-4 py-3 text-sm text-ink-text-secondary"
+    >
+      {{ t('training.noDeps') }}
+      <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-xs">cd server && poetry install --with training</code>
+    </div>
+
+    <div
+      v-if="experimentIdFilter"
+      class="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-ink-md border border-ink-border bg-ink-surface px-4 py-3 text-sm"
+    >
+      <span class="text-ink-text-secondary">
+        {{ t('training.filterExperiment', { id: experimentIdFilter }) }}
+      </span>
+      <UiButton
+        variant="ghost"
+        size="sm"
+        @click="
+          router.replace({
+            path: '/training',
+            query: { ...route.query, experiment_id: undefined },
+          })
+        "
+      >
+        {{ t('training.clearFilter') }}
+      </UiButton>
     </div>
 
     <div class="mb-6 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
@@ -328,9 +473,9 @@ onUnmounted(() => {
             ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
             : 'text-ink-text-muted hover:text-ink-text'
         "
-        @click="activeTab = 'tasks'"
+        @click="setTab('tasks')"
       >
-        训练任务
+        {{ t('training.tasks') }}
       </button>
       <button
         type="button"
@@ -340,9 +485,9 @@ onUnmounted(() => {
             ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
             : 'text-ink-text-muted hover:text-ink-text'
         "
-        @click="activeTab = 'models'; store.fetchModels()"
+        @click="setTab('models')"
       >
-        模型仓库
+        {{ t('training.models') }}
       </button>
     </div>
 
@@ -352,121 +497,70 @@ onUnmounted(() => {
       @cancel="handleCancelTask"
     />
 
-    <div v-if="activeTab === 'tasks'" class="relative">
-      <UiSpinner v-if="store.isLoading" overlay label="加载中…" />
-      <UiTable :columns="taskColumns" :rows="taskRows" row-key="id">
-        <template #cell-base_model="{ row }">
-          <span class="font-mono text-xs">{{ row.base_model }}</span>
-        </template>
-        <template #cell-status="{ row }">
-          <div class="flex flex-wrap items-center gap-1">
-            <UiBadge :variant="statusVariant(String(row.status))">
-              {{ TRAINING_STATUS_MAP[String(row.status)]?.label || row.status }}
-            </UiBadge>
-            <UiBadge v-if="row.result?.mock === true" variant="muted">Mock</UiBadge>
-            <UiBadge
-              v-else-if="row.status === 'completed' && row.result?.mock === false"
-              variant="success"
-            >
-              LoRA
-            </UiBadge>
-          </div>
-        </template>
-        <template #cell-progress="{ row }">
-          <UiProgress
-            v-if="['exporting', 'training'].includes(String(row.status))"
-            :value="Math.round(Number(row.progress) * 100)"
-            class="mt-1"
-          />
-          <span v-else-if="row.status === 'completed'" class="text-sm text-ink-success">
-            {{ formatProgress(Number(row.progress)) }}
-          </span>
-          <span v-else class="text-sm text-ink-text-muted">-</span>
-        </template>
-        <template #cell-created_at="{ row }">
-          {{ formatDateTime(String(row.created_at)) }}
-        </template>
-        <template #actions="{ row }">
-          <UiButton
-            variant="ghost"
-            size="sm"
-            class="text-ink-danger"
-            @click="handleDeleteTask(String(row.id))"
-          >
-            删除
-          </UiButton>
-        </template>
-      </UiTable>
-    </div>
+    <TrainingTasksPanel
+      v-if="activeTab === 'tasks'"
+      :columns="taskColumns"
+      :rows="taskRows"
+      :loading="store.isLoading"
+      :status-variant="statusVariant"
+      :format-progress="formatProgress"
+      @delete="handleDeleteTask"
+    />
 
-    <div v-if="activeTab === 'models'">
-      <UiEmpty v-if="store.models.length === 0" title="暂无训练产出模型" />
-      <div v-else class="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <div
-          v-for="m in store.models"
-          :key="m.id"
-          class="rounded-ink-md border border-ink-border bg-ink-surface p-5 transition-shadow hover:shadow-[var(--ink-shadow-md)]"
-        >
-          <div class="mb-2 text-sm font-semibold text-ink-text">{{ m.name }}</div>
-          <div class="mb-1 text-xs text-ink-text-muted">
-            基座: <span class="font-mono">{{ m.base_model }}</span>
-          </div>
-          <div class="mb-1 truncate text-xs text-ink-text-muted" :title="m.model_path || ''">
-            {{ m.model_path }}
-          </div>
-          <div class="mb-3 text-xs text-ink-text-muted">{{ formatDateTime(m.created_at) }}</div>
-          <div class="flex flex-wrap gap-2">
-            <UiButton variant="secondary" size="sm" @click="handleExportModel(m.id)">
-              导出部署包
-            </UiButton>
-            <UiButton variant="secondary" size="sm" @click="handleVerifyModel(m.id, false)">
-              验证决策
-            </UiButton>
-            <UiButton variant="secondary" size="sm" @click="handleVerifyModel(m.id, true)">
-              测一局
-            </UiButton>
-            <UiButton
-              variant="ghost"
-              size="sm"
-              class="text-ink-danger"
-              @click="handleDeleteModel(m.id)"
-            >
-              删除
-            </UiButton>
-          </div>
-        </div>
-      </div>
-    </div>
+    <TrainingModelsPanel
+      v-if="activeTab === 'models'"
+      :columns="modelColumns"
+      :rows="modelRows"
+      :empty="store.models.length === 0"
+      :register-after-push="registerAfterPush"
+      :pushing-model-id="pushingModelId"
+      :is-lora-model="isLoraModel"
+      @update:register-after-push="registerAfterPush = $event"
+      @push="handlePushToOllama"
+      @export="handleExportModel"
+      @register="handleRegisterAsPlayer"
+      @verify="handleVerifyModel"
+      @delete="handleDeleteModel"
+    />
+
 
     <UiDialog
       :open="showCreateDialog"
-      title="创建训练任务"
+      :title="t('training.createTask')"
       class="w-[min(92vw,550px)]"
       @update:open="showCreateDialog = $event"
     >
       <div class="space-y-4">
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            任务名称 <span class="text-ink-danger">*</span>
+            {{ t('training.taskName') }} <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="createForm.name" placeholder="如：斗地主SFT-v1" class="w-full" />
+          <UiInput v-model="createForm.name" :placeholder="t('training.taskNamePh')" class="w-full" />
         </div>
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            数据集 <span class="text-ink-danger">*</span>
+            {{ t('training.dataset') }} <span class="text-ink-danger">*</span>
           </label>
           <UiSelect
             v-model="createForm.dataset_id"
             :options="datasetOptions"
-            placeholder="选择数据集"
+            :placeholder="t('training.pickDataset')"
             class="w-full"
           />
-          <div v-if="datasets.length === 0" class="mt-1 text-xs text-ink-accent">
-            暂无数据集，请先在「数据看板」创建
+          <div v-if="datasets.length === 0" class="mt-2 text-xs text-ink-accent">
+            {{ t('training.noDatasetPrefix') }}
+            <button
+              type="button"
+              class="underline"
+              @click="showCreateDialog = false; router.push('/decisions')"
+            >
+              {{ t('nav.decisions') }}
+            </button>
+            {{ t('training.noDatasetSuffix') }}
           </div>
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">基座模型</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.baseModel') }}</label>
           <UiSelect
             v-model="createForm.base_model"
             :options="baseModelOptions"
@@ -474,10 +568,10 @@ onUnmounted(() => {
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">训练超参</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.params') }}</label>
           <div class="grid grid-cols-3 gap-3">
             <div>
-              <div class="mb-1 text-xs text-ink-text-muted">学习率</div>
+              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.lr') }}</div>
               <UiInputNumber
                 :model-value="createForm.learning_rate"
                 :min="1e-6"
@@ -488,7 +582,7 @@ onUnmounted(() => {
               />
             </div>
             <div>
-              <div class="mb-1 text-xs text-ink-text-muted">Batch Size</div>
+              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.batch') }}</div>
               <UiInputNumber
                 :model-value="createForm.batch_size"
                 :min="1"
@@ -498,7 +592,7 @@ onUnmounted(() => {
               />
             </div>
             <div>
-              <div class="mb-1 text-xs text-ink-text-muted">Epochs</div>
+              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.epochs') }}</div>
               <UiInputNumber
                 :model-value="createForm.num_epochs"
                 :min="1"
@@ -510,47 +604,35 @@ onUnmounted(() => {
           </div>
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">LoRA / 模式</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">LoRA</label>
           <div class="flex flex-wrap items-center gap-4">
-            <UiCheckbox
-              :model-value="createForm.use_mock"
-              label="使用 Mock（不跑真实训练）"
-              @update:model-value="
-                (v) => {
-                  createForm.use_mock = v
-                  onUseMockChange(v)
-                }
-              "
-            />
-            <div v-if="!createForm.use_mock" class="flex items-center gap-2">
+            <div class="flex items-center gap-2">
               <span class="text-xs text-ink-text-muted">LoRA r</span>
               <UiInputNumber
                 :model-value="createForm.lora_r"
                 :min="1"
                 :max="64"
-                class="w-24"
                 @update:model-value="(v) => (createForm.lora_r = v ?? 8)"
               />
             </div>
-            <div v-if="!createForm.use_mock" class="flex items-center gap-2">
-              <span class="text-xs text-ink-text-muted">Max Steps</span>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-ink-text-muted">{{ t('training.maxSteps') }}</span>
               <UiInputNumber
                 :model-value="createForm.max_steps"
                 :min="1"
                 :max="1000"
-                class="w-28"
                 @update:model-value="(v) => (createForm.max_steps = v ?? CPU_SMOKE_MAX_STEPS)"
               />
             </div>
           </div>
           <div class="mt-1 text-xs text-ink-text-muted">
-            真实 SFT：安装训练组依赖后取消 Mock，产物为 LoRA adapter 目录。
+            {{ t('training.loraHint') }}
           </div>
         </div>
       </div>
       <template #footer>
-        <UiButton variant="secondary" @click="showCreateDialog = false">取消</UiButton>
-        <UiButton @click="handleCreate">创建</UiButton>
+        <UiButton variant="secondary" @click="showCreateDialog = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton :disabled="!trainingDepsAvailable" @click="handleCreate">{{ t('common.create') }}</UiButton>
       </template>
     </UiDialog>
   </div>

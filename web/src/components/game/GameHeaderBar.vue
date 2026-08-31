@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { GameItem } from '@/api/gameApi'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
@@ -20,6 +21,8 @@ defineEmits<{
   pause: []
   resume: []
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -32,7 +35,7 @@ defineEmits<{
         class="text-sm text-ink-obs-accent hover:underline"
         @click="$emit('back')"
       >
-        ← 工作台
+        {{ t('game.back') }}
       </button>
       <span v-if="game" class="font-mono text-xs text-ink-obs-muted">{{ game.id }}</span>
       <span
@@ -40,7 +43,7 @@ defineEmits<{
         :class="isConnected ? 'bg-ink-success' : 'bg-ink-danger'"
       />
       <span class="text-xs" :class="isConnected ? 'text-ink-success' : 'text-ink-danger'">
-        {{ isConnected ? '已连接' : '连接中…' }}
+        {{ isConnected ? t('game.connected') : t('game.connecting') }}
       </span>
       <UiBadge v-if="totalTokens > 0" variant="accent">
         Token {{ totalTokens.toLocaleString() }}
@@ -48,17 +51,19 @@ defineEmits<{
       <span v-if="latestModelName" class="text-xs text-ink-obs-muted">{{ latestModelName }}</span>
     </div>
     <div class="flex items-center gap-2">
-      <UiButton v-if="!isStarted && !isFinished" size="sm" @click="$emit('start')">启动</UiButton>
+      <UiButton v-if="!isStarted && !isFinished" size="sm" @click="$emit('start')">{{
+        t('common.start')
+      }}</UiButton>
       <UiButton
         v-if="isStarted && !isPaused && !isFinished"
         size="sm"
         variant="secondary"
         @click="$emit('pause')"
       >
-        暂停
+        {{ t('common.pause') }}
       </UiButton>
-      <UiButton v-if="isPaused" size="sm" @click="$emit('resume')">继续</UiButton>
-      <UiBadge v-if="isFinished && !isReplayMode" variant="danger">已结束</UiBadge>
+      <UiButton v-if="isPaused" size="sm" @click="$emit('resume')">{{ t('common.resume') }}</UiButton>
+      <UiBadge v-if="isFinished && !isReplayMode" variant="danger">{{ t('game.ended') }}</UiBadge>
       <slot name="replay-controls" />
     </div>
   </div>

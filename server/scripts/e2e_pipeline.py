@@ -11,7 +11,7 @@ Examples::
     poetry run python scripts/e2e_pipeline.py guide
     poetry run python scripts/e2e_pipeline.py check
     poetry run python scripts/e2e_pipeline.py collect --count 1
-    poetry run python scripts/e2e_pipeline.py all --count 1 --mock
+    poetry run python scripts/e2e_pipeline.py all --count 1
 """
 
 from __future__ import annotations
@@ -52,7 +52,7 @@ def cmd_guide(_: argparse.Namespace) -> int:
 AI Card Game Lab — 1 小时闭环指南（斗地主）
 ==========================================
 
-目标：配置 Key → 采一局 → 导出可训数据 → Mock/真实训练 → 本地部署验证
+目标：配置 Key → 采一局 → 导出可训数据 → PEFT LoRA → 本地部署验证
 
 [0] 准备
   - 复制 .env.example → .env，填入至少一个 LLM API Key（或配 Ollama）
@@ -69,11 +69,10 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
 [3] 导出决策点（默认仅 train_usable，不含思考）
   poetry run python scripts/e2e_pipeline.py export
 
-[4] 创建数据集 + 训练任务（默认 Mock，安全无 GPU）
-  poetry run python scripts/e2e_pipeline.py train --mock
-  # 真实 LoRA：先 poetry install --with training，TRAINING_USE_MOCK=false，再 --no-mock
-  # CPU Smoke（无 GPU）：前端取消 Mock → 确认 → 观察现场面板 → 可取消 → 导出 deploy/
-  #   详见 docs/E2E_PIPELINE.md「CPU Smoke（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
+[4] 创建数据集 + 训练任务（PEFT LoRA / 无 GPU 走 CPU 冒烟）
+  poetry run python scripts/e2e_pipeline.py train
+  # 先：cd server && poetry install --with training
+  # 详见 docs/E2E_PIPELINE.md「CPU Smoke（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
 
 [5] 部署（真实 LoRA 产物）
   - 前端「模型仓库」→ 导出部署包
@@ -81,8 +80,8 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
   - ollama create <tag> -f Modelfile
   - 「验证决策」或「测一局」
 
-一键（检查 + 采集 + 导出 + Mock 训练提示）：
-  poetry run python scripts/e2e_pipeline.py all --count 1 --mock
+一键（检查 + 采集 + 导出 + 真训）：
+  poetry run python scripts/e2e_pipeline.py all --count 1
 
 前端：http://localhost:5173
 API：  http://localhost:8000/docs
@@ -201,8 +200,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         print("  → empty dataset; collect games first", file=sys.stderr)
         return 1
 
-    use_mock = not args.no_mock
-    print(f"[train] create training task (use_mock={use_mock}) ...")
+    print("[train] create training task (PEFT LoRA / CPU smoke) ...")
     task = _api(
         args.base_url,
         "POST",
@@ -213,11 +211,11 @@ def cmd_train(args: argparse.Namespace) -> int:
             "base_model": args.base_model,
             "training_type": "sft",
             "config": {
-                "use_mock": use_mock,
                 "learning_rate": 2e-5,
-                "batch_size": 1 if not use_mock else 8,
-                "num_epochs": 1 if not use_mock else 3,
+                "batch_size": 1,
+                "num_epochs": 1,
                 "lora_r": 8,
+                "max_steps": 20,
                 "output_format": "pytorch",
             },
         },
@@ -259,7 +257,7 @@ def cmd_deploy_hints(args: argparse.Namespace) -> int:
     print(json.dumps(latest, ensure_ascii=False, indent=2))
     print(
         f"""
-Next (LoRA only — mock model.bin cannot export):
+Next:
   1. POST /api/v1/models/{mid}/export   or UI「导出部署包」
   2. Set LLAMA_CPP_DIR → run models/{mid}/deploy/convert_gguf.ps1
   3. ollama create acgl-{str(mid)[:12]} -f models/{mid}/deploy/Modelfile
@@ -296,20 +294,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-wait", action="store_true", help="Do not poll for completion")
     p.add_argument("--dataset-name", default=f"e2e-doudizhu-{time.strftime('%Y%m%d_%H%M%S')}")
     p.add_argument("--task-name", default=f"e2e-sft-{time.strftime('%Y%m%d_%H%M%S')}")
-    p.add_argument("--base-model", default="Qwen/Qwen2.5-1.5B")
-    p.add_argument(
-        "--mock",
-        dest="no_mock",
-        action="store_false",
-        help="Use mock trainer (default)",
-    )
-    p.add_argument(
-        "--no-mock",
-        dest="no_mock",
-        action="store_true",
-        help="Use real PEFT LoRA (needs training deps)",
-    )
-    p.set_defaults(no_mock=False)
+    p.add_argument("--base-model", default="Qwen/Qwen2.5-0.5B")
     return p
 
 

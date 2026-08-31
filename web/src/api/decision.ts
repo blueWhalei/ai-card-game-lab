@@ -1,5 +1,5 @@
 import { apiClient } from './client'
-import type { ApiResponse } from './types'
+import type { ApiResponse, PaginatedData } from './types'
 
 export interface DecisionPoint {
   id: string
@@ -45,8 +45,12 @@ export interface ExportResult {
 
 export interface DecisionExportParams {
   game_id?: string
+  experiment_id?: string
+  player_id?: string
   min_quality?: number
   outcome?: string
+  game_phase?: string
+  train_usable?: boolean
   train_usable_only?: boolean
   include_thinking?: boolean
 }
@@ -54,24 +58,27 @@ export interface DecisionExportParams {
 export const decisionApi = {
   list: (params?: {
     game_id?: string
+    experiment_id?: string
     player_id?: string
     min_quality?: number
     max_quality?: number
     game_phase?: string
     outcome?: string
     train_usable?: boolean
-    limit?: number
-    offset?: number
+    page?: number
+    page_size?: number
   }) =>
-    apiClient.get<never, ApiResponse<DecisionPoint[]>>('/api/v1/decision-points', {
+    apiClient.get<never, ApiResponse<PaginatedData<DecisionPoint>>>('/api/v1/decision-points', {
       params,
     }),
 
   get: (id: string) =>
     apiClient.get<never, ApiResponse<DecisionPoint>>(`/api/v1/decision-points/${id}`),
 
-  stats: () =>
-    apiClient.get<never, ApiResponse<DecisionStats>>('/api/v1/decision-points/stats'),
+  stats: (params?: { experiment_id?: string }) =>
+    apiClient.get<never, ApiResponse<DecisionStats>>('/api/v1/decision-points/stats', {
+      params,
+    }),
 
   export: (params?: DecisionExportParams) =>
     apiClient.post<never, ApiResponse<ExportResult>>('/api/v1/decision-points/export', params),

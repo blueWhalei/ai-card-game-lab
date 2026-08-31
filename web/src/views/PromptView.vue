@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import {
@@ -8,6 +9,7 @@ import {
   type ABTestConfig,
   type ABStatsResponse,
 } from '@/api/prompts'
+import PromptComparePanel from '@/components/prompt/PromptComparePanel.vue'
 import PromptList from '@/components/prompt/PromptList.vue'
 import PromptEditor from '@/components/prompt/PromptEditor.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -17,6 +19,7 @@ import UiSlider from '@/components/ui/Slider.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
 
+const { t } = useI18n()
 const templates = ref<PromptTemplateResponse[]>([])
 const loading = ref(false)
 const showEditorDialog = ref(false)
@@ -37,7 +40,11 @@ const editorForm = ref({
 
 const editorLoading = ref(false)
 
-const dialogTitle = computed(() => (isEditing.value ? '编辑模板' : '新建模板'))
+const dialogTitle = computed(() => (isEditing.value ? t('prompt.editTemplate') : t('prompt.newTemplate')))
+
+const promptVersions = computed(() =>
+  [...new Set(templates.value.map((item) => item.version).filter(Boolean))],
+)
 
 async function fetchTemplates() {
   loading.value = true
@@ -45,7 +52,7 @@ async function fetchTemplates() {
     const res = await promptsApi.list()
     templates.value = res.data
   } catch (e: unknown) {
-    showApiError(e, '获取模板列表失败')
+    showApiError(e, t('prompt.listFailed'))
   } finally {
     loading.value = false
   }
@@ -60,7 +67,7 @@ async function fetchABStats() {
       ratio: res.data.ratio,
     }
   } catch (e: unknown) {
-    showApiError(e, '获取 A/B 测试统计失败')
+    showApiError(e, t('prompt.abStatsFailed'))
   }
 }
 
@@ -100,7 +107,7 @@ async function handleEditorSubmit() {
           version: editorForm.value.version,
         })
       }
-      toast.success('模板已更新')
+      toast.success(t('prompt.updated'))
     } else {
       await promptsApi.create({
         template_key: editorForm.value.template_key,
@@ -112,12 +119,12 @@ async function handleEditorSubmit() {
           version: editorForm.value.version,
         })
       }
-      toast.success('模板已创建')
+      toast.success(t('prompt.created'))
     }
     showEditorDialog.value = false
     await fetchTemplates()
   } catch (e: unknown) {
-    showApiError(e, isEditing.value ? '更新失败' : '创建失败')
+    showApiError(e, isEditing.value ? t('prompt.updateFailed') : t('prompt.createFailed'))
   } finally {
     editorLoading.value = false
   }
@@ -126,27 +133,27 @@ async function handleEditorSubmit() {
 async function handleActivate(templateKey: string, version: string) {
   try {
     await promptsApi.activate(templateKey, { version })
-    toast.success('模板已激活')
+    toast.success(t('prompt.activated'))
     await fetchTemplates()
   } catch (e: unknown) {
-    showApiError(e, '激活失败')
+    showApiError(e, t('prompt.activateFailed'))
   }
 }
 
 async function handleDeactivate(templateKey: string, version: string) {
   try {
     await promptsApi.deactivate(templateKey, { version })
-    toast.success('模板已停用')
+    toast.success(t('prompt.deactivated'))
     await fetchTemplates()
   } catch (e: unknown) {
-    showApiError(e, '停用失败')
+    showApiError(e, t('prompt.deactivateFailed'))
   }
 }
 
 async function handleDelete(templateKey: string, version: string) {
   try {
     await promptsApi.delete(templateKey, version)
-    toast.success('模板已删除')
+    toast.success(t('prompt.deleted'))
     if (
       selectedTemplate.value?.template_key === templateKey &&
       selectedTemplate.value?.version === version
@@ -155,14 +162,14 @@ async function handleDelete(templateKey: string, version: string) {
     }
     await fetchTemplates()
   } catch (e: unknown) {
-    showApiError(e, '删除失败')
+    showApiError(e, t('error.deleteFailed'))
   }
 }
 
 function handleSelect(templateKey: string, version: string) {
   selectedTemplateKey.value = templateKey
   const template = templates.value.find(
-    (t) => t.template_key === templateKey && t.version === version,
+    (item) => item.template_key === templateKey && item.version === version,
   )
   if (template) {
     selectedTemplate.value = template
@@ -172,10 +179,10 @@ function handleSelect(templateKey: string, version: string) {
 async function handleABConfigUpdate() {
   try {
     await promptsApi.updateAbConfig(abConfig.value)
-    toast.success('A/B 测试配置已更新')
+    toast.success(t('prompt.abUpdated'))
     await fetchABStats()
   } catch (e: unknown) {
-    showApiError(e, '更新配置失败')
+    showApiError(e, t('prompt.abUpdateFailed'))
   }
 }
 
@@ -193,55 +200,59 @@ onMounted(() => {
 <template>
   <div class="page-container">
     <div class="mb-8 flex items-center justify-between gap-4">
-      <p class="page-subtitle mt-0">管理 AI 决策的提示词模板，支持版本控制和 A/B 测试</p>
+      <p class="page-subtitle mt-0">{{ t('prompt.subtitle') }}</p>
       <div class="flex shrink-0 gap-3">
         <UiButton variant="secondary" @click="showABPanel = !showABPanel">
-          {{ showABPanel ? '隐藏' : 'A/B 测试' }}
+          {{ showABPanel ? t('common.hide') : t('prompt.abTest') }}
         </UiButton>
-        <UiButton @click="openCreateDialog()">新建模板</UiButton>
+        <UiButton @click="openCreateDialog()">{{ t('prompt.newTemplate') }}</UiButton>
       </div>
     </div>
 
     <div v-if="showABPanel" class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-5">
       <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
-        <h3 class="text-base font-semibold text-ink-text">A/B 测试配置</h3>
+        <h3 class="text-base font-semibold text-ink-text">{{ t('prompt.abConfig') }}</h3>
       </div>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
         <div>
           <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-ink-text">启用 A/B 测试</label>
+            <label class="mb-2 block text-sm font-medium text-ink-text">{{ t('prompt.enableAb') }}</label>
             <div class="flex items-center gap-2">
               <UiSwitch v-model="abConfig.enabled" />
-              <span class="text-sm text-ink-text-muted">{{ abConfig.enabled ? '启用' : '禁用' }}</span>
+              <span class="text-sm text-ink-text-muted">{{
+                abConfig.enabled ? t('common.enabled') : t('common.disabled')
+              }}</span>
             </div>
           </div>
           <div v-if="abConfig.enabled" class="mb-4">
             <label class="mb-2 block text-sm font-medium text-ink-text">
-              v2 版本分配比例: {{ (abConfig.ratio * 100).toFixed(0) }}%
+              {{ t('prompt.v2Ratio', { n: (abConfig.ratio * 100).toFixed(0) }) }}
             </label>
             <UiSlider v-model="abConfig.ratio" :min="0" :max="1" :step="0.1" />
           </div>
-          <UiButton @click="handleABConfigUpdate">保存配置</UiButton>
+          <UiButton @click="handleABConfigUpdate">{{ t('prompt.saveConfig') }}</UiButton>
         </div>
         <div v-if="abStats" class="rounded-ink-md bg-ink-surface-muted p-4">
-          <h4 class="mb-3 text-sm font-semibold text-ink-text-secondary">分配统计</h4>
+          <h4 class="mb-3 text-sm font-semibold text-ink-text-secondary">{{ t('prompt.allocStats') }}</h4>
           <div class="grid grid-cols-3 gap-4 text-center">
             <div>
               <div class="text-2xl font-semibold text-ink-text">{{ abStats.total_assignments }}</div>
-              <div class="text-xs text-ink-text-muted">总分配次数</div>
+              <div class="text-xs text-ink-text-muted">{{ t('prompt.totalAlloc') }}</div>
             </div>
             <div>
               <div class="text-2xl font-semibold text-ink-primary">{{ abStats.v1_count }}</div>
-              <div class="text-xs text-ink-text-muted">v1 版本</div>
+              <div class="text-xs text-ink-text-muted">{{ t('prompt.v1') }}</div>
             </div>
             <div>
               <div class="text-2xl font-semibold text-ink-success">{{ abStats.v2_count }}</div>
-              <div class="text-xs text-ink-text-muted">v2 版本</div>
+              <div class="text-xs text-ink-text-muted">{{ t('prompt.v2') }}</div>
             </div>
           </div>
         </div>
       </div>
     </div>
+
+    <PromptComparePanel class="mb-6" :versions="promptVersions" />
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div class="lg:col-span-2">
@@ -263,30 +274,30 @@ onMounted(() => {
           class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5"
         >
           <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
-            <h3 class="text-base font-semibold text-ink-text">模板详情</h3>
+            <h3 class="text-base font-semibold text-ink-text">{{ t('prompt.detail') }}</h3>
             <UiButton size="sm" variant="secondary" @click="openEditDialog(selectedTemplate)">
-              编辑
+              {{ t('common.edit') }}
             </UiButton>
           </div>
           <div class="space-y-3">
             <div>
-              <span class="text-xs text-ink-text-muted">模板类型</span>
+              <span class="text-xs text-ink-text-muted">{{ t('prompt.type') }}</span>
               <div class="font-medium text-ink-text">{{ selectedTemplate.template_key }}</div>
             </div>
             <div>
-              <span class="text-xs text-ink-text-muted">版本</span>
+              <span class="text-xs text-ink-text-muted">{{ t('prompt.version') }}</span>
               <div class="font-medium text-ink-text">v{{ selectedTemplate.version }}</div>
             </div>
             <div>
-              <span class="text-xs text-ink-text-muted">状态</span>
+              <span class="text-xs text-ink-text-muted">{{ t('common.status') }}</span>
               <div class="mt-1">
                 <UiBadge :variant="selectedTemplate.is_active ? 'success' : 'muted'">
-                  {{ selectedTemplate.is_active ? '已激活' : '未激活' }}
+                  {{ selectedTemplate.is_active ? t('prompt.active') : t('prompt.inactive') }}
                 </UiBadge>
               </div>
             </div>
             <div>
-              <span class="text-xs text-ink-text-muted">内容</span>
+              <span class="text-xs text-ink-text-muted">{{ t('prompt.content') }}</span>
               <div class="mt-1 max-h-64 overflow-y-auto rounded-ink bg-ink-surface-muted p-3">
                 <pre class="whitespace-pre-wrap font-mono text-xs text-ink-text-secondary">{{
                   selectedTemplate.content
@@ -296,7 +307,7 @@ onMounted(() => {
           </div>
         </div>
         <div v-else class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5">
-          <UiEmpty title="选择一个模板查看详情" description='或点击"新建模板"创建' />
+          <UiEmpty :title="t('prompt.pickDetail')" :description="t('prompt.pickDetailHint')" />
         </div>
       </div>
     </div>

@@ -89,7 +89,7 @@ class TestGameReplayServiceReadThinkingMap:
         mock_collector: MagicMock,
     ) -> None:
         """Test returns empty dict when games directory doesn't exist."""
-        mock_collector._data_dir = "/nonexistent/path"
+        mock_collector.data_dir = "/nonexistent/path"
         result = replay_service._read_thinking_map_from_jsonl("game-1")
         assert result == {}
 
@@ -113,7 +113,7 @@ class TestGameReplayServiceReadThinkingMap:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service._read_thinking_map_from_jsonl("game-1")
 
         assert result == {1: "First thought", 2: "Second thought"}
@@ -134,7 +134,7 @@ class TestGameReplayServiceReadThinkingMap:
             f.write("invalid json line\n")
             f.write('{"type": "round", "round_num": 2, "thinking": "Also valid"}\n')
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service._read_thinking_map_from_jsonl("game-1")
 
         assert result == {1: "Valid", 2: "Also valid"}
@@ -163,7 +163,7 @@ class TestGameReplayServiceReadThinkingList:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service.read_thinking_list_from_jsonl("game-1")
 
         assert result == ["First", "Second", "Third"]
@@ -178,7 +178,7 @@ class TestGameReplayServiceReadThinkingListByPlayer:
         mock_collector: MagicMock,
     ) -> None:
         """Test returns empty dict when games directory doesn't exist."""
-        mock_collector._data_dir = "/nonexistent/path"
+        mock_collector.data_dir = "/nonexistent/path"
         result = replay_service.read_thinking_list_by_player("game-1")
         assert result == {}
 
@@ -207,7 +207,7 @@ class TestGameReplayServiceReadThinkingListByPlayer:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service.read_thinking_list_by_player("game-1")
 
         assert result == {
@@ -237,7 +237,7 @@ class TestGameReplayServiceReadThinkingListByPlayer:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service.read_thinking_list_by_player("game-1")
 
         assert result == {"player1": [long_thinking]}
@@ -264,7 +264,7 @@ class TestGameReplayServiceReadThinkingListByPlayer:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service.read_thinking_list_by_player("game-1")
 
         assert result == {"player1": [round_thinking]}
@@ -291,7 +291,7 @@ class TestGameReplayServiceReadThinkingListByPlayer:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-        mock_collector._data_dir = str(tmp_path)
+        mock_collector.data_dir = tmp_path
         result = replay_service.read_thinking_list_by_player("game-1")
 
         # Only the record with player_id should be included

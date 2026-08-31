@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import TYPE_CHECKING, Any
 
-import aiosqlite
 import structlog
 
+from app.database import connect_or_reuse
 from app.repositories.trace_repo import TraceRepository
 from app.utils.id_generator import generate_id
 
@@ -43,7 +43,7 @@ class TraceService:
         trace_id = generate_id("tr")
         now = datetime.now(tz=timezone.utc).isoformat()
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             await repo.create_trace(
                 trace_id=trace_id,
@@ -97,7 +97,7 @@ class TraceService:
         """Create a new span record for a sub-operation."""
         span_id = generate_id("sp")
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             await repo.create_span(
                 span_id=span_id,
@@ -111,17 +111,59 @@ class TraceService:
 
         return span_id
 
+    async def list_recent_traces(
+        self,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Return recent traces without requiring a game or player filter."""
+        items, _ = await self.list_traces(limit=limit, offset=offset)
+        return items
+
+    async def list_traces(
+        self,
+        game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
+        model: str | None = None,
+        parser_ok: bool | None = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """List traces with AND-combined optional filters. Returns (items, total)."""
+        async with connect_or_reuse(self._sqlite_path) as db:
+            repo = TraceRepository(db)
+            return await repo.list_filtered(
+                game_id=game_id,
+                experiment_id=experiment_id,
+                player_id=player_id,
+                model=model,
+                parser_ok=parser_ok,
+                limit=limit,
+                offset=offset,
+            )
+
     async def get_traces_by_game(self, game_id: str) -> list[dict[str, Any]]:
         """Get all traces for a game."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             return await repo.get_by_game(game_id)
 
+    async def get_traces_by_experiment(
+        self,
+        experiment_id: str,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[dict[str, Any]]:
+        """Get traces for games belonging to an experiment."""
+        items, _ = await self.list_traces(
+            experiment_id=experiment_id, limit=limit, offset=offset
+        )
+        return items
+
     async def get_trace_by_id(self, trace_id: str) -> dict[str, Any] | None:
         """Get a single trace by ID with its spans."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             trace = await repo.get_by_id(trace_id)
             if not trace:
@@ -136,25 +178,28 @@ class TraceService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Get traces for a specific player."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
-            repo = TraceRepository(db)
-            return await repo.get_by_player(player_id, limit, offset)
+        items, _ = await self.list_traces(player_id=player_id, limit=limit, offset=offset)
+        return items
 
     async def get_metrics(
         self,
         game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
         model: str | None = None,
+        parser_ok: bool | None = None,
         start_time: str | None = None,
         end_time: str | None = None,
     ) -> dict[str, Any]:
         """Get aggregated metrics for traces."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             return await repo.get_metrics(
                 game_id=game_id,
+                experiment_id=experiment_id,
+                player_id=player_id,
                 model=model,
+                parser_ok=parser_ok,
                 start_time=start_time,
                 end_time=end_time,
             )
@@ -165,8 +210,7 @@ class TraceService:
         version2: str,
     ) -> dict[str, Any]:
         """Compare metrics between two prompt versions."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
             stats1 = await repo.get_version_stats(version1)
             stats2 = await repo.get_version_stats(version2)

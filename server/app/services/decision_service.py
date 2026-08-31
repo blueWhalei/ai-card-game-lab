@@ -8,10 +8,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-import aiosqlite
 import structlog
 
 from app.core.training.data_quality import evaluate_train_usable
+from app.database import connect_or_reuse
 from app.repositories.decision_repo import DecisionRepository
 from app.utils.id_generator import generate_id
 
@@ -47,8 +47,7 @@ class DecisionService:
             thinking=thinking,
         )
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             await repo.create(
                 decision_id=decision_id,
@@ -80,8 +79,7 @@ class DecisionService:
 
     async def recompute_train_usable(self, game_id: str | None = None) -> int:
         """Re-evaluate and persist train_usable for existing decision points."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             items = await repo.list_for_recompute(game_id=game_id)
             updated = 0
@@ -118,8 +116,7 @@ class DecisionService:
 
         quality_score is an end-game outcome proxy only (not reasoning quality).
         """
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             if winner_id:
                 updated = await repo.update_outcome_by_winner(game_id, winner_id)
@@ -138,6 +135,7 @@ class DecisionService:
     async def list_decision_points(
         self,
         game_id: str | None = None,
+        experiment_id: str | None = None,
         player_id: str | None = None,
         min_quality: float | None = None,
         max_quality: float | None = None,
@@ -148,11 +146,11 @@ class DecisionService:
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
         """List decision points with filters and pagination."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             return await repo.list_decision_points(
                 game_id=game_id,
+                experiment_id=experiment_id,
                 player_id=player_id,
                 min_quality=min_quality,
                 max_quality=max_quality,
@@ -165,21 +163,19 @@ class DecisionService:
 
     async def get_decision_point(self, decision_id: str) -> dict[str, Any] | None:
         """Get a single decision point by ID."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             return await repo.get_by_id(decision_id)
 
-    async def get_stats(self) -> dict[str, Any]:
+    async def get_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Get aggregate statistics for decision points."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
 
-            total = await repo.count_total()
-            quality = await repo.get_quality_stats()
-            outcome_counts = await repo.get_outcome_counts()
-            phase_counts = await repo.get_phase_counts()
+            total = await repo.count_total(experiment_id)
+            quality = await repo.get_quality_stats(experiment_id)
+            outcome_counts = await repo.get_outcome_counts(experiment_id)
+            phase_counts = await repo.get_phase_counts(experiment_id)
 
         return {
             "total": total,
@@ -191,8 +187,12 @@ class DecisionService:
     async def export_chatml(
         self,
         game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
         min_quality: float | None = None,
         outcome: str | None = None,
+        game_phase: str | None = None,
+        train_usable: bool | None = None,
         train_usable_only: bool = True,
         include_thinking: bool = False,
         output_path: str | None = None,
@@ -201,11 +201,18 @@ class DecisionService:
 
         Returns (filepath, count). Empty filepath when nothing to export.
         """
-        train_usable_filter: bool | None = True if train_usable_only else None
+        train_usable_filter: bool | None
+        if train_usable is not None:
+            train_usable_filter = train_usable
+        else:
+            train_usable_filter = True if train_usable_only else None
         items, _ = await self.list_decision_points(
             game_id=game_id,
+            experiment_id=experiment_id,
+            player_id=player_id,
             min_quality=min_quality,
             outcome=outcome,
+            game_phase=game_phase,
             train_usable=train_usable_filter,
             limit=10000,
         )
@@ -214,8 +221,9 @@ class DecisionService:
             logger.warning(
                 "export_chatml_no_data",
                 game_id=game_id,
+                experiment_id=experiment_id,
                 min_quality=min_quality,
-                train_usable_only=train_usable_only,
+                train_usable=train_usable_filter,
             )
             return "", 0
 
@@ -241,6 +249,7 @@ class DecisionService:
             count=len(items),
             include_thinking=include_thinking,
             train_usable_only=train_usable_only,
+            experiment_id=experiment_id,
         )
 
         return str(filepath), len(items)

@@ -174,7 +174,7 @@ class GameService:
 | `engine/` | 游戏引擎，含规则、状态管理 | `GameEngine` (ABC), `DoudizhuEngine` |
 | `ai/` | LLM 统一调用，提示词构建 | `LLMClient` (ABC), `LLMClientFactory` |
 | `collector/` | 对局数据采集与归档 | `JsonlWriter` |
-| `training/` | SFT 数据导出 + Mock 训练器 | `export_sft_dataset`, `run_mock_training` |
+| `training/` | SFT 数据导出 + PEFT LoRA | `export_sft_dataset`, `run_sft_training` |
 
 ### 3.4 基础设施层
 
@@ -421,6 +421,7 @@ def get_game_service() -> GameService:
 | `GameEngineRegistry` | `get_engine_registry()` | 游戏引擎注册中心 |
 | `LLMClientFactory` | `get_llm_factory()` | LLM 客户端工厂 |
 | `ExperimentConfigService` | `get_experiment_config_service()` | 实验配置管理 |
+| `ExperimentService` | `get_experiment_service()` | 实验（run）CRUD / 采集 / 跨实验对比 |
 | `PromptBuilder` | `get_prompt_builder()` | 提示词构建器 |
 | `JsonlWriter` | `get_jsonl_writer()` | JSONL 数据写入器 |
 | `GameService` | `get_game_service()` | 对局业务服务 |

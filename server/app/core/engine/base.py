@@ -102,6 +102,16 @@ class GameEngine(ABC):
     """
 
     @property
+    def min_players(self) -> int:
+        """Minimum number of players this engine accepts."""
+        return 2
+
+    @property
+    def max_players(self) -> int:
+        """Maximum number of players this engine accepts."""
+        return 8
+
+    @property
     @abstractmethod
     def game_type(self) -> str:
         """返回游戏类型的唯一标识符。

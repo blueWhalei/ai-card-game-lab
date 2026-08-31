@@ -9,8 +9,23 @@ const router = createRouter({
       children: [
         {
           path: '',
+          name: 'experiments',
+          component: () => import('@/views/ExperimentListView.vue'),
+        },
+        {
+          path: 'experiments/compare',
+          name: 'experiment-compare',
+          component: () => import('@/views/ExperimentCompareView.vue'),
+        },
+        {
+          path: 'experiments/:id',
+          name: 'experiment-detail',
+          component: () => import('@/views/ExperimentDetailView.vue'),
+        },
+        {
+          path: 'pipeline',
           name: 'pipeline',
-          component: () => import('@/views/PipelineView.vue'),
+          redirect: '/',
         },
         {
           path: 'game',

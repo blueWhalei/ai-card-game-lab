@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AI Card Game Lab (AI卡牌游戏实验室) — a platform for running AI-vs-AI card games, collecting gameplay data, and fine-tuning LLMs. The backend orchestrates game engines and LLM providers; the frontend provides real-time game observation via WebSocket.
+AI Card Game Lab (AI卡牌游戏实验室) — a platform for running AI-vs-AI card games, collecting gameplay data, and fine-tuning LLMs. The primary product object is an **experiment** (run): fixed player configs + target game count, with collect / train / register-as-player / control-experiment from the detail workspace. The backend orchestrates game engines and LLM providers; the frontend provides real-time observation via WebSocket.
 
 ## Commands
 
@@ -83,7 +83,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `engine/` — `GameEngine` ABC + `GameEngineRegistry`. Engines are stateless; state flows through `GameState` dataclasses. New games register via the registry, no if-else chains.
   - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Provider implementations: `OpenAICompatibleClient` (covers OpenAI, DashScope, DeepSeek, Kimi, ZhipuAI, Yi, Baichuan, MiniMax), `OllamaClient`. All configured via `dependencies.py`. Streaming supports `stream_options: {"include_usage": true}` for token usage tracking. `StreamChunk` carries optional `usage` field on the final chunk.
   - `collector/` — JSONL writer for game data.
-  - `training/` — SFT dataset exporter (JSONL → ChatML format) + mock trainer (simulates progress). State machine: pending → exporting → training → completed/failed.
+  - `training/` — SFT dataset exporter (JSONL → ChatML format) + PEFT LoRA. Missing deps refuse task creation. CPU smoke clamps apply without GPU. State machine: pending → exporting → training → completed/failed.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` contains WS endpoint logic.
 - **Schemas** (`app/schemas/`) — Pydantic models for request/response. Shared `ApiResponse` envelope.
 - **Config** — `app/config.py` uses `pydantic-settings`, reads from env vars / `.env` file at project root.
@@ -94,11 +94,18 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/api/` — typed Axios client with interceptors; `src/stores/` — one store per domain
 - `src/composables/` — `useWebSocket`, `usePagination`
 - `src/components/` organized by domain: `game/`, `data/`, `trace/`, `common/`
-- `src/views/` — `PipelineView`, `GameView`, `GameObserverView`, `ExperimentConfigView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`
-- Dual shells: `layouts/WorkbenchLayout.vue` (grouped nav) + `layouts/ObserverLayout.vue` (fullscreen)
+- `src/views/` — `ExperimentListView` (home), `ExperimentDetailView`, `GameView`, `GameObserverView`, `ExperimentConfigView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`（`/pipeline` 重定向到首页）
+- Dual shells: `layouts/WorkbenchLayout.vue` (grouped nav; 实验 first) + `layouts/ObserverLayout.vue` (fullscreen)
 - Headless UI kit: `components/ui/*` (Reka UI + Ink Lab tokens); charts via ECharts
 - Runtime config: experiment configs + prompt templates in SQLite; secrets/paths via `.env`; `config/experiment_configs.yaml` is seed-only
 - Vite dev server proxies `/api` → `localhost:8000` and WebSocket at `/api/v1/games/ws`
+
+### Experiments (first-class runs)
+
+- Table `experiments`; `games.experiment_id` nullable (scatter games remain on `/game`)
+- API: `GET/POST /api/v1/experiments`, `GET /api/v1/experiments/{id}`, `POST /api/v1/experiments/{id}/collect`
+- Decision/trace list + ChatML export / `datasets/from-decisions` accept `experiment_id`
+- UI: `/` list + `/experiments/:id` workspace (collect, register+train, control experiment); Training models tab「登记为选手」→ Ollama tag config
 
 ### Game Observer Features
 
@@ -111,7 +118,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 
 ### Database Tables
 
-`games`, `rounds`, `datasets`, `training_tasks`, `prompt_templates`, `traces`, `spans`, `decision_points` — all in SQLite via aiosqlite. Schema defined in `app/database.py`.
+`experiments`, `games`, `rounds`, `datasets`, `training_tasks`, `prompt_templates`, `traces`, `spans`, `decision_points`, `experiment_configs` — all in SQLite via aiosqlite. Schema defined in `app/database.py`.
 
 ### Decision Points for SFT Training
 
@@ -122,10 +129,11 @@ Key decision points are recorded for supervised fine-tuning:
 - **ChatML Export** — Export decision points to ChatML format for SFT training
 
 API endpoints:
-- `GET /api/v1/decision-points` — List decision points (filter by game_id, player_id, quality)
+- `GET /api/v1/decision-points` — List decision points (filter by game_id, experiment_id, player_id, quality)
 - `GET /api/v1/decision-points/{id}` — Get decision point detail
 - `GET /api/v1/decision-points/stats` — Aggregate statistics
-- `POST /api/v1/decision-points/export` — Export to ChatML format
+- `POST /api/v1/decision-points/export` — Export to ChatML format (optional `experiment_id`)
+- `POST /api/v1/datasets/from-decisions` — Register ChatML dataset (optional `experiment_id`)
 
 Frontend: `DecisionView.vue` with decision list and detail panels.
 
@@ -140,7 +148,7 @@ Lightweight observability platform for AI decision tracing:
 - **Real-time WebSocket** — Trace events broadcast to connected clients
 
 API endpoints:
-- `GET /api/v1/traces` — List traces (filter by game_id, player_id)
+- `GET /api/v1/traces` — List traces (filter by game_id, experiment_id, player_id)
 - `GET /api/v1/traces/{trace_id}` — Get trace detail with spans
 - `GET /api/v1/traces/metrics` — Aggregated performance metrics
 - `GET /api/v1/traces/compare` — Compare prompt versions
@@ -149,18 +157,13 @@ Frontend: `TraceView.vue` with `TraceDetail.vue` and `TraceMetrics.vue` componen
 
 ### Data Dashboard Features
 
-The data overview page (`DataView.vue` → `OverviewTab` → `StatCards`) provides 5 statistical sections:
+The data page (`DataView.vue`) splits stats vs operations:
 
-1. **Basic Stats** — Total games, total rounds, avg response time, game type count
-2. **Token Usage** — Total/prompt/completion tokens, per-round average, per-model token bar chart
-3. **Game Quality** — Avg game rounds, games with winner, decision rate, wins-by-role pie chart
-4. **AI Performance** — Per-model win rate comparison bar chart (computed from games + rounds)
-5. **Response Time** — P50/P95 percentile, per-model avg response time bar chart
+- **总览** (`OverviewTab` → `StatCards`) — corpus snapshot only: scale KPIs, token totals, game-quality KPIs + wins-by-role pie. No per-model bar charts.
+- **AI 性能** (`AIPerformanceTab`) — per-model comparison: latency P50/P95, win-rate bar + table, token-by-model bar, response-time-by-model bar. Each chart appears once.
+- **数据集 / 存储 / 归档** — ChatML datasets, disk usage, cleanup.
 
-Plus a model usage distribution pie chart (legacy).
-
-Backend: `DataService.get_stats()` runs ~12 SQL queries aggregating from `games` and `rounds` tables.
-Frontend: `StatCards.vue` renders stat cards and ECharts charts (Pie + Bar).
+Backend: `DataService.get_stats()` aggregates from `games` and `rounds`.
 
 ### Adding a New Card Game
 

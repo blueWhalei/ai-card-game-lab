@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import type { ReplayData } from '@/api/gameApi'
 import UiButton from '@/components/ui/Button.vue'
 
@@ -16,12 +17,14 @@ defineEmits<{
   next: []
   'update:replaySpeed': [speed: number]
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
   <template v-if="replayData">
     <span class="rounded-ink bg-ink-obs-bg px-3 py-1 text-xs font-medium text-ink-obs-muted">
-      回放 {{ replayIndex + 1 }} / {{ replayData.rounds.length }}
+      {{ t('game.replay', { current: replayIndex + 1, total: replayData.rounds.length }) }}
     </span>
     <UiButton
       size="sm"
@@ -29,7 +32,7 @@ defineEmits<{
       :disabled="replayIndex <= 0"
       @click="$emit('prev')"
     >
-      上一步
+      {{ t('game.prevStep') }}
     </UiButton>
     <UiButton
       v-if="!replayPlaying"
@@ -37,20 +40,22 @@ defineEmits<{
       :disabled="replayIndex >= replayData.rounds.length - 1"
       @click="$emit('play')"
     >
-      播放
+      {{ t('game.playBtn') }}
     </UiButton>
-    <UiButton v-else size="sm" variant="secondary" @click="$emit('pause')">暂停</UiButton>
+    <UiButton v-else size="sm" variant="secondary" @click="$emit('pause')">{{
+      t('common.pause')
+    }}</UiButton>
     <UiButton
       size="sm"
       variant="secondary"
       :disabled="replayIndex >= replayData.rounds.length - 1"
       @click="$emit('next')"
     >
-      下一步
+      {{ t('game.nextStep') }}
     </UiButton>
     <select
       :value="replaySpeed"
-      class="rounded-ink border border-ink-obs-border bg-ink-obs-bg px-3 py-1.5 text-xs text-ink-obs-text"
+      class="w-max rounded-ink border border-ink-obs-border bg-ink-obs-bg px-3 py-1.5 text-xs text-ink-obs-text"
       @change="
         $emit('update:replaySpeed', Number(($event.target as HTMLSelectElement).value))
       "

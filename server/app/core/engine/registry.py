@@ -78,6 +78,17 @@ class GameEngineRegistry:
             raise UnsupportedGameTypeError(game_type)
         return engine
 
+    def describe_engines(self) -> list[dict[str, str | int]]:
+        """Return registered engines with player-count constraints."""
+        return [
+            {
+                "id": engine.game_type,
+                "min_players": engine.min_players,
+                "max_players": engine.max_players,
+            }
+            for engine in self._engines.values()
+        ]
+
     def list_game_types(self) -> list[str]:
         """获取所有已注册的游戏类型标识符。
 

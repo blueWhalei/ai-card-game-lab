@@ -8,6 +8,7 @@ from __future__ import annotations
 import asyncio
 import json
 import re
+import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,7 +17,7 @@ from typing import Any
 import structlog
 
 from app.config import Settings
-from app.core.training.deploy import export_deploy_bundle
+from app.core.training.deploy import export_deploy_bundle, push_lora_to_ollama
 from app.core.training.exporter import export_sft_dataset
 from app.core.training.sft import run_sft_training
 from app.core.training.verify import ollama_list_tags, ollama_smoke_decision
@@ -24,7 +25,11 @@ from app.database import open_db_connection
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.training_repo import TrainingTaskRepository
 from app.schemas.training import CreateTrainingTaskRequest
-from app.utils.exceptions import DatasetNotFoundError, TrainingTaskNotFoundError
+from app.utils.exceptions import (
+    DatasetNotFoundError,
+    DeployNotLoraError,
+    TrainingTaskNotFoundError,
+)
 from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
@@ -73,13 +78,15 @@ class TrainingService:
         data_dir: str,
         models_dir: str,
         *,
-        training_use_mock: bool = True,
         ollama_base_url: str = "http://localhost:11434",
+        llama_cpp_dir: str = "",
+        ollama_bin: str = "ollama",
     ) -> None:
         self._sqlite_path = sqlite_path
         self._data_dir = data_dir
         self._models_dir = models_dir
-        self._training_use_mock = training_use_mock
+        self._llama_cpp_dir = llama_cpp_dir
+        self._ollama_bin = ollama_bin
         self._ollama_base_url = ollama_base_url
         self._running_tasks: dict[str, asyncio.Task[None]] = {}
         self._cancel_flags: dict[str, dict[str, bool]] = {}
@@ -90,8 +97,9 @@ class TrainingService:
             sqlite_path=settings.sqlite_path,
             data_dir=settings.data_dir,
             models_dir=settings.models_dir,
-            training_use_mock=settings.training_use_mock,
             ollama_base_url=settings.ollama_base_url,
+            llama_cpp_dir=settings.llama_cpp_dir,
+            ollama_bin=settings.ollama_bin,
         )
 
     @asynccontextmanager
@@ -105,12 +113,18 @@ class TrainingService:
     async def list_tasks(
         self,
         status: str | None = None,
+        experiment_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> tuple[list[dict[str, Any]], int]:
         async with self._get_bg_db() as db:
             repo = TrainingTaskRepository(db)
-            return await repo.list_all(status=status, page=page, page_size=page_size)
+            return await repo.list_all(
+                status=status,
+                experiment_id=experiment_id,
+                page=page,
+                page_size=page_size,
+            )
 
     async def get_task(self, task_id: str) -> dict[str, Any]:
         async with self._get_bg_db() as db:
@@ -125,16 +139,8 @@ class TrainingService:
         task_id = generate_id("train")
         now = datetime.now(tz=timezone.utc).isoformat()
 
-        # ── Guards: resolve use_mock, then enforce CPU smoke safety ──
         cfg = dict(request.config.model_dump())
-        use_mock = cfg.get("use_mock")
-        if use_mock is None:
-            use_mock = self._training_use_mock
-        if use_mock:
-            cfg["use_mock"] = True
-        else:
-            cfg = await self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
-            cfg["use_mock"] = False
+        cfg = await self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
 
         # Validate dataset exists
         async with self._get_bg_db() as db:
@@ -163,6 +169,7 @@ class TrainingService:
                     "status": "pending",
                     "progress": 0,
                     "created_at": now,
+                    "experiment_id": request.experiment_id,
                 }
             )
 
@@ -174,7 +181,7 @@ class TrainingService:
     async def _apply_cpu_smoke_guards(
         self, cfg: dict[str, Any], *, base_model: str
     ) -> dict[str, Any]:
-        """Enforce non-mock CPU safety: deps present, RAM ≥ 8GB, clamped config.
+        """Enforce CPU safety: deps present, RAM ≥ 8GB, clamped config.
 
         Heavy probes (``training_deps_available`` + ``torch.cuda.is_available``)
         run off the event loop via ``asyncio.to_thread`` so concurrent requests
@@ -242,9 +249,14 @@ class TrainingService:
         if bg and not bg.done():
             bg.cancel()
         self._cancel_flags.pop(task_id, None)
+        await self.get_task(task_id)  # raise TrainingTaskNotFoundError if missing
+        self._remove_model_artifacts(task_id)
         async with self._get_bg_db() as db:
             repo = TrainingTaskRepository(db)
-            await repo.delete(task_id)
+            try:
+                await repo.delete(task_id)
+            except KeyError as exc:
+                raise TrainingTaskNotFoundError(task_id) from exc
 
     async def list_models(self) -> list[dict[str, Any]]:
         """List completed training tasks that produced a model."""
@@ -264,8 +276,27 @@ class TrainingService:
             if t.get("model_path")
         ]
 
+    def _remove_model_artifacts(self, task_id: str) -> None:
+        """Delete on-disk model/deploy directory for a task (best-effort)."""
+        root = Path(self._models_dir) / task_id
+        if not root.exists():
+            return
+        try:
+            shutil.rmtree(root)
+            logger.info("model_artifacts_removed", task_id=task_id, path=str(root))
+        except OSError as exc:
+            logger.warning(
+                "model_artifacts_remove_failed",
+                task_id=task_id,
+                path=str(root),
+                error=str(exc),
+            )
+            raise
+
     async def delete_model(self, model_id: str) -> None:
-        """Clear model_path from a completed task (simulates model deletion)."""
+        """Remove model files and clear model_path on the completed task."""
+        await self.get_task(model_id)  # 404 if missing
+        self._remove_model_artifacts(model_id)
         async with self._get_bg_db() as db:
             repo = TrainingTaskRepository(db)
             await repo.update_status(model_id, "completed", model_path=None)
@@ -285,18 +316,9 @@ class TrainingService:
             raise ValueError("Task has no model_path; train to completion first")
         if task.get("status") != "completed":
             raise ValueError(f"Task status is {task.get('status')}, expected completed")
-        # Refuse mock placeholders: a mock run writes model.bin and never
-        # produces a real LoRA adapter directory, so there is nothing to merge
-        # or quantize into a deploy bundle.
-        result = task.get("result")
-        is_mock = (
-            str(model_path).endswith("model.bin")
-            or (isinstance(result, dict) and result.get("mock"))
-            or not Path(str(model_path)).is_dir()
-        )
-        if is_mock:
+        if not Path(str(model_path)).is_dir():
             raise ValueError(
-                "Mock model cannot export deploy bundle; run CPU smoke or GPU LoRA first"
+                "Model path is not a LoRA adapter directory; train to completion first"
             )
 
         return await asyncio.to_thread(
@@ -308,6 +330,39 @@ class TrainingService:
             ollama_tag=ollama_tag,
             merge=merge,
             try_create=try_create,
+        )
+
+    async def push_to_ollama(
+        self,
+        model_id: str,
+        *,
+        ollama_tag: str | None = None,
+        force_convert: bool = False,
+    ) -> dict[str, Any]:
+        """Merge LoRA → GGUF → ollama create (sync; raises Deploy* on failure)."""
+        task = await self.get_task(model_id)
+        model_path = task.get("model_path")
+        if not model_path:
+            raise DeployNotLoraError("Task has no model_path; train to completion first")
+        if task.get("status") != "completed":
+            raise DeployNotLoraError(
+                f"Task status is {task.get('status')}, expected completed"
+            )
+        if not Path(str(model_path)).is_dir():
+            raise DeployNotLoraError(
+                "Model path is not a LoRA adapter directory; train to completion first"
+            )
+
+        return await asyncio.to_thread(
+            push_lora_to_ollama,
+            task_id=model_id,
+            model_path=str(model_path),
+            base_model=str(task.get("base_model") or "Qwen/Qwen2.5-1.5B"),
+            models_dir=self._models_dir,
+            llama_cpp_dir=self._llama_cpp_dir,
+            ollama_tag=ollama_tag,
+            ollama_bin=self._ollama_bin,
+            force_convert=force_convert,
         )
 
     async def verify_model(
@@ -481,11 +536,11 @@ class TrainingService:
                 )
                 return
 
-            # Phase 2: Train (LoRA or mock)
+            # Phase 2: Train (PEFT LoRA)
             await self._update(task_id, "training", progress=0.0)
             task_data = await self.get_task(task_id)
             config = dict(task_data.get("config") or {})
-            base_model = str(task_data.get("base_model") or "Qwen/Qwen2.5-1.5B")
+            base_model = str(task_data.get("base_model") or "Qwen/Qwen2.5-0.5B")
             model_dir = Path(self._models_dir) / task_id
             model_dir.mkdir(parents=True, exist_ok=True)
 
@@ -499,12 +554,13 @@ class TrainingService:
                 output_dir=str(model_dir),
                 config=config,
                 on_progress=on_progress,
-                default_use_mock=self._training_use_mock,
                 cancel_flag=cancel_flag,
             )
 
-            # Phase 3: Complete — prefer adapter dir for real LoRA
-            model_path = str(result.get("adapter_path") or (model_dir / "model.bin"))
+            adapter_path = result.get("adapter_path")
+            if not adapter_path:
+                raise RuntimeError("LoRA training finished without adapter_path")
+            model_path = str(adapter_path)
             now = datetime.now(tz=timezone.utc).isoformat()
             await self._update(
                 task_id,

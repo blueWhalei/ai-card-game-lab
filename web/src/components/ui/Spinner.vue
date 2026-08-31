@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
 const props = withDefaults(
@@ -13,6 +15,9 @@ const props = withDefaults(
     overlay: false,
   },
 )
+
+const { t } = useI18n()
+const aria = computed(() => props.label ?? t('common.loading'))
 
 const sizeClass = {
   sm: 'h-4 w-4 border-2',
@@ -39,7 +44,7 @@ const sizeClass = {
         )
       "
       role="status"
-      :aria-label="label ?? '加载中'"
+      :aria-label="aria"
     />
     <span v-if="label" class="text-xs text-ink-text-muted">{{ label }}</span>
   </div>

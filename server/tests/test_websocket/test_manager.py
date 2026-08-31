@@ -91,7 +91,7 @@ class TestConnectionManagerDisconnect:
 
         await connection_manager.disconnect(game_id, mock_ws)
 
-        assert mock_ws not in connection_manager._active[game_id]
+        assert game_id not in connection_manager._active
 
     @pytest.mark.asyncio
     async def test_disconnect_removes_game_entry_when_empty(self, connection_manager: ConnectionManager) -> None:
@@ -173,10 +173,9 @@ class TestConnectionManagerBroadcast:
 
         test_message = {"type": "test", "data": "hello"}
 
-        # After broadcast, only one connection should remain
         await connection_manager.broadcast(game_id, test_message)
 
-        assert len(connection_manager._active[game_id]) == 0
+        assert connection_manager._active[game_id] == [mock_ws1]
 
 
 class TestConnectionManagerConnectionCount:

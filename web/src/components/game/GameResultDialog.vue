@@ -1,10 +1,13 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 
-defineProps<{
+const props = defineProps<{
   modelValue: boolean
+  gameId: string
   winner: {
     name?: string
     id: string
@@ -18,29 +21,45 @@ const emit = defineEmits<{
   back: []
 }>()
 
+const { t } = useI18n()
+const router = useRouter()
+
 function onBack(): void {
   emit('update:modelValue', false)
   emit('back')
+}
+
+function goDecisions(): void {
+  emit('update:modelValue', false)
+  void router.push({ path: '/decisions', query: { game_id: props.gameId } })
 }
 </script>
 
 <template>
   <UiDialog
     :open="modelValue"
-    title="对局结束"
+    :title="t('game.resultTitle')"
     @update:open="emit('update:modelValue', $event)"
   >
     <div v-if="winner" class="py-2 text-center">
       <h3 class="mb-3 text-xl font-semibold text-ink-text">
-        {{ winner.name || winner.id }} 获胜
+        {{ t('game.won', { name: winner.name || winner.id }) }}
       </h3>
       <UiBadge :variant="winner.role === 'landlord' ? 'danger' : 'success'">
-        {{ winner.role === 'landlord' ? '地主' : '农民' }}
+        {{ winner.role === 'landlord' ? t('game.landlord') : t('game.peasant') }}
       </UiBadge>
-      <p class="mt-4 text-sm text-ink-text-muted">总轮次：{{ winner.totalRounds }}</p>
+      <p class="mt-4 text-sm text-ink-text-muted">{{
+        t('game.totalRounds', { n: winner.totalRounds })
+      }}</p>
+      <p class="mt-2 text-sm text-ink-text-secondary">
+        {{ t('game.resultNextStep') }}
+      </p>
     </div>
     <template #footer>
-      <UiButton @click="onBack">返回列表</UiButton>
+      <div class="flex w-full flex-wrap justify-end gap-2">
+        <UiButton variant="ghost" @click="onBack">{{ t('game.backToList') }}</UiButton>
+        <UiButton @click="goDecisions">{{ t('game.viewDecisions') }}</UiButton>
+      </div>
     </template>
   </UiDialog>
 </template>

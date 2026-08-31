@@ -18,6 +18,7 @@ def test_settings(tmp_path: Path) -> Settings:
         app_debug=True,
         data_dir=str(tmp_path),
         sqlite_path=str(tmp_path) + "/test.db",
+        deepseek_api_key="sk-test",
     )
 
 
@@ -33,9 +34,15 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     dependencies.get_experiment_config_service.cache_clear()
     dependencies.get_experiment_config_stats_service.cache_clear()
     dependencies.get_game_service.cache_clear()
+    dependencies.get_game_orchestration_service.cache_clear()
+    dependencies.get_game_replay_service.cache_clear()
+    dependencies.get_jsonl_writer.cache_clear()
+    dependencies.get_trace_service.cache_clear()
+    dependencies.get_experiment_service.cache_clear()
     dependencies.get_ai_service.cache_clear()
     dependencies.get_decision_service.cache_clear()
     dependencies.get_data_service.cache_clear()
+    dependencies.get_demo_seed_service.cache_clear()
 
     with pytest.MonkeyPatch.context() as m:
         m.setenv("SQLITE_PATH", test_settings.sqlite_path)

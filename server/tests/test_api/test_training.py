@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import aiosqlite
@@ -64,7 +65,7 @@ async def test_create_training_task_guard_returns_400(client: AsyncClient, monke
             "dataset_id": "any",
             "training_type": "sft",
             "base_model": "Qwen/Qwen2.5-1.5B",
-            "config": {"use_mock": False},
+            "config": {},
         },
     )
     assert res.status_code == 400
@@ -73,11 +74,15 @@ async def test_create_training_task_guard_returns_400(client: AsyncClient, monke
     assert "Training deps missing" in body["message"]
 
 
-async def test_cancel_training_task(client: AsyncClient) -> None:
+async def test_cancel_training_task(client: AsyncClient, monkeypatch) -> None:
     dataset_id = await _seed_dataset(client)
 
-    # Force the singleton service to non-mock-default-agnostic: use mock=True
-    # so guards do not fire, and replace the pipeline with a long sleep.
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
     dependencies.get_training_service.cache_clear()
     service = dependencies.get_training_service()
     original_pipeline = service._run_pipeline
@@ -100,7 +105,7 @@ async def test_cancel_training_task(client: AsyncClient) -> None:
             json={
                 "name": "cancel-api",
                 "dataset_id": dataset_id,
-                "config": {"use_mock": True},
+                "config": {},
             },
         )
         assert create_res.status_code == 201
@@ -116,21 +121,29 @@ async def test_cancel_training_task(client: AsyncClient) -> None:
 
 
 async def test_create_training_task_rejects_max_steps_zero(client: AsyncClient) -> None:
-    """C1: max_steps has ge=1; sending 0 must 422 so the FE omits it on Mock."""
+    """C1: max_steps has ge=1; sending 0 must 422."""
     dataset_id = await _seed_dataset(client)
     res = await client.post(
         "/api/v1/training/tasks",
         json={
             "name": "zero-steps",
             "dataset_id": dataset_id,
-            "config": {"use_mock": True, "max_steps": 0},
+            "config": {"max_steps": 0},
         },
     )
     assert res.status_code == 422
 
 
-async def test_create_training_task_mock_without_max_steps(client: AsyncClient) -> None:
-    """C1: Mock create with max_steps omitted must succeed (FE contract)."""
+async def test_create_training_task_without_max_steps(
+    client: AsyncClient, monkeypatch
+) -> None:
+    """Create with max_steps omitted must succeed (FE contract)."""
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
     dataset_id = await _seed_dataset(client)
     dependencies.get_training_service.cache_clear()
     service = dependencies.get_training_service()
@@ -140,21 +153,27 @@ async def test_create_training_task_mock_without_max_steps(client: AsyncClient) 
         res = await client.post(
             "/api/v1/training/tasks",
             json={
-                "name": "mock-no-steps",
+                "name": "no-steps",
                 "dataset_id": dataset_id,
-                "config": {"use_mock": True},
+                "config": {},
             },
         )
         assert res.status_code == 201
         cfg = res.json()["data"]["config"]
-        assert cfg["use_mock"] is True
+        assert "use_mock" not in cfg
         assert "max_steps" not in cfg or cfg["max_steps"] is None
     finally:
         service._run_pipeline = original_pipeline  # type: ignore[method-assign]
 
 
-async def test_cancel_terminal_task_returns_400(client: AsyncClient) -> None:
+async def test_cancel_terminal_task_returns_400(client: AsyncClient, monkeypatch) -> None:
     """I4: cancelling a completed task must not overwrite its terminal status."""
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
     dataset_id = await _seed_dataset(client)
     dependencies.get_training_service.cache_clear()
     service = dependencies.get_training_service()
@@ -166,7 +185,7 @@ async def test_cancel_terminal_task_returns_400(client: AsyncClient) -> None:
             json={
                 "name": "completed-task",
                 "dataset_id": dataset_id,
-                "config": {"use_mock": True},
+                "config": {},
             },
         )
         task_id = create_res.json()["data"]["id"]
@@ -185,5 +204,140 @@ async def test_cancel_terminal_task_returns_400(client: AsyncClient) -> None:
         # The terminal status must be preserved.
         get_res = await client.get(f"/api/v1/training/tasks/{task_id}")
         assert get_res.json()["data"]["status"] == "completed"
+    finally:
+        service._run_pipeline = original_pipeline  # type: ignore[method-assign]
+
+
+async def test_create_and_list_task_by_experiment(client: AsyncClient, monkeypatch) -> None:
+    dataset_id = await _seed_dataset(client)
+
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
+    dependencies.get_training_service.cache_clear()
+    service = dependencies.get_training_service()
+    original_pipeline = service._run_pipeline
+    service._run_pipeline = _noop_pipeline  # type: ignore[method-assign]
+    try:
+        create_res = await client.post(
+            "/api/v1/training/tasks",
+            json={
+                "name": "exp-linked",
+                "dataset_id": dataset_id,
+                "experiment_id": "exp_test_link",
+                "config": {},
+            },
+        )
+        assert create_res.status_code == 201, create_res.text
+        assert create_res.json()["data"]["experiment_id"] == "exp_test_link"
+
+        listed = await client.get(
+            "/api/v1/training/tasks",
+            params={"experiment_id": "exp_test_link"},
+        )
+        assert listed.status_code == 200
+        items = listed.json()["data"]["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "exp-linked"
+
+        other = await client.get(
+            "/api/v1/training/tasks",
+            params={"experiment_id": "exp_missing"},
+        )
+        assert other.json()["data"]["total"] == 0
+    finally:
+        service._run_pipeline = original_pipeline  # type: ignore[method-assign]
+
+
+async def test_push_ollama_rejects_non_lora(client: AsyncClient, monkeypatch) -> None:
+    dataset_id = await _seed_dataset(client)
+
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
+    dependencies.get_training_service.cache_clear()
+    service = dependencies.get_training_service()
+    models_root = Path(service._data_dir) / "models"
+    models_root.mkdir(parents=True, exist_ok=True)
+    service._models_dir = str(models_root)
+    original_pipeline = service._run_pipeline
+    service._run_pipeline = _noop_pipeline  # type: ignore[method-assign]
+    try:
+        create_res = await client.post(
+            "/api/v1/training/tasks",
+            json={"name": "bin-model", "dataset_id": dataset_id, "config": {}},
+        )
+        task_id = create_res.json()["data"]["id"]
+        blob = models_root / task_id / "model.bin"
+        blob.parent.mkdir(parents=True, exist_ok=True)
+        blob.write_text("placeholder", encoding="utf-8")
+        await service._update(
+            task_id,
+            "completed",
+            progress=1.0,
+            model_path=str(blob),
+            finished_at=datetime.now(tz=UTC).isoformat(),
+        )
+
+        res = await client.post(f"/api/v1/models/{task_id}/push-ollama", json={})
+        assert res.status_code == 400
+        assert res.json()["code"] == "DEPLOY_NOT_LORA"
+    finally:
+        service._run_pipeline = original_pipeline  # type: ignore[method-assign]
+
+
+async def test_push_ollama_missing_llama_cpp(client: AsyncClient, monkeypatch) -> None:
+    dataset_id = await _seed_dataset(client)
+
+    import app.core.training.deploy as deploy_mod
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: True)
+
+    dependencies.get_training_service.cache_clear()
+    service = dependencies.get_training_service()
+    models_root = Path(service._data_dir) / "models"
+    models_root.mkdir(parents=True, exist_ok=True)
+    service._models_dir = str(models_root)
+    service._llama_cpp_dir = ""
+    original_pipeline = service._run_pipeline
+    service._run_pipeline = _noop_pipeline  # type: ignore[method-assign]
+
+    def _fake_merge(*, base_model: str, adapter_path: str | Path, output_dir: str | Path) -> str:
+        out = Path(output_dir)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "config.json").write_text("{}", encoding="utf-8")
+        return str(out)
+
+    monkeypatch.setattr(deploy_mod, "merge_lora_to_hf", _fake_merge)
+
+    try:
+        create_res = await client.post(
+            "/api/v1/training/tasks",
+            json={"name": "lora-push", "dataset_id": dataset_id, "config": {}},
+        )
+        task_id = create_res.json()["data"]["id"]
+        adapter = models_root / task_id / "adapter"
+        adapter.mkdir(parents=True, exist_ok=True)
+        (adapter / "adapter_config.json").write_text("{}", encoding="utf-8")
+        await service._update(
+            task_id,
+            "completed",
+            progress=1.0,
+            model_path=str(adapter),
+            finished_at=datetime.now(tz=UTC).isoformat(),
+        )
+
+        res = await client.post(f"/api/v1/models/{task_id}/push-ollama", json={})
+        assert res.status_code == 400
+        assert res.json()["code"] == "DEPLOY_LLAMA_CPP_MISSING"
     finally:
         service._run_pipeline = original_pipeline  # type: ignore[method-assign]

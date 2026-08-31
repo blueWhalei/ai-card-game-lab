@@ -14,8 +14,7 @@ build/
 venv/
 ENV/
 
-# Poetry
-poetry.lock
+# Poetry lockfile is committed for reproducible installs.
 
 # mypy
 .mypy_cache/

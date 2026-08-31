@@ -8,9 +8,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import aiosqlite
 import structlog
 
+from app.database import connect_sqlite
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.stats_repo import StatsRepository
 from app.schemas.data import CreateDatasetFromDecisionsRequest, CreateDatasetRequest
@@ -29,11 +29,10 @@ class DataService:
         self._data_dir = Path(data_dir)
         self._decision_service = DecisionService(sqlite_path=sqlite_path, data_dir=data_dir)
 
-    async def get_stats(self) -> dict[str, Any]:
+    async def get_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Query aggregate statistics from games and rounds tables."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
-            stats = StatsRepository(db)
+        async with connect_sqlite(self._sqlite_path) as db:
+            stats = StatsRepository(db, experiment_id=experiment_id)
 
             # --- 基础统计 ---
             total_games = await stats.total_games()
@@ -110,15 +109,13 @@ class DataService:
 
     async def list_datasets(self) -> list[dict[str, Any]]:
         """Return all datasets."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             return await repo.list_all()
 
     async def get_dataset(self, dataset_id: str) -> dict[str, Any]:
         """Get a single dataset by ID."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             try:
                 return await repo.get_by_id(dataset_id)
@@ -138,8 +135,7 @@ class DataService:
         )
 
         now = datetime.now(tz=timezone.utc).isoformat()
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             return await repo.create({
                 "id": dataset_id,
@@ -163,8 +159,12 @@ class DataService:
 
         filepath, sample_count = await self._decision_service.export_chatml(
             game_id=request.game_id,
+            experiment_id=request.experiment_id,
+            player_id=request.player_id,
             min_quality=request.min_quality,
             outcome=request.outcome,
+            game_phase=request.game_phase,
+            train_usable=request.train_usable,
             train_usable_only=request.train_usable_only,
             include_thinking=request.include_thinking,
             output_path=str(output_path),
@@ -177,14 +177,17 @@ class DataService:
         filters: dict[str, Any] = {
             "source": "decisions",
             "format": "chatml",
+            "train_usable": request.train_usable,
             "train_usable_only": request.train_usable_only,
             "include_thinking": request.include_thinking,
             "game_id": request.game_id,
+            "experiment_id": request.experiment_id,
+            "player_id": request.player_id,
             "min_quality": request.min_quality,
             "outcome": request.outcome,
+            "game_phase": request.game_phase,
         }
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             return await repo.create({
                 "id": dataset_id,
@@ -213,8 +216,7 @@ class DataService:
 
     async def delete_dataset(self, dataset_id: str) -> None:
         """Delete a dataset and its file."""
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             try:
                 ds = await repo.get_by_id(dataset_id)

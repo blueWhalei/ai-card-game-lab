@@ -25,6 +25,10 @@ def player_ids() -> list[str]:
 class TestDoudizhuEngineInitialization:
     """Test engine initialization edge cases."""
 
+    def test_player_slot_range_is_three(self, engine: DoudizhuEngine) -> None:
+        assert engine.min_players == 3
+        assert engine.max_players == 3
+
     def test_initialize_with_wrong_player_count(self, engine: DoudizhuEngine) -> None:
         """Test initialization fails with wrong number of players."""
         with pytest.raises(InvalidActionError):
@@ -129,9 +133,11 @@ class TestDoudizhuEngineBiddingPhase:
         """Test that bidding out of turn raises error."""
         state = engine.initialize(player_ids)
 
+        current = state.current_player
+        other = next(pid for pid in player_ids if pid != current)
         with pytest.raises(InvalidActionError):
             engine.apply_action(state, GameAction(
-                player_id=player_ids[1],
+                player_id=other,
                 action_type=ActionType.BID,
                 target="1",
             ))

@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.dependencies import get_decision_service
-from app.schemas.common import ApiResponse
+from app.schemas.common import ApiResponse, PaginatedData
 from app.services.decision_service import DecisionService
 
 router = APIRouter(tags=["decision-points"])
@@ -47,11 +47,18 @@ class ExportRequest(BaseModel):
     """Request model for exporting decision points."""
 
     game_id: str | None = None
+    experiment_id: str | None = None
+    player_id: str | None = None
     min_quality: float | None = None
     outcome: str | None = None
+    game_phase: str | None = None
+    train_usable: bool | None = Field(
+        default=None,
+        description="Exact train_usable filter; overrides train_usable_only when set",
+    )
     train_usable_only: bool = Field(
         default=True,
-        description="Only export samples marked train_usable=true",
+        description="Only export samples marked train_usable=true (ignored if train_usable set)",
     )
     include_thinking: bool = Field(
         default=False,
@@ -66,9 +73,10 @@ class ExportResponse(BaseModel):
     count: int
 
 
-@router.get("", response_model=ApiResponse[list[DecisionPointResponse]])
+@router.get("", response_model=ApiResponse[PaginatedData[DecisionPointResponse]])
 async def list_decision_points(
     game_id: str | None = Query(None, description="Filter by game ID"),
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     player_id: str | None = Query(None, description="Filter by player ID"),
     min_quality: float | None = Query(None, description="Minimum quality score"),
     max_quality: float | None = Query(None, description="Maximum quality score"),
@@ -77,35 +85,43 @@ async def list_decision_points(
     train_usable: bool | None = Query(
         None, description="Filter by train_usable flag (true/false)"
     ),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=200),
     service: DecisionService = Depends(get_decision_service),
-) -> ApiResponse[list[DecisionPointResponse]]:
+) -> ApiResponse[PaginatedData[DecisionPointResponse]]:
     """List decision points with optional filters and pagination."""
+    offset = (page - 1) * page_size
     items, total = await service.list_decision_points(
         game_id=game_id,
+        experiment_id=experiment_id,
         player_id=player_id,
         min_quality=min_quality,
         max_quality=max_quality,
         game_phase=game_phase,
         outcome=outcome,
         train_usable=train_usable,
-        limit=limit,
+        limit=page_size,
         offset=offset,
     )
 
     return ApiResponse(
-        data=[DecisionPointResponse(**item) for item in items],
+        data=PaginatedData(
+            items=[DecisionPointResponse(**item) for item in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+        ),
         message=f"Found {total} decision points",
     )
 
 
 @router.get("/stats", response_model=ApiResponse[DecisionStatsResponse])
 async def get_stats(
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     service: DecisionService = Depends(get_decision_service),
 ) -> ApiResponse[DecisionStatsResponse]:
     """Get aggregate statistics for decision points."""
-    stats = await service.get_stats()
+    stats = await service.get_stats(experiment_id=experiment_id)
     return ApiResponse(data=DecisionStatsResponse(**stats))
 
 
@@ -117,8 +133,12 @@ async def export_chatml(
     """Export decision points to ChatML format JSONL."""
     filepath, count = await service.export_chatml(
         game_id=request.game_id,
+        experiment_id=request.experiment_id,
+        player_id=request.player_id,
         min_quality=request.min_quality,
         outcome=request.outcome,
+        game_phase=request.game_phase,
+        train_usable=request.train_usable,
         train_usable_only=request.train_usable_only,
         include_thinking=request.include_thinking,
     )

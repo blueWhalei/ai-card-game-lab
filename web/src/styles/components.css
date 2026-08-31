@@ -25,7 +25,11 @@
   }
 
   .ink-input {
-    @apply w-full rounded-ink border border-ink-border bg-ink-surface px-3 py-2.5 text-base text-ink-text outline-none transition-colors duration-150 placeholder:text-ink-text-muted focus:border-ink-primary focus:ring-2 focus:ring-ink-primary-muted;
+    @apply box-border h-10 w-full rounded-ink border border-ink-border bg-ink-surface px-3 py-0 text-base leading-none text-ink-text outline-none transition-colors duration-150 placeholder:text-ink-text-muted focus:border-ink-primary focus:ring-2 focus:ring-ink-primary-muted;
+  }
+
+  textarea.ink-input {
+    @apply h-auto min-h-24 py-2.5 leading-normal;
   }
 
   .ink-label {

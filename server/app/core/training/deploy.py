@@ -1,12 +1,10 @@
-"""Model deploy helpers: LoRA merge, Ollama Modelfile, GGUF conversion scripts.
+"""Model deploy helpers: LoRA merge, Ollama Modelfile, GGUF conversion.
 
-M3 deliverable — produces a deployable bundle under ``models/<task_id>/deploy/``.
+Produces a deployable bundle under ``models/<task_id>/deploy/``.
 
-Flow:
-1. Merge LoRA adapter into base HF weights (requires training extras)
-2. Write ``convert_gguf`` scripts for llama.cpp
-3. Write Ollama ``Modelfile`` (FROM ./model.gguf)
-4. Optionally ``ollama create`` when a GGUF already exists
+Flows:
+1. Export bundle — merge (optional) + scripts + Modelfile
+2. Push to Ollama — merge → convert/quantize → ``ollama create``
 """
 
 from __future__ import annotations
@@ -14,10 +12,19 @@ from __future__ import annotations
 import json
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
 import structlog
+
+from app.utils.exceptions import (
+    DeployGgufFailedError,
+    DeployLlamaCppMissingError,
+    DeployMergeFailedError,
+    DeployNotLoraError,
+    DeployOllamaFailedError,
+)
 
 logger = structlog.get_logger()
 
@@ -25,6 +32,9 @@ _DEFAULT_SYSTEM = (
     "你是一个 AI 卡牌游戏玩家。根据当前局面选择最佳动作，"
     '按照 JSON 格式输出：{"action": {"type": "...", "cards": [...]}}'
 )
+
+GGUF_CONVERT_TIMEOUT_S = 1800
+OLLAMA_CREATE_TIMEOUT_S = 600
 
 
 def is_lora_adapter(model_path: str | Path) -> bool:
@@ -84,8 +94,8 @@ def write_modelfile(
     path = deploy_dir / "Modelfile"
     content = (
         f"FROM ./{gguf_name}\n"
-        f'PARAMETER temperature 0.7\n'
-        f'PARAMETER num_predict 512\n'
+        f"PARAMETER temperature 0.7\n"
+        f"PARAMETER num_predict 512\n"
         f'SYSTEM """{system_prompt}"""\n'
     )
     path.write_text(content, encoding="utf-8")
@@ -138,12 +148,12 @@ Write-Host "Next: ollama create <tag> -f $(Join-Path $Root 'Modelfile')"
 
 ## 步骤
 
-1. **合并 LoRA**（若尚无 `merged/`）：由后端导出接口自动完成，或手动 merge。
-2. **转 GGUF**：设置 `LLAMA_CPP_DIR` 后运行 `convert_gguf.ps1` / `convert_gguf.sh`。
-3. **导入 Ollama**：`ollama create <tag> -f Modelfile`（Modelfile 默认 `FROM ./model.gguf`）。
+1. **合并 LoRA**（若尚无 `merged/`）：由后端导出接口或「推送到 Ollama」完成。
+2. **转 GGUF**：优先用训练台「推送到 Ollama」；或设置 `LLAMA_CPP_DIR` 后运行 `convert_gguf.ps1` / `convert_gguf.sh`。
+3. **导入 Ollama**：一键推送会执行 `ollama create`；手动则为 `ollama create <tag> -f Modelfile`。
 4. **验证**：在训练页点「验证」，或配置 AI 玩家 `provider: ollama` + `model_name: <tag>` 后开一局。
 
-Mock 训练的 `model.bin` **不能**导出；需要真实 LoRA adapter。
+需要真实 LoRA adapter 目录（`adapter_config.json`）。
 """,
         encoding="utf-8",
     )
@@ -155,11 +165,112 @@ Mock 训练的 `model.bin` **不能**导出；需要真实 LoRA adapter。
     }
 
 
+def _resolve_quantize_bin(llama_cpp: Path) -> Path:
+    exe = llama_cpp / "llama-quantize.exe"
+    plain = llama_cpp / "llama-quantize"
+    if exe.is_file():
+        return exe
+    if plain.is_file():
+        return plain
+    for candidate in (
+        llama_cpp / "build" / "bin" / "llama-quantize.exe",
+        llama_cpp / "build" / "bin" / "llama-quantize",
+    ):
+        if candidate.is_file():
+            return candidate
+    raise DeployLlamaCppMissingError(
+        f"llama-quantize not found under {llama_cpp}. Build llama.cpp first."
+    )
+
+
+def convert_merged_to_gguf(
+    deploy_dir: Path,
+    *,
+    llama_cpp_dir: str | Path,
+    merged_dirname: str = "merged",
+    quant: str = "q4_k_m",
+    timeout_s: int = GGUF_CONVERT_TIMEOUT_S,
+) -> dict[str, Any]:
+    """Convert ``deploy/merged`` HF weights to quantized ``model.gguf`` via llama.cpp."""
+    deploy = Path(deploy_dir)
+    llama = Path(llama_cpp_dir) if llama_cpp_dir else Path()
+    if not str(llama_cpp_dir).strip() or not llama.is_dir():
+        raise DeployLlamaCppMissingError()
+
+    convert_py = llama / "convert_hf_to_gguf.py"
+    if not convert_py.is_file():
+        raise DeployLlamaCppMissingError(
+            f"convert_hf_to_gguf.py not found in {llama}. "
+            "Set LLAMA_CPP_DIR to a llama.cpp checkout."
+        )
+
+    merged = deploy / merged_dirname
+    if not merged.is_dir():
+        raise DeployGgufFailedError(
+            f"Merged HF directory missing: {merged}. Merge LoRA first.",
+            status_code=400,
+        )
+
+    quantize_bin = _resolve_quantize_bin(llama)
+    gguf_f16 = deploy / "model-f16.gguf"
+    gguf_q4 = deploy / "model.gguf"
+
+    try:
+        convert_proc = subprocess.run(
+            [sys.executable, str(convert_py), str(merged), "--outfile", str(gguf_f16)],
+            cwd=str(deploy),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise DeployGgufFailedError(
+            f"convert_hf_to_gguf timed out after {timeout_s}s",
+            status_code=504,
+        ) from exc
+
+    if convert_proc.returncode != 0:
+        err = (convert_proc.stderr or convert_proc.stdout or "")[-1500:]
+        raise DeployGgufFailedError(f"convert_hf_to_gguf failed: {err}")
+
+    try:
+        quant_proc = subprocess.run(
+            [str(quantize_bin), str(gguf_f16), str(gguf_q4), quant],
+            cwd=str(deploy),
+            capture_output=True,
+            text=True,
+            timeout=timeout_s,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise DeployGgufFailedError(
+            f"llama-quantize timed out after {timeout_s}s",
+            status_code=504,
+        ) from exc
+
+    if quant_proc.returncode != 0:
+        err = (quant_proc.stderr or quant_proc.stdout or "")[-1500:]
+        raise DeployGgufFailedError(f"llama-quantize failed: {err}")
+
+    if not gguf_q4.is_file():
+        raise DeployGgufFailedError("Quantize finished but model.gguf was not created")
+
+    logger.info("gguf_convert_done", path=str(gguf_q4))
+    return {
+        "ok": True,
+        "path": str(gguf_q4),
+        "f16_path": str(gguf_f16),
+        "quant": quant,
+    }
+
+
 def try_ollama_create(
     *,
     deploy_dir: Path,
     tag: str,
     ollama_bin: str = "ollama",
+    timeout_s: int = OLLAMA_CREATE_TIMEOUT_S,
 ) -> dict[str, Any]:
     """Run ``ollama create`` if ``model.gguf`` exists under deploy_dir."""
     gguf = deploy_dir / "model.gguf"
@@ -179,7 +290,7 @@ def try_ollama_create(
             cwd=str(deploy_dir),
             capture_output=True,
             text=True,
-            timeout=600,
+            timeout=timeout_s,
             check=False,
         )
     except FileNotFoundError:
@@ -195,6 +306,113 @@ def try_ollama_create(
         "stderr": (proc.stderr or "")[-2000:],
         "returncode": proc.returncode,
     }
+
+
+def _ensure_deploy_dir(root: Path) -> Path:
+    deploy_dir = root / "deploy"
+    if deploy_dir.exists():
+        preserved_gguf = deploy_dir / "model.gguf"
+        tmp_gguf: Path | None = None
+        if preserved_gguf.is_file():
+            tmp_gguf = root / "_model.gguf.bak"
+            shutil.copy2(preserved_gguf, tmp_gguf)
+        shutil.rmtree(deploy_dir)
+        deploy_dir.mkdir(parents=True, exist_ok=True)
+        if tmp_gguf and tmp_gguf.is_file():
+            shutil.move(str(tmp_gguf), str(deploy_dir / "model.gguf"))
+    else:
+        deploy_dir.mkdir(parents=True, exist_ok=True)
+    return deploy_dir
+
+
+def push_lora_to_ollama(
+    *,
+    task_id: str,
+    model_path: str,
+    base_model: str,
+    models_dir: str | Path,
+    llama_cpp_dir: str,
+    ollama_tag: str | None = None,
+    ollama_bin: str = "ollama",
+    force_convert: bool = False,
+) -> dict[str, Any]:
+    """Merge LoRA → GGUF → ollama create. Raises Deploy* errors on failure."""
+    if not is_lora_adapter(model_path):
+        raise DeployNotLoraError()
+
+    root = Path(models_dir) / task_id
+    deploy_dir = _ensure_deploy_dir(root)
+    tag = ollama_tag or f"acgl-{task_id[:12]}"
+    stages: dict[str, Any] = {}
+
+    merged_dir = deploy_dir / "merged"
+    try:
+        merge_lora_to_hf(
+            base_model=base_model,
+            adapter_path=model_path,
+            output_dir=merged_dir,
+        )
+        stages["merge"] = {"ok": True, "merged_path": str(merged_dir)}
+    except RuntimeError as exc:
+        raise DeployMergeFailedError(str(exc)) from exc
+    except Exception as exc:  # noqa: BLE001 — surface merge failures clearly
+        raise DeployMergeFailedError(str(exc)) from exc
+
+    gguf_path = deploy_dir / "model.gguf"
+    if gguf_path.is_file() and not force_convert:
+        stages["gguf"] = {"ok": True, "skipped": True, "path": str(gguf_path)}
+    else:
+        if not str(llama_cpp_dir).strip():
+            raise DeployLlamaCppMissingError()
+        gguf_result = convert_merged_to_gguf(deploy_dir, llama_cpp_dir=llama_cpp_dir)
+        stages["gguf"] = {
+            "ok": True,
+            "skipped": False,
+            "path": gguf_result["path"],
+        }
+
+    write_modelfile(deploy_dir)
+    write_gguf_scripts(deploy_dir)
+
+    create_result = try_ollama_create(
+        deploy_dir=deploy_dir,
+        tag=tag,
+        ollama_bin=ollama_bin,
+    )
+    if not create_result.get("created"):
+        reason = str(create_result.get("reason") or "unknown")
+        hint = str(create_result.get("hint") or create_result.get("stderr") or "")
+        status = 504 if "timeout" in reason else 500
+        if reason == "ollama_cli_not_found":
+            status = 400
+            hint = "Install Ollama and ensure `ollama` is on PATH (or set OLLAMA_BIN)."
+        raise DeployOllamaFailedError(
+            f"ollama create failed ({reason}). {hint}".strip(),
+            status_code=status,
+        )
+
+    stages["ollama_create"] = {"ok": True, "tag": tag}
+
+    meta: dict[str, Any] = {
+        "ok": True,
+        "model_id": task_id,
+        "task_id": task_id,
+        "base_model": base_model,
+        "adapter_path": model_path,
+        "deploy_dir": str(deploy_dir),
+        "ollama_tag": tag,
+        "stages": stages,
+        "gguf_ready": True,
+        "merged": True,
+        "merged_path": str(merged_dir),
+        "ollama_create": create_result,
+    }
+    (deploy_dir / "export_meta.json").write_text(
+        json.dumps(meta, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    logger.info("push_lora_to_ollama_done", task_id=task_id, ollama_tag=tag)
+    return meta
 
 
 def export_deploy_bundle(
@@ -213,25 +431,11 @@ def export_deploy_bundle(
     """
     if not is_lora_adapter(model_path):
         raise ValueError(
-            "Model path is not a LoRA adapter (mock placeholder cannot be exported). "
-            "Train with use_mock=false first."
+            "Model path is not a LoRA adapter directory. Train a real LoRA task first."
         )
 
     root = Path(models_dir) / task_id
-    deploy_dir = root / "deploy"
-    if deploy_dir.exists():
-        # Keep prior GGUF if present
-        preserved_gguf = deploy_dir / "model.gguf"
-        tmp_gguf: Path | None = None
-        if preserved_gguf.is_file():
-            tmp_gguf = root / "_model.gguf.bak"
-            shutil.copy2(preserved_gguf, tmp_gguf)
-        shutil.rmtree(deploy_dir)
-        deploy_dir.mkdir(parents=True, exist_ok=True)
-        if tmp_gguf and tmp_gguf.is_file():
-            shutil.move(str(tmp_gguf), str(deploy_dir / "model.gguf"))
-    else:
-        deploy_dir.mkdir(parents=True, exist_ok=True)
+    deploy_dir = _ensure_deploy_dir(root)
 
     merged_dir = deploy_dir / "merged"
     merge_status: dict[str, Any] = {"merged": False}
@@ -262,7 +466,6 @@ def export_deploy_bundle(
     }
 
     tag = ollama_tag or f"acgl-{task_id[:12]}"
-    create_result: dict[str, Any] | None = None
     if try_create:
         create_result = try_ollama_create(deploy_dir=deploy_dir, tag=tag)
         meta["ollama_create"] = create_result
@@ -275,5 +478,8 @@ def export_deploy_bundle(
         json.dumps(meta, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    logger.info("deploy_bundle_exported", **{k: meta[k] for k in ("task_id", "deploy_dir", "gguf_ready")})
+    logger.info(
+        "deploy_bundle_exported",
+        **{k: meta[k] for k in ("task_id", "deploy_dir", "gguf_ready")},
+    )
     return meta

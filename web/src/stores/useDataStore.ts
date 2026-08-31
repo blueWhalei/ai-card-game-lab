@@ -13,14 +13,16 @@ export const useDataStore = defineStore('data', () => {
 
   // 加载标记，避免重复请求
   const statsLoaded = ref(false)
+  const statsLoadedKey = ref<string | null>(null)
   const datasetsLoaded = ref(false)
 
-  async function fetchStats(): Promise<void> {
+  async function fetchStats(experimentId?: string): Promise<void> {
     statsLoading.value = true
     try {
-      const res = await dataApi.stats()
+      const res = await dataApi.stats(experimentId ? { experiment_id: experimentId } : undefined)
       stats.value = res.data
       statsLoaded.value = true
+      statsLoadedKey.value = experimentId ?? ''
     } finally {
       statsLoading.value = false
     }
@@ -37,9 +39,10 @@ export const useDataStore = defineStore('data', () => {
     }
   }
 
-  async function fetchStatsOnce(): Promise<void> {
-    if (statsLoaded.value) return
-    await fetchStats()
+  async function fetchStatsOnce(experimentId?: string): Promise<void> {
+    const key = experimentId ?? ''
+    if (statsLoaded.value && statsLoadedKey.value === key) return
+    await fetchStats(experimentId)
   }
 
   async function fetchDatasetsOnce(): Promise<void> {

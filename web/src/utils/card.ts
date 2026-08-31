@@ -1,3 +1,5 @@
+import { tt } from '@/i18n'
+
 export const CARD_DISPLAY: Record<string, string> = {
   S: '♠',
   H: '♥',
@@ -19,8 +21,12 @@ export const RANK_DISPLAY: Record<string, string> = {
   K: 'K',
   A: 'A',
   '2': '2',
-  BJ: '小王',
-  RJ: '大王',
+  get BJ() {
+    return tt('card.blackJoker')
+  },
+  get RJ() {
+    return tt('card.redJoker')
+  },
 }
 
 export const SUIT_DISPLAY: Record<string, string> = {
@@ -34,10 +40,10 @@ export const RANK_ORDER = ['3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K'
 
 export function getCardInfo(card: string): { rank: string; suit: string; isJoker: boolean } {
   if (card === 'BJ') {
-    return { rank: '小王', suit: '', isJoker: true }
+    return { rank: tt('card.blackJoker'), suit: '', isJoker: true }
   }
   if (card === 'RJ') {
-    return { rank: '大王', suit: '', isJoker: true }
+    return { rank: tt('card.redJoker'), suit: '', isJoker: true }
   }
   const suit = card[0] ?? ''
   const rank = card.slice(1)
@@ -56,8 +62,8 @@ export const isRedCard = (card: string): boolean => {
 }
 
 export function displayCard(card: string): string {
-  if (card === 'BJ') return '🃏小'
-  if (card === 'RJ') return '🃏大'
+  if (card === 'BJ') return `🃏${tt('card.shortBlack')}`
+  if (card === 'RJ') return `🃏${tt('card.shortRed')}`
   const suit = card[0] ?? ''
   const rank = card.slice(1)
   return `${CARD_DISPLAY[suit] ?? ''}${RANK_DISPLAY[rank] ?? rank}`

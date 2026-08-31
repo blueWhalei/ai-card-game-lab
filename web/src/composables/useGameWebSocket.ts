@@ -1,4 +1,5 @@
-import { ref, computed, nextTick } from 'vue'
+import { ref, computed, nextTick, toValue, watch, type MaybeRefOrGetter } from 'vue'
+import { tt } from '@/i18n'
 import { useWebSocket } from '@/composables/useWebSocket'
 import { coerceObserverSnapshot, type ObserverSnapshot } from '@/types/observer'
 import type {
@@ -66,8 +67,8 @@ interface PendingThinkingEntry {
   answer?: string
 }
 
-export function useGameWebSocket(gameId: string) {
-  const { isConnected, connect, disconnect, onMessage } = useWebSocket(gameId)
+export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
+  const { isConnected, connect, disconnect, onMessage } = useWebSocket(gameIdSource)
 
   const snapshot = ref<ObserverSnapshot | null>(null)
   const playerHands = ref<Record<string, string[]>>({})
@@ -314,13 +315,52 @@ export function useGameWebSocket(gameId: string) {
 
     onMessage('error', (d: unknown) => {
       const data = d as ErrorPayload
-      const msg = data.message || '对局出错'
+      const msg = data.message || tt('game.errorFallback')
       lastError.value = msg
       console.error('Game error:', msg)
     })
   }
 
+  function resetBoardState(): void {
+    snapshot.value = null
+    playerHands.value = {}
+    players.value = {}
+    currentPlayer.value = ''
+    lastAction.value = null
+    thinkingPlayer.value = ''
+    thinkingContent.value = ''
+    reasoningContent.value = ''
+    answerContent.value = ''
+    currentThinkingRound.value = undefined
+    currentThinkingActionType.value = ''
+    currentThinkingCards.value = []
+    currentPromptPreview.value = ''
+    currentRawResponsePreview.value = ''
+    currentPromptMessages.value = []
+    currentRawResponseFull.value = ''
+    pendingThinking.value = {}
+    lastResponseTimeMs.value = {}
+    playerTokenTotals.value = {}
+    playerLastRoundTokens.value = {}
+    actionHistory.value = []
+    thinkingHistory.value = []
+    landlordCards.value = []
+    isPaused.value = false
+    isStarted.value = false
+    isFinished.value = false
+    lastError.value = ''
+    winner.value = null
+  }
+
   setupMessageHandlers()
+
+  watch(
+    () => String(toValue(gameIdSource) ?? ''),
+    (next, prev) => {
+      if (!next || next === prev) return
+      resetBoardState()
+    },
+  )
 
   return {
     isConnected,

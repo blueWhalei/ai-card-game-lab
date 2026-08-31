@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="T extends Record<string, unknown>">
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
 export type TableColumn<T> = {
@@ -15,6 +16,8 @@ const props = defineProps<{
   class?: string
   emptyText?: string
 }>()
+
+const { t } = useI18n()
 
 function keyOf(row: T, index: number): string {
   if (typeof props.rowKey === 'function') return props.rowKey(row)
@@ -42,7 +45,7 @@ function cell(row: T, col: TableColumn<T>): string {
           >
             {{ col.label }}
           </th>
-          <th v-if="$slots.actions" class="px-3 py-2.5 font-medium">操作</th>
+          <th v-if="$slots.actions" class="px-3 py-2.5 font-medium">{{ t('common.actions') }}</th>
         </tr>
       </thead>
       <tbody>
@@ -51,7 +54,7 @@ function cell(row: T, col: TableColumn<T>): string {
             :colspan="columns.length + ($slots.actions ? 1 : 0)"
             class="px-3 py-8 text-center text-ink-text-muted"
           >
-            {{ emptyText ?? '暂无数据' }}
+            {{ emptyText ?? t('common.noData') }}
           </td>
         </tr>
         <tr

@@ -23,7 +23,6 @@ def test_guide_exits_zero(capsys: pytest.CaptureFixture[str]) -> None:
 def test_parser_accepts_count_after_command() -> None:
     ns = runpy.run_path(str(SCRIPT))
     parser = ns["build_parser"]()
-    args = parser.parse_args(["all", "--count", "2", "--mock"])
+    args = parser.parse_args(["all", "--count", "2"])
     assert args.command == "all"
     assert args.count == 2
-    assert args.no_mock is False

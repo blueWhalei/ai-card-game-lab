@@ -1,85 +1,101 @@
-"""Tests for GameService."""
+"""Tests for GameService facade."""
 
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
-from dataclasses import dataclass
 
+from app.config import Settings
 from app.services.game_service import GameService
-
-
-@dataclass
-class MockGameAction:
-    """Mock GameAction for testing."""
-    player_id: str
-    action_type: str
-    cards: list
-    target: str | None = None
+from app.utils.exceptions import InvalidPlayerIdsError, ProviderNotConfiguredError
 
 
 @pytest.fixture
-def game_service():
-    """Create a minimal GameService instance for testing."""
-    from unittest.mock import MagicMock
+def experiment_config_service() -> MagicMock:
+    svc = MagicMock()
+    svc.get_config.side_effect = lambda pid: {
+        "id": pid,
+        "model_config": {"provider": "deepseek", "model_name": "deepseek-v4-flash"},
+    }
+    return svc
 
-    # Create service with minimal dependencies (mocked)
+
+@pytest.fixture
+def game_service(experiment_config_service: MagicMock) -> GameService:
     return GameService(
         engine_registry=MagicMock(),
         collector=MagicMock(),
-        ai_service=None,  # Will be mocked in tests
-        ai_player_service=MagicMock(),
         sqlite_path=":memory:",
-        decision_service=MagicMock(),
+        orchestration_service=MagicMock(),
+        replay_service=MagicMock(),
+        experiment_config_service=experiment_config_service,
+        settings=Settings(deepseek_api_key="sk-test"),
     )
 
 
 class TestGameServiceInitialization:
-    """Test GameService initialization."""
-
     def test_service_initialization(self, game_service: GameService) -> None:
-        """Test that GameService can be initialized with required dependencies."""
         assert game_service is not None
 
-    def test_empty_states_dict(self, game_service: GameService) -> None:
-        """Test that game states dict starts empty."""
-        assert game_service._states == {}
-
-    def test_empty_tasks_dict(self, game_service: GameService) -> None:
-        """Test that tasks dict starts empty."""
-        assert game_service._tasks == {}
-
-    def test_empty_pause_events_dict(self, game_service: GameService) -> None:
-        """Test that pause events dict starts empty."""
-        assert game_service._pause_events == {}
+    def test_get_game_state_delegates(self, game_service: GameService) -> None:
+        game_service._orchestration_service.get_game_state.return_value = None
+        assert game_service.get_game_state("missing") is None
+        game_service._orchestration_service.get_game_state.assert_called_once_with("missing")
 
 
-class TestGameServiceStateManagement:
-    """Test game state management methods."""
+class TestGameServicePlayerValidation:
+    def test_unknown_player_ids_rejected(
+        self,
+        game_service: GameService,
+        experiment_config_service: MagicMock,
+    ) -> None:
+        experiment_config_service.get_config.side_effect = lambda pid: None
+        with pytest.raises(InvalidPlayerIdsError):
+            game_service._validate_player_ids(["missing-1"])
 
-    def test_get_game_state_returns_none_for_nonexistent(self, game_service: GameService) -> None:
-        """Test that get_game_state returns None for non-existent games."""
-        result = game_service.get_game_state("non_existent_game_id")
-        assert result is None
+    def test_unconfigured_provider_rejected(
+        self,
+        experiment_config_service: MagicMock,
+    ) -> None:
+        service = GameService(
+            engine_registry=MagicMock(),
+            collector=MagicMock(),
+            sqlite_path=":memory:",
+            orchestration_service=MagicMock(),
+            replay_service=MagicMock(),
+            experiment_config_service=experiment_config_service,
+            settings=Settings(deepseek_api_key=""),
+        )
+        with pytest.raises(ProviderNotConfiguredError) as exc:
+            service._validate_player_ids(["cfg_temp_09"])
+        assert "deepseek" in exc.value.message
 
-    def test_get_game_state_returns_state_for_existing(self, game_service: GameService) -> None:
-        """Test that get_game_state returns state for existing games."""
-        test_state = {"game_type": "test", "current_player": "p1"}
-        game_service._states["test_game"] = test_state
+    def test_ollama_does_not_require_api_key(
+        self,
+        experiment_config_service: MagicMock,
+    ) -> None:
+        experiment_config_service.get_config.side_effect = lambda pid: {
+            "id": pid,
+            "model_config": {"provider": "ollama", "model_name": "llama3.2"},
+        }
+        service = GameService(
+            engine_registry=MagicMock(),
+            collector=MagicMock(),
+            sqlite_path=":memory:",
+            orchestration_service=MagicMock(),
+            replay_service=MagicMock(),
+            experiment_config_service=experiment_config_service,
+            settings=Settings(),
+        )
+        service._validate_player_ids(["cfg_ollama_local"])
 
-        result = game_service.get_game_state("test_game")
-        assert result is test_state
-        assert result["current_player"] == "p1"
+    def test_wrong_player_count_rejected(self, game_service: GameService) -> None:
+        engine = MagicMock()
+        engine.min_players = 3
+        engine.max_players = 3
+        game_service._engine_registry.get.return_value = engine
+        from app.utils.exceptions import InvalidPlayerCountError
 
-
-class TestGameServiceThinkingMap:
-    """Test thinking map reading methods."""
-
-    def test_read_thinking_map_returns_empty_for_nonexistent(self, game_service: GameService) -> None:
-        """Test that _read_thinking_map_from_jsonl returns empty dict for non-existent games."""
-        result = game_service._read_thinking_map_from_jsonl("non_existent_game")
-        assert result == {}
-
-    def test_read_thinking_returns_empty_for_nonexistent(self, game_service: GameService) -> None:
-        """Test that _read_thinking_from_jsonl returns empty list for non-existent games."""
-        result = game_service._read_thinking_from_jsonl("non_existent_game")
-        assert result == []
+        with pytest.raises(InvalidPlayerCountError):
+            game_service._validate_player_count("doudizhu", ["a", "b"])

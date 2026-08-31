@@ -39,7 +39,7 @@ async def list_games(
     date_from: str | None = Query(None),
     date_to: str | None = Query(None),
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(10, ge=1, le=100),
     sort_by: str = Query("created_at"),
     sort_order: str = Query("desc"),
     service: GameService = Depends(get_game_service),
@@ -75,6 +75,7 @@ async def create_game(
         player_ids=body.player_ids,
         mode=body.mode,
         db=db,
+        experiment_id=body.experiment_id,
     )
     return ApiResponse(data=_normalize_game(game))
 
@@ -158,6 +159,7 @@ async def batch_create(
             player_ids=body.player_ids,
             mode="batch",
             db=db,
+            experiment_id=body.experiment_id,
         )
         await service.start_game(game["id"], db=db)
         game_ids.append(game["id"])

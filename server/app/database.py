@@ -1,35 +1,52 @@
 """SQLite database connection management and schema initialization."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator
+from contextlib import asynccontextmanager
+from contextvars import ContextVar
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import aiosqlite
 import structlog
 
-if TYPE_CHECKING:
-    pass
+_bound_connection: ContextVar[aiosqlite.Connection | None] = ContextVar(
+    "bound_sqlite_connection",
+    default=None,
+)
 
 logger = structlog.get_logger()
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS games (
+CREATE TABLE IF NOT EXISTS experiments (
     id            TEXT PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    notes         TEXT    NOT NULL DEFAULT '',
     game_type     TEXT    NOT NULL,
-    status        TEXT    NOT NULL DEFAULT 'created',
     player_ids    TEXT    NOT NULL,
-    winner_id     TEXT,
-    winner_role   TEXT,
-    total_rounds  INTEGER DEFAULT 0,
-    data_file     TEXT    NOT NULL,
+    target_games  INTEGER NOT NULL DEFAULT 1,
     created_at    TEXT    NOT NULL,
-    finished_at   TEXT,
-    metadata      TEXT
+    updated_at    TEXT    NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_games_type    ON games(game_type);
-CREATE INDEX IF NOT EXISTS idx_games_status  ON games(status);
-CREATE INDEX IF NOT EXISTS idx_games_created ON games(created_at);
+CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at);
+
+CREATE TABLE IF NOT EXISTS games (
+    id             TEXT PRIMARY KEY,
+    game_type      TEXT    NOT NULL,
+    status         TEXT    NOT NULL DEFAULT 'created',
+    player_ids     TEXT    NOT NULL,
+    winner_id      TEXT,
+    winner_role    TEXT,
+    total_rounds   INTEGER DEFAULT 0,
+    data_file      TEXT    NOT NULL,
+    created_at     TEXT    NOT NULL,
+    finished_at    TEXT,
+    metadata       TEXT,
+    experiment_id  TEXT    REFERENCES experiments(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_games_type         ON games(game_type);
+CREATE INDEX IF NOT EXISTS idx_games_status       ON games(status);
+CREATE INDEX IF NOT EXISTS idx_games_created      ON games(created_at);
 
 CREATE TABLE IF NOT EXISTS rounds (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,7 +92,8 @@ CREATE TABLE IF NOT EXISTS training_tasks (
     result        TEXT,
     model_path    TEXT,
     created_at    TEXT    NOT NULL,
-    finished_at   TEXT
+    finished_at   TEXT,
+    experiment_id TEXT    REFERENCES experiments(id)
 );
 
 -- Prompt template versions for A/B testing and version control
@@ -184,7 +202,7 @@ async def init_db(sqlite_path: str) -> None:
     db_dir = Path(sqlite_path).parent
     db_dir.mkdir(parents=True, exist_ok=True)
 
-    async with aiosqlite.connect(sqlite_path) as db:
+    async with connect_sqlite(sqlite_path) as db:
         await db.executescript(_SCHEMA_SQL)
         try:
             await db.execute("ALTER TABLE rounds ADD COLUMN total_tokens INTEGER")
@@ -207,21 +225,90 @@ async def init_db(sqlite_path: str) -> None:
             )
         except aiosqlite.OperationalError:
             pass
+        try:
+            await db.execute("ALTER TABLE games ADD COLUMN experiment_id TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_games_experiment ON games(experiment_id)"
+            )
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE training_tasks ADD COLUMN experiment_id TEXT")
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute(
+                "CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment "
+                "ON training_tasks(experiment_id)"
+            )
+        except aiosqlite.OperationalError:
+            pass
         await _migrate_ai_players_to_experiment_configs(db)
         await db.commit()
 
     logger.info("database_initialized", path=sqlite_path)
 
 
+async def apply_connection_pragmas(db: aiosqlite.Connection) -> None:
+    """Apply WAL, busy timeout, and foreign keys on a live connection."""
+    db.row_factory = aiosqlite.Row
+    await db.execute("PRAGMA journal_mode=WAL")
+    await db.execute("PRAGMA synchronous=NORMAL")
+    await db.execute("PRAGMA busy_timeout=5000")
+    await db.execute("PRAGMA foreign_keys=ON")
+
+
+@asynccontextmanager
+async def connect_sqlite(sqlite_path: str) -> AsyncGenerator[aiosqlite.Connection, None]:
+    """Yield a pragma-configured SQLite connection."""
+    db = await aiosqlite.connect(sqlite_path)
+    try:
+        await apply_connection_pragmas(db)
+        yield db
+    finally:
+        await db.close()
+
+
 async def open_db_connection(sqlite_path: str) -> aiosqlite.Connection:
     """Open a configured SQLite connection for non-request usage."""
     db = await aiosqlite.connect(sqlite_path)
-    db.row_factory = aiosqlite.Row
+    await apply_connection_pragmas(db)
     return db
 
 
 async def get_db_connection(sqlite_path: str) -> AsyncGenerator[aiosqlite.Connection, None]:
     """Yield an aiosqlite connection, closing it on exit."""
-    async with aiosqlite.connect(sqlite_path) as db:
-        db.row_factory = aiosqlite.Row
+    async with connect_sqlite(sqlite_path) as db:
         yield db
+
+
+@asynccontextmanager
+async def bind_game_connection(
+    db: aiosqlite.Connection,
+) -> AsyncIterator[aiosqlite.Connection]:
+    """Reuse ``db`` for Decision/Trace writes inside a game loop."""
+    token = _bound_connection.set(db)
+    try:
+        yield db
+    finally:
+        _bound_connection.reset(token)
+
+
+@asynccontextmanager
+async def connect_or_reuse(
+    sqlite_path: str,
+    db: aiosqlite.Connection | None = None,
+) -> AsyncIterator[aiosqlite.Connection]:
+    """Yield ``db``, the bound game connection, or a new pragma-configured one."""
+    if db is not None:
+        yield db
+        return
+    bound = _bound_connection.get()
+    if bound is not None:
+        yield bound
+        return
+    async with connect_sqlite(sqlite_path) as owned:
+        yield owned

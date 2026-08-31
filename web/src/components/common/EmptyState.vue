@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n'
 import UiEmpty from '@/components/ui/Empty.vue'
 
 interface Props {
@@ -6,14 +7,15 @@ interface Props {
   description?: string
 }
 
-withDefaults(defineProps<Props>(), {
-  title: '暂无数据',
-  description: '还没有任何记录',
-})
+const { t } = useI18n()
+const props = defineProps<Props>()
 </script>
 
 <template>
-  <UiEmpty :title="title" :description="description">
+  <UiEmpty
+    :title="props.title ?? t('common.noData')"
+    :description="props.description ?? t('common.emptyRecords')"
+  >
     <slot name="action" />
   </UiEmpty>
 </template>

@@ -7,9 +7,9 @@ import json as json_mod
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-import aiosqlite
 import structlog
 
+from app.database import connect_sqlite
 from app.repositories.game_repo import GameRepository
 from app.repositories.round_repo import RoundRepository
 from app.utils.exceptions import GameNotFoundError
@@ -51,8 +51,7 @@ class GameReplayService:
         Raises:
             GameNotFoundError: If the game doesn't exist
         """
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
             game_repo = GameRepository(db)
             round_repo = RoundRepository(db)
             try:

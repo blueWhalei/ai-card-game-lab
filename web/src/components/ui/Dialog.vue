@@ -9,6 +9,7 @@ import {
   DialogTitle,
 } from 'reka-ui'
 import { Icon } from '@iconify/vue'
+import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
 const props = withDefaults(
@@ -26,6 +27,8 @@ const props = withDefaults(
 const emit = defineEmits<{
   'update:open': [value: boolean]
 }>()
+
+const { t } = useI18n()
 </script>
 
 <template>
@@ -51,7 +54,7 @@ const emit = defineEmits<{
           </div>
           <DialogClose
             class="rounded-ink p-1 text-ink-text-muted hover:bg-ink-surface-muted hover:text-ink-text"
-            aria-label="关闭"
+            :aria-label="t('common.close')"
           >
             <Icon icon="lucide:x" class="h-4 w-4" />
           </DialogClose>

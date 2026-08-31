@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { TEMPLATE_KEY_OPTIONS } from '@/utils/constants'
+import { computed, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { templateKeyOptions } from '@/utils/constants'
 import UiInput from '@/components/ui/Input.vue'
 import UiTextarea from '@/components/ui/Textarea.vue'
 import UiSelect from '@/components/ui/Select.vue'
@@ -50,12 +51,10 @@ const props = withDefaults(defineProps<PromptEditorProps>(), {
 
 const emit = defineEmits<PromptEditorEmits>()
 
+const { t } = useI18n()
 const errors = ref<Record<string, string>>({})
 
-const templateKeyOptions = TEMPLATE_KEY_OPTIONS.map((item) => ({
-  label: item.label,
-  value: item.value,
-}))
+const keyOptions = computed(() => templateKeyOptions())
 
 const form = computed({
   get: () => props.modelValue,
@@ -64,7 +63,7 @@ const form = computed({
 
 const previewContent = computed(() => {
   const content = form.value.content
-  if (!content) return '暂无内容'
+  if (!content) return t('prompt.noPreview')
   return content
 })
 
@@ -78,21 +77,21 @@ watch(
 function validateForm(): boolean {
   const next: Record<string, string> = {}
   if (!form.value.template_key) {
-    next.template_key = '请选择模板类型'
+    next.template_key = t('prompt.needType')
   }
   if (!form.value.version?.trim()) {
-    next.version = '请输入版本号'
+    next.version = t('prompt.needVersion')
   } else if (!/^\d+\.\d+\.\d+$/.test(form.value.version)) {
-    next.version = '版本号格式应为 x.y.z (如 1.0.0)'
+    next.version = t('prompt.versionFormat')
   }
   if (!form.value.content?.trim()) {
-    next.content = '请输入模板内容'
+    next.content = t('prompt.needContent')
   } else if (form.value.content.trim().length < 10) {
-    next.content = '内容至少需要 10 个字符'
+    next.content = t('prompt.contentMin')
   }
   errors.value = next
   if (Object.keys(next).length > 0) {
-    toast.warning(Object.values(next)[0] ?? '请检查表单')
+    toast.warning(Object.values(next)[0] ?? t('prompt.checkForm'))
     return false
   }
   return true
@@ -115,11 +114,11 @@ defineExpose({
 <template>
   <div class="space-y-4">
     <div>
-      <label class="mb-1.5 block text-sm font-medium text-ink-text">模板类型</label>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('prompt.type') }}</label>
       <UiSelect
         :model-value="form.template_key"
-        :options="templateKeyOptions"
-        placeholder="请选择模板类型"
+        :options="keyOptions"
+        :placeholder="t('prompt.needType')"
         :disabled="isEditing"
         class="w-full"
         @update:model-value="(v) => (form = { ...form, template_key: v })"
@@ -128,10 +127,10 @@ defineExpose({
     </div>
 
     <div>
-      <label class="mb-1.5 block text-sm font-medium text-ink-text">版本号</label>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('prompt.version') }}</label>
       <UiInput
         :model-value="form.version"
-        placeholder="如 1.0.0"
+        :placeholder="t('prompt.versionPh')"
         class="w-full"
         @update:model-value="(v) => (form = { ...form, version: v })"
       />
@@ -139,11 +138,11 @@ defineExpose({
     </div>
 
     <div>
-      <label class="mb-1.5 block text-sm font-medium text-ink-text">模板内容</label>
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('prompt.content') }}</label>
       <UiTextarea
         :model-value="form.content"
         :rows="12"
-        placeholder="请输入提示词模板内容，支持变量占位符，如 {player_name}、{game_state} 等"
+        :placeholder="t('prompt.contentPh')"
         class="w-full"
         @update:model-value="(v) => (form = { ...form, content: v })"
       />
@@ -151,21 +150,25 @@ defineExpose({
     </div>
 
     <div class="flex items-center gap-3">
-      <label class="text-sm font-medium text-ink-text">启用状态</label>
+      <label class="text-sm font-medium text-ink-text">{{ t('prompt.enableStatus') }}</label>
       <UiSwitch
         :model-value="form.is_active"
         @update:model-value="(v) => (form = { ...form, is_active: v })"
       />
-      <span class="text-xs text-ink-text-muted">{{ form.is_active ? '启用' : '禁用' }}</span>
+      <span class="text-xs text-ink-text-muted">{{
+        form.is_active ? t('common.enabled') : t('common.disabled')
+      }}</span>
     </div>
 
     <div class="border-t border-ink-border pt-4">
-      <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-text-muted">实时预览</p>
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wider text-ink-text-muted">
+        {{ t('prompt.livePreview') }}
+      </p>
       <div class="overflow-hidden rounded-ink-md border border-ink-border">
         <div class="flex items-center justify-between border-b border-ink-border bg-ink-surface-muted px-3 py-2">
-          <span class="text-sm font-medium text-ink-text">内容预览</span>
+          <span class="text-sm font-medium text-ink-text">{{ t('prompt.contentPreview') }}</span>
           <UiBadge :variant="form.is_active ? 'success' : 'muted'">
-            {{ form.is_active ? '已启用' : '已禁用' }}
+            {{ form.is_active ? t('prompt.enabled') : t('prompt.disabled') }}
           </UiBadge>
         </div>
         <div class="max-h-[200px] overflow-y-auto bg-ink-paper p-3">
@@ -177,9 +180,9 @@ defineExpose({
     </div>
 
     <div class="flex justify-end gap-2 border-t border-ink-border pt-4">
-      <UiButton variant="secondary" @click="handleCancel">取消</UiButton>
+      <UiButton variant="secondary" @click="handleCancel">{{ t('common.cancel') }}</UiButton>
       <UiButton :loading="loading" @click="handleSubmit">
-        {{ isEditing ? '保存' : '创建' }}
+        {{ isEditing ? t('common.save') : t('common.create') }}
       </UiButton>
     </div>
   </div>

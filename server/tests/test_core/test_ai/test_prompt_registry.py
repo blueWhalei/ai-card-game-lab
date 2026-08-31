@@ -86,7 +86,7 @@ class TestPromptTemplateRegistry:
         content_v2 = await registry.get_template("doudizhu_playing", version="v2")
 
         assert content_v1 != content_v2
-        assert "一次性出完" in content_v2  # v2 has extra strategy
+        assert "地主主动压制" in content_v2 or "农民配合队友" in content_v2
 
     @pytest.mark.asyncio
     async def test_missing_template_raises(self, registry: PromptTemplateRegistry) -> None:
@@ -194,8 +194,8 @@ class TestPromptTemplateRegistryDefaults:
         """v1 playing template should have required sections."""
         content = await registry.get_template("doudizhu_playing", version="v1")
 
-        assert "游戏规则" in content
-        assert "出牌策略" in content
+        assert "核心规则" in content
+        assert "决策要点" in content
         assert "format_instructions" in content
 
     @pytest.mark.asyncio
@@ -203,7 +203,7 @@ class TestPromptTemplateRegistryDefaults:
         """v2 playing template should have extra strategy hints."""
         content = await registry.get_template("doudizhu_playing", version="v2")
 
-        assert "一次性出完" in content or "压制对手" in content
+        assert "地主主动压制" in content or "农民配合队友" in content
 
     @pytest.mark.asyncio
     async def test_bidding_template_has_evaluation(self, registry: PromptTemplateRegistry) -> None:
@@ -212,4 +212,4 @@ class TestPromptTemplateRegistryDefaults:
 
         assert "炸弹" in content
         assert "王炸" in content
-        assert "叫分建议" in content
+        assert "叫分" in content

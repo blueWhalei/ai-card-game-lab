@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 
 from app.dependencies import get_trace_service
-from app.schemas.common import ApiResponse
+from app.schemas.common import ApiResponse, PaginatedData
 from app.services.trace_service import TraceService
 
 router = APIRouter(tags=["traces"])
@@ -57,32 +57,51 @@ class CompareResponse(BaseModel):
     success_rate_diff: float
 
 
-@router.get("", response_model=ApiResponse[list[TraceResponse]])
+@router.get("", response_model=ApiResponse[PaginatedData[TraceResponse]])
 async def list_traces(
     game_id: str | None = Query(None, description="Filter by game ID"),
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     player_id: str | None = Query(None, description="Filter by player ID"),
-    limit: int = Query(100, ge=1, le=500),
-    offset: int = Query(0, ge=0),
+    model: str | None = Query(None, description="Filter by model"),
+    parser_ok: bool | None = Query(
+        None, description="Filter by langchain parser success (true/false)"
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=200),
     service: TraceService = Depends(get_trace_service),
-) -> ApiResponse[list[TraceResponse]]:
-    """List traces with optional filters."""
-    if game_id:
-        traces = await service.get_traces_by_game(game_id)
-    elif player_id:
-        traces = await service.get_traces_by_player(player_id, limit, offset)
-    else:
-        traces = []
+) -> ApiResponse[PaginatedData[TraceResponse]]:
+    """List traces with optional AND-combined filters."""
+    offset = (page - 1) * page_size
+    traces, total = await service.list_traces(
+        game_id=game_id,
+        experiment_id=experiment_id,
+        player_id=player_id,
+        model=model,
+        parser_ok=parser_ok,
+        limit=page_size,
+        offset=offset,
+    )
 
     return ApiResponse(
-        data=[TraceResponse(**t) for t in traces],
-        message=f"Found {len(traces)} traces",
+        data=PaginatedData(
+            items=[TraceResponse(**t) for t in traces],
+            total=total,
+            page=page,
+            page_size=page_size,
+        ),
+        message=f"Found {total} traces",
     )
 
 
 @router.get("/metrics", response_model=ApiResponse[MetricsResponse])
 async def get_metrics(
     game_id: str | None = Query(None, description="Filter by game ID"),
+    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
+    player_id: str | None = Query(None, description="Filter by player ID"),
     model: str | None = Query(None, description="Filter by model"),
+    parser_ok: bool | None = Query(
+        None, description="Filter by langchain parser success (true/false)"
+    ),
     start_time: str | None = Query(None, description="Start time (ISO format)"),
     end_time: str | None = Query(None, description="End time (ISO format)"),
     service: TraceService = Depends(get_trace_service),
@@ -90,7 +109,10 @@ async def get_metrics(
     """Get aggregated metrics for traces."""
     metrics = await service.get_metrics(
         game_id=game_id,
+        experiment_id=experiment_id,
+        player_id=player_id,
         model=model,
+        parser_ok=parser_ok,
         start_time=start_time,
         end_time=end_time,
     )

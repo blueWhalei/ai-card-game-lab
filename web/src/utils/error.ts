@@ -1,27 +1,32 @@
 import { toast } from '@/components/ui/toast'
+import { tt } from '@/i18n'
 
 import type { ApiError } from '@/api/types'
 
-const API_ERROR_MESSAGES: Record<string, string> = {
-  NETWORK_ERROR: '网络连接失败，请稍后重试',
-  AI_RATE_LIMIT_EXCEEDED: 'AI 服务调用过于频繁，请稍后再试',
-  AI_TIMEOUT: 'AI 服务响应超时，请稍后再试',
-  AI_PROVIDER_UNAVAILABLE: 'AI 服务暂时不可用，请稍后再试',
-  AI_PROVIDER_ERROR: 'AI 服务调用失败，请稍后再试',
-}
+const API_ERROR_KEYS = [
+  'NETWORK_ERROR',
+  'AI_RATE_LIMIT_EXCEEDED',
+  'AI_TIMEOUT',
+  'AI_PROVIDER_UNAVAILABLE',
+  'AI_PROVIDER_ERROR',
+] as const
 
 function isApiError(error: unknown): error is ApiError {
   return typeof error === 'object' && error !== null && 'message' in error && 'code' in error
 }
 
-export function getErrorMessage(error: unknown, fallback = '操作失败'): string {
+export function getErrorMessage(error: unknown, fallback?: string): string {
+  const resolvedFallback = fallback ?? tt('error.operationFailed')
   if (!isApiError(error)) {
-    return fallback
+    return resolvedFallback
   }
 
-  return API_ERROR_MESSAGES[error.code] ?? error.message ?? fallback
+  if ((API_ERROR_KEYS as readonly string[]).includes(error.code)) {
+    return tt(`error.${error.code}`)
+  }
+  return error.message ?? resolvedFallback
 }
 
-export function showApiError(error: unknown, fallback = '操作失败'): void {
-  toast.error(getErrorMessage(error, fallback))
+export function showApiError(error: unknown, fallback?: string): void {
+  toast.error(getErrorMessage(error, fallback ?? tt('error.operationFailed')))
 }

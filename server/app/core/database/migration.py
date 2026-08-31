@@ -12,8 +12,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
-import aiosqlite
 import structlog
+
+from app.database import connect_sqlite
 
 logger = structlog.get_logger()
 
@@ -67,8 +68,7 @@ class MigrationAnalyzer:
         """Analyze the SQLite database and create a migration plan."""
         plan = MigrationPlan("sqlite", "postgresql")
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
 
             tables_cursor = await db.execute(
                 "SELECT name FROM sqlite_master WHERE type='table' "
@@ -87,14 +87,14 @@ class MigrationAnalyzer:
     async def get_table_schema(self, table_name: str) -> list[dict[str, Any]]:
         """Get the schema for a specific table."""
         _validate_identifier(table_name, "table name")
-        async with aiosqlite.connect(self._sqlite_path) as db:
+        async with connect_sqlite(self._sqlite_path) as db:
             cursor = await db.execute(f"PRAGMA table_info([{table_name}])")
             return [dict(row) for row in await cursor.fetchall()]
 
     async def get_indexes(self, table_name: str) -> list[dict[str, Any]]:
         """Get indexes for a specific table."""
         _validate_identifier(table_name, "table name")
-        async with aiosqlite.connect(self._sqlite_path) as db:
+        async with connect_sqlite(self._sqlite_path) as db:
             cursor = await db.execute(f"PRAGMA index_list([{table_name}])")
             return [dict(row) for row in await cursor.fetchall()]
 
@@ -121,8 +121,7 @@ class MigrationExporter:
         exported_count = 0
         _validate_identifier(table_name, "table name")
 
-        async with aiosqlite.connect(self._sqlite_path) as db:
-            db.row_factory = aiosqlite.Row
+        async with connect_sqlite(self._sqlite_path) as db:
 
             offset = 0
             with export_file.open("w", encoding="utf-8") as f:
@@ -231,7 +230,7 @@ class PostgreSQLSchemaGenerator:
             indexes = await analyzer.get_indexes(table)
             for idx in indexes:
                 _validate_identifier(idx["name"], "index name")
-                async with aiosqlite.connect(analyzer._sqlite_path) as db:
+                async with connect_sqlite(analyzer._sqlite_path) as db:
                     idx_cursor = await db.execute(f"PRAGMA index_info([{idx['name']}])")
                     idx_cols = [row[2] for row in await idx_cursor.fetchall()]
                 self.add_index(

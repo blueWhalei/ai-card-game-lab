@@ -11,12 +11,20 @@ import structlog
 from app.database import open_db_connection
 from app.repositories.game_repo import GameRepository
 from app.repositories.round_repo import RoundRepository
-from app.utils.exceptions import GameAlreadyStartedError, GameNotFoundError, InvalidPlayerIdsError
+from app.utils.exceptions import (
+    GameAlreadyStartedError,
+    GameNotFoundError,
+    InvalidPlayerCountError,
+    InvalidPlayerIdsError,
+    ProviderNotConfiguredError,
+)
 from app.utils.id_generator import generate_id
+from app.utils.providers import is_provider_configured
 
 if TYPE_CHECKING:
     import aiosqlite
 
+    from app.config import Settings
     from app.core.collector.jsonl_writer import JsonlWriter
     from app.core.engine.base import GameState
     from app.core.engine.registry import GameEngineRegistry
@@ -44,6 +52,7 @@ class GameService:
         orchestration_service: GameOrchestrationService,
         replay_service: GameReplayService,
         experiment_config_service: ExperimentConfigService,
+        settings: Settings,
     ) -> None:
         self._engine_registry = engine_registry
         self._collector = collector
@@ -51,6 +60,7 @@ class GameService:
         self._orchestration_service = orchestration_service
         self._replay_service = replay_service
         self._experiment_config_service = experiment_config_service
+        self._settings = settings
 
     def _validate_player_ids(self, player_ids: list[str]) -> None:
         missing = [
@@ -60,6 +70,33 @@ class GameService:
         ]
         if missing:
             raise InvalidPlayerIdsError(missing)
+
+        unconfigured: list[str] = []
+        for pid in player_ids:
+            config = self._experiment_config_service.get_config(pid)
+            if config is None:
+                continue
+            provider = str((config.get("model_config") or {}).get("provider") or "")
+            if provider and not is_provider_configured(self._settings, provider):
+                unconfigured.append(provider)
+        if unconfigured:
+            raise ProviderNotConfiguredError(unconfigured)
+
+    def _validate_player_count(self, game_type: str, player_ids: list[str]) -> None:
+        engine = self._engine_registry.get(game_type)
+        n_players = len(player_ids)
+        if n_players < engine.min_players or n_players > engine.max_players:
+            raise InvalidPlayerCountError(
+                game_type,
+                n_players,
+                engine.min_players,
+                engine.max_players,
+            )
+
+    def player_slots(self, game_type: str) -> tuple[int, int]:
+        """Return (min_players, max_players) for a registered engine."""
+        engine = self._engine_registry.get(game_type)
+        return engine.min_players, engine.max_players
 
     async def _get_bg_db(self) -> aiosqlite.Connection:
         """Open a fresh DB connection for background tasks."""
@@ -119,6 +156,8 @@ class GameService:
         player_ids: list[str],
         mode: str = "realtime",
         db: aiosqlite.Connection | None = None,
+        *,
+        experiment_id: str | None = None,
     ) -> dict[str, Any]:
         """Create a new game.
 
@@ -127,16 +166,16 @@ class GameService:
             player_ids: List of player identifiers
             mode: Game mode (realtime or batch)
             db: Optional database connection
+            experiment_id: Optional experiment (run) this game belongs to
 
         Returns:
             The created game record
         """
         self._validate_player_ids(player_ids)
+        self._validate_player_count(game_type, player_ids)
 
         game_id = generate_id("game")
         now = datetime.now(tz=UTC).isoformat()
-
-        self._engine_registry.get(game_type)
 
         data_file = self._collector.start_game(game_id, game_type, player_ids)
 
@@ -151,11 +190,17 @@ class GameService:
                 created_at=now,
                 status="created",
                 metadata={"mode": mode},
+                experiment_id=experiment_id,
             )
         finally:
             if db is None:
                 await conn.close()
-        logger.info("game_created", game_id=game_id, game_type=game_type)
+        logger.info(
+            "game_created",
+            game_id=game_id,
+            game_type=game_type,
+            experiment_id=experiment_id,
+        )
         return game
 
     async def start_game(

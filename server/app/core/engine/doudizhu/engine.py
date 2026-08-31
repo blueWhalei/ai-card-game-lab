@@ -69,9 +69,20 @@ class DoudizhuEngine(GameEngine):
     def game_type(self) -> str:
         return "doudizhu"
 
+    @property
+    def min_players(self) -> int:
+        return 3
+
+    @property
+    def max_players(self) -> int:
+        return 3
+
     def initialize(self, player_ids: list[str], **params: Any) -> DoudizhuState:
-        if len(player_ids) != 3:
-            raise InvalidActionError("initialize", "Doudizhu requires exactly 3 players")
+        if not (self.min_players <= len(player_ids) <= self.max_players):
+            raise InvalidActionError(
+                "initialize",
+                f"Doudizhu requires exactly {self.min_players} players",
+            )
 
         deck = FULL_DECK.copy()
         random.shuffle(deck)

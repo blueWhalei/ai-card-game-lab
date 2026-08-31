@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, computed, onMounted, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
@@ -22,15 +23,27 @@ import UiPagination from '@/components/ui/Pagination.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import UiTable from '@/components/ui/Table.vue'
-import { systemApi, gameTypeLabel } from '@/api/systemApi'
+import { systemApi, gameTypeLabel, type ProviderInfo } from '@/api/systemApi'
+import {
+  engineById,
+  isValidPlayerSelection,
+  maxSelectable,
+  playerCountLabel,
+  type EngineInfo,
+} from '@/utils/engineSlots'
+import { DEFAULT_PAGE_SIZE, parsePageSize } from '@/utils/pagination'
 
+const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
 const games = ref<GameItem[]>([])
 const total = ref(0)
 const page = ref(1)
-const pageSize = ref(20)
+const pageSize = ref(DEFAULT_PAGE_SIZE)
 const loading = ref(false)
+const seedingDemo = ref(false)
 const configs = ref<ExperimentConfig[]>([])
+const providers = ref<ProviderInfo[]>([])
 const createDialogVisible = ref(false)
 
 const createForm = ref({
@@ -41,22 +54,41 @@ const createForm = ref({
   batchCount: 5,
 })
 
-const gameTypeOptions = ref([{ label: '斗地主', value: 'doudizhu' }])
-const modeOptions = [{ label: '实时观察', value: 'realtime' }]
+const gameTypeIds = ref<string[]>(['doudizhu'])
+const gameTypeOptions = computed(() =>
+  gameTypeIds.value.map((id) => ({ label: gameTypeLabel(id), value: id })),
+)
+const engines = ref<EngineInfo[]>([])
+const currentEngine = computed(() => engineById(engines.value, createForm.value.game_type))
+const slotsLabel = computed(() => playerCountLabel(currentEngine.value))
+const maxPlayers = computed(() => maxSelectable(currentEngine.value))
+const modeOptions = computed(() => [{ label: t('game.realtime'), value: 'realtime' }])
 
 type GameRow = GameItem & Record<string, unknown>
 
-const columns: TableColumn<GameRow>[] = [
-  { key: 'id', label: '对局 ID', class: 'w-60' },
-  { key: 'game_type', label: '游戏类型', class: 'w-28' },
-  { key: 'status', label: '状态', class: 'w-24' },
-  { key: 'player_ids', label: '玩家' },
-  { key: 'total_rounds', label: '总轮次', class: 'w-20' },
-  { key: 'winner_id', label: '赢家', class: 'w-36' },
-  { key: 'created_at', label: '创建时间', class: 'w-44' },
-]
+const columns = computed<TableColumn<GameRow>[]>(() => [
+  { key: 'id', label: t('game.colId'), class: 'w-60' },
+  { key: 'game_type', label: t('game.colType'), class: 'w-28' },
+  { key: 'status', label: t('game.colStatus'), class: 'w-24' },
+  { key: 'player_ids', label: t('game.colPlayers') },
+  { key: 'total_rounds', label: t('game.colRounds'), class: 'w-20' },
+  { key: 'winner_id', label: t('game.colWinner'), class: 'w-36' },
+  { key: 'created_at', label: t('game.colCreated'), class: 'w-44' },
+])
 
 const gameRows = computed(() => games.value as GameRow[])
+
+const unconfiguredProviders = computed(() => {
+  const selected = new Set(createForm.value.player_ids)
+  const ready = new Set(providers.value.filter((p) => p.configured).map((p) => p.id))
+  const missing = new Set<string>()
+  for (const config of configs.value) {
+    if (!selected.has(config.id)) continue
+    const provider = config.model_config.provider
+    if (provider && !ready.has(provider)) missing.add(provider)
+  }
+  return [...missing]
+})
 
 function statusVariant(status: string): 'muted' | 'success' | 'warning' | 'danger' | 'default' {
   const type = GAME_STATUS_MAP[status]?.type
@@ -70,7 +102,7 @@ function statusVariant(status: string): 'muted' | 'success' | 'warning' | 'dange
 function togglePlayer(id: string, checked: boolean) {
   const ids = createForm.value.player_ids
   if (checked) {
-    if (ids.length >= 3) return
+    if (ids.length >= maxPlayers.value) return
     if (!ids.includes(id)) createForm.value.player_ids = [...ids, id]
   } else {
     createForm.value.player_ids = ids.filter((p) => p !== id)
@@ -84,7 +116,7 @@ async function fetchGames() {
     games.value = res.data.items
     total.value = res.data.total
   } catch (e: unknown) {
-    showApiError(e, '加载失败')
+    showApiError(e, t('game.loadFailed'))
   } finally {
     loading.value = false
   }
@@ -96,11 +128,38 @@ function configOptionLabel(c: ExperimentConfig): string {
 
 async function fetchConfigs() {
   try {
-    const res = await experimentConfigApi.list()
-    configs.value = res.data
+    const [configRes, providerRes] = await Promise.all([
+      experimentConfigApi.list(),
+      systemApi.listProviders(),
+    ])
+    configs.value = configRes.data
+    providers.value = providerRes.data
   } catch (e: unknown) {
-    showApiError(e, '加载实验配置失败')
+    showApiError(e, t('game.loadConfigsFailed'))
   }
+}
+
+function parsePlayersQuery(): string[] {
+  const raw = route.query.players
+  if (typeof raw !== 'string' || !raw.trim()) return []
+  return raw
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean)
+}
+
+async function applyPlayersFromQuery(): Promise<void> {
+  const ids = parsePlayersQuery()
+  if (ids.length === 0) return
+  await fetchConfigs()
+  createForm.value = {
+    game_type: 'doudizhu',
+    player_ids: ids.slice(0, maxPlayers.value),
+    mode: 'realtime',
+    isBatch: false,
+    batchCount: 5,
+  }
+  createDialogVisible.value = true
 }
 
 function openCreateDialog() {
@@ -112,12 +171,32 @@ function openCreateDialog() {
     batchCount: 5,
   }
   createDialogVisible.value = true
-  fetchConfigs()
+  void fetchConfigs()
+}
+
+async function loadDemoGame(): Promise<void> {
+  seedingDemo.value = true
+  try {
+    const res = await systemApi.seedDemo()
+    toast.success(res.data.created ? t('game.demoReplayReady') : t('game.demoExists'))
+    await fetchGames()
+    router.push(`/game/${res.data.game_id}`)
+  } catch (e: unknown) {
+    showApiError(e, t('experiment.demoFailed'))
+  } finally {
+    seedingDemo.value = false
+  }
 }
 
 async function handleCreate() {
-  if (createForm.value.player_ids.length !== 3) {
-    toast.warning('斗地主需要选择 3 个实验配置')
+  if (!isValidPlayerSelection(createForm.value.player_ids.length, currentEngine.value)) {
+    toast.warning(t('game.needPlayers', { n: slotsLabel.value }))
+    return
+  }
+  if (unconfiguredProviders.value.length > 0) {
+    toast.warning(
+      t('game.missingApiKeys', { names: unconfiguredProviders.value.join('、') }),
+    )
     return
   }
   try {
@@ -127,18 +206,18 @@ async function handleCreate() {
         player_ids: createForm.value.player_ids,
         count: createForm.value.batchCount,
       })
-      toast.success(`已创建 ${createForm.value.batchCount} 局对局`)
+      toast.success(t('game.createdBatch', { n: createForm.value.batchCount }))
       createDialogVisible.value = false
       await fetchGames()
     } else {
       const res = await gameApi.create(createForm.value)
-      toast.success('对局创建成功')
+      toast.success(t('game.createdOne'))
       createDialogVisible.value = false
       await fetchGames()
       router.push(`/game/${res.data.id}`)
     }
   } catch (e: unknown) {
-    showApiError(e, '创建失败')
+    showApiError(e, t('game.createFailed'))
   }
 }
 
@@ -148,45 +227,73 @@ function goToGame(game: GameRow) {
 
 function handlePageChange(newPage: number) {
   page.value = newPage
-  fetchGames()
+  void fetchGames()
+}
+
+function handlePageSizeChange(size: number) {
+  pageSize.value = parsePageSize(size)
+  page.value = 1
+  void fetchGames()
 }
 
 onMounted(async () => {
   try {
-    const res = await systemApi.listGameTypes()
-    if (res.data.length > 0) {
-      gameTypeOptions.value = res.data.map((id) => ({
-        label: gameTypeLabel(id),
-        value: id,
-      }))
-      if (!res.data.includes(createForm.value.game_type)) {
-        createForm.value.game_type = res.data[0] ?? 'doudizhu'
+    const [typesRes, enginesRes] = await Promise.all([
+      systemApi.listGameTypes(),
+      systemApi.listEngines().catch(() => null),
+    ])
+    if (typesRes.data.length > 0) {
+      gameTypeIds.value = typesRes.data
+      if (!typesRes.data.includes(createForm.value.game_type)) {
+        createForm.value.game_type = typesRes.data[0] ?? 'doudizhu'
       }
     }
+    engines.value = enginesRes?.data ?? []
   } catch (e: unknown) {
     // Non-blocking: keep doudizhu fallback option
-    showApiError(e, '加载游戏类型失败，已使用默认选项')
+    showApiError(e, t('game.typesFallback'))
   }
   await fetchGames()
+  await applyPlayersFromQuery()
 })
+
+watch(
+  () => route.query.players,
+  () => {
+    void applyPlayersFromQuery()
+  },
+)
 </script>
 
 <template>
   <div class="page-container">
     <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-base text-ink-text-secondary">点开列表进入观战；批量创建用于采集。</p>
-      <UiButton @click="openCreateDialog">创建对局</UiButton>
+      <p class="text-base text-ink-text-secondary">{{ t('game.listSubtitle') }}</p>
+      <div class="flex flex-wrap gap-2">
+        <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemoGame">
+          {{ t('experiment.loadDemo') }}
+        </UiButton>
+        <UiButton @click="openCreateDialog">{{ t('game.create') }}</UiButton>
+      </div>
     </div>
 
     <div class="relative">
-      <UiSpinner v-if="loading" overlay label="加载中…" />
+      <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
       <EmptyState
         v-if="!loading && games.length === 0"
-        title="暂无对局"
-        description="还没有创建任何对局"
+        :title="t('game.emptyTitle')"
+        :description="t('game.emptyDesc')"
       >
         <template #action>
-          <UiButton @click="openCreateDialog">创建第一局</UiButton>
+          <div class="flex flex-wrap gap-2">
+            <UiButton @click="openCreateDialog">{{ t('game.createFirst') }}</UiButton>
+            <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemoGame">
+              {{ t('game.loadDemoNoKey') }}
+            </UiButton>
+            <UiButton variant="outline" @click="router.push('/experiment-configs')">
+              {{ t('game.goCreateConfig') }}
+            </UiButton>
+          </div>
         </template>
       </EmptyState>
       <UiTable
@@ -203,6 +310,9 @@ onMounted(async () => {
             @click="goToGame(row)"
           >
             {{ row.id }}
+            <UiBadge v-if="row.id === 'game_demo_doudizhu'" variant="muted" class="ml-1">{{
+              t('common.demo')
+            }}</UiBadge>
           </button>
         </template>
         <template #cell-game_type="{ row }">
@@ -233,23 +343,26 @@ onMounted(async () => {
       </UiTable>
     </div>
 
-    <div v-if="total > pageSize" class="mt-4">
+    <div v-if="total > 0" class="mt-4">
       <UiPagination
         :page="page"
         :page-size="pageSize"
         :total="total"
         @update:page="handlePageChange"
+        @update:page-size="handlePageSizeChange"
       />
     </div>
 
     <UiDialog
       :open="createDialogVisible"
-      title="创建对局"
+      :title="t('game.createTitle')"
       @update:open="createDialogVisible = $event"
     >
       <div class="space-y-4">
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">游戏类型</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{
+            t('game.gameType')
+          }}</label>
           <UiSelect
             v-model="createForm.game_type"
             :options="gameTypeOptions"
@@ -260,7 +373,7 @@ onMounted(async () => {
 
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            选择实验配置（{{ createForm.player_ids.length }}/3）
+            {{ t('game.pickPlayers', { selected: createForm.player_ids.length, max: maxPlayers }) }}
             <span class="text-ink-danger">*</span>
           </label>
           <div class="flex flex-col gap-2 rounded-ink border border-ink-border p-3">
@@ -270,7 +383,7 @@ onMounted(async () => {
               :id="`create-config-${c.id}`"
               :model-value="createForm.player_ids.includes(c.id)"
               :disabled="
-                !createForm.player_ids.includes(c.id) && createForm.player_ids.length >= 3
+                !createForm.player_ids.includes(c.id) && createForm.player_ids.length >= maxPlayers
               "
               @update:model-value="(v) => togglePlayer(c.id, Boolean(v))"
             >
@@ -278,40 +391,60 @@ onMounted(async () => {
             </UiCheckbox>
           </div>
           <div v-if="configs.length === 0" class="mt-2 text-xs text-ink-accent">
-            暂无实验配置，请先在「实验配置」页面创建
+            {{ t('game.noConfigsPrefix') }}
+            <button
+              type="button"
+              class="underline"
+              @click="createDialogVisible = false; router.push('/experiment-configs')"
+            >
+              {{ t('game.goCreateConfig') }}
+            </button>
           </div>
+          <p
+            v-else-if="unconfiguredProviders.length > 0"
+            class="mt-2 text-xs text-ink-danger"
+          >
+            {{ t('game.providersNotReady', { names: unconfiguredProviders.join('、') }) }}
+          </p>
         </div>
 
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">模式</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('game.mode') }}</label>
           <UiRadioGroup v-model="createForm.mode" name="game-mode" :options="modeOptions" />
         </div>
 
         <div class="flex items-center gap-3">
-          <label class="text-sm font-medium text-ink-text">批量模式</label>
+          <label class="text-sm font-medium text-ink-text">{{ t('game.batchMode') }}</label>
           <UiSwitch v-model="createForm.isBatch" />
         </div>
 
         <div v-if="createForm.isBatch">
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">对局数量</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{
+            t('game.gameCount')
+          }}</label>
           <div class="flex items-center gap-2">
             <UiInputNumber
               :model-value="createForm.batchCount"
               :min="1"
               :max="50"
               :step="1"
-              class="w-28"
               @update:model-value="(v) => (createForm.batchCount = v ?? 1)"
             />
-            <span class="text-xs text-ink-text-muted">最多 50 局</span>
+            <span class="text-xs text-ink-text-muted">{{ t('game.max50') }}</span>
           </div>
         </div>
       </div>
 
       <template #footer>
-        <UiButton variant="secondary" @click="createDialogVisible = false">取消</UiButton>
+        <UiButton variant="secondary" @click="createDialogVisible = false">{{
+          t('common.cancel')
+        }}</UiButton>
         <UiButton @click="handleCreate">
-          {{ createForm.isBatch ? `批量创建 ${createForm.batchCount} 局` : '创建并进入' }}
+          {{
+            createForm.isBatch
+              ? t('game.batchCreate', { n: createForm.batchCount })
+              : t('game.createAndEnter')
+          }}
         </UiButton>
       </template>
     </UiDialog>

@@ -59,6 +59,29 @@ class UnsupportedGameTypeError(AppError):
         )
 
 
+class InvalidPlayerCountError(AppError):
+    """Raised when player_ids length does not match the engine's slot range."""
+
+    def __init__(
+        self,
+        game_type: str,
+        got: int,
+        min_players: int,
+        max_players: int,
+    ) -> None:
+        if min_players == max_players:
+            message = f"{game_type} 需要恰好 {min_players} 名选手，当前为 {got}"
+        else:
+            message = (
+                f"{game_type} 需要 {min_players}-{max_players} 名选手，当前为 {got}"
+            )
+        super().__init__(
+            message=message,
+            code="INVALID_PLAYER_COUNT",
+            status_code=400,
+        )
+
+
 class InvalidPlayerIdsError(AppError):
     """Raised when player_ids reference missing experiment configs."""
 
@@ -67,6 +90,22 @@ class InvalidPlayerIdsError(AppError):
         super().__init__(
             message=f"Unknown experiment config id(s) in player_ids: {ids_str}",
             code="INVALID_PLAYER_IDS",
+            status_code=400,
+        )
+
+
+class ProviderNotConfiguredError(AppError):
+    """Raised when an experiment config uses a provider without credentials."""
+
+    def __init__(self, providers: list[str]) -> None:
+        names = ", ".join(sorted(set(providers)))
+        super().__init__(
+            message=(
+                f"LLM provider not configured: {names}. "
+                "Set the matching API key in .env, or switch the experiment "
+                "config to ollama."
+            ),
+            code="PROVIDER_NOT_CONFIGURED",
             status_code=400,
         )
 
@@ -175,4 +214,53 @@ class TrainingGuardError(AppError):
             message=detail,
             code="TRAINING_GUARD_FAILED",
             status_code=400,
+        )
+
+
+class DeployNotLoraError(AppError):
+    def __init__(self, detail: str = "Model path is not a LoRA adapter directory") -> None:
+        super().__init__(
+            message=f"[lora] {detail}",
+            code="DEPLOY_NOT_LORA",
+            status_code=400,
+        )
+
+
+class DeployMergeFailedError(AppError):
+    def __init__(self, detail: str) -> None:
+        super().__init__(
+            message=f"[merge] {detail}",
+            code="DEPLOY_MERGE_FAILED",
+            status_code=400,
+        )
+
+
+class DeployLlamaCppMissingError(AppError):
+    def __init__(self, detail: str | None = None) -> None:
+        msg = detail or (
+            "LLAMA_CPP_DIR is missing or invalid. "
+            "Set it in .env to a llama.cpp checkout with convert_hf_to_gguf.py."
+        )
+        super().__init__(
+            message=f"[gguf] {msg}",
+            code="DEPLOY_LLAMA_CPP_MISSING",
+            status_code=400,
+        )
+
+
+class DeployGgufFailedError(AppError):
+    def __init__(self, detail: str, *, status_code: int = 500) -> None:
+        super().__init__(
+            message=f"[gguf] {detail}",
+            code="DEPLOY_GGUF_FAILED",
+            status_code=status_code,
+        )
+
+
+class DeployOllamaFailedError(AppError):
+    def __init__(self, detail: str, *, status_code: int = 500) -> None:
+        super().__init__(
+            message=f"[ollama] {detail}",
+            code="DEPLOY_OLLAMA_FAILED",
+            status_code=status_code,
         )

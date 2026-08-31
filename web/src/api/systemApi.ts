@@ -1,6 +1,7 @@
 import { apiClient } from './client'
 import type { ApiResponse } from './types'
-import { GAME_TYPE_MAP } from '@/utils/constants'
+
+export { gameTypeLabel } from '@/utils/constants'
 
 export type ProviderInfo = {
   id: string
@@ -21,9 +22,17 @@ export type SystemConfig = {
   prompt_version?: string
   prompt_ab_test_enabled?: boolean
   prompt_ab_test_ratio?: number
-  training_use_mock?: boolean
+  max_concurrent_games?: number
   training_deps_available?: boolean
   default_base_models?: string[]
+}
+
+export type StartupCheck = {
+  data_dirs_ready: boolean
+  can_collect: boolean
+  seed_provider: string
+  providers: ProviderInfo[]
+  warnings: string[]
 }
 
 export type RuntimeStats = {
@@ -34,9 +43,18 @@ export type RuntimeStats = {
   training_active?: boolean
 }
 
+export type EngineInfo = {
+  id: string
+  min_players: number
+  max_players: number
+}
+
 export const systemApi = {
   listGameTypes: () =>
     apiClient.get<never, ApiResponse<string[]>>('/api/v1/system/game-types'),
+
+  listEngines: () =>
+    apiClient.get<never, ApiResponse<EngineInfo[]>>('/api/v1/system/engines'),
 
   listProviders: () =>
     apiClient.get<never, ApiResponse<ProviderInfo[]>>('/api/v1/system/providers'),
@@ -46,8 +64,12 @@ export const systemApi = {
 
   getRuntimeStats: () =>
     apiClient.get<never, ApiResponse<RuntimeStats>>('/api/v1/system/runtime-stats'),
-}
 
-export function gameTypeLabel(id: string): string {
-  return GAME_TYPE_MAP[id] ?? id
+  getStartupCheck: () =>
+    apiClient.get<never, ApiResponse<StartupCheck>>('/api/v1/system/startup-check'),
+
+  seedDemo: () =>
+    apiClient.post<never, ApiResponse<{ game_id: string; created: boolean }>>(
+      '/api/v1/system/seed-demo',
+    ),
 }

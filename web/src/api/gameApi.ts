@@ -25,6 +25,7 @@ export interface GameItem {
   created_at: string
   finished_at: string | null
   metadata: Record<string, unknown> | null
+  experiment_id?: string | null
 }
 
 export interface ReplayData {

@@ -28,6 +28,9 @@ class Settings(BaseSettings):
     openai_base_url: str = "https://api.openai.com/v1"
 
     ollama_base_url: str = "http://localhost:11434"
+    ollama_bin: str = "ollama"
+    # Path to a llama.cpp checkout (convert_hf_to_gguf.py + llama-quantize).
+    llama_cpp_dir: str = ""
 
     dashscope_api_key: str = ""
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
@@ -56,9 +59,8 @@ class Settings(BaseSettings):
     sqlite_path: str = str(_PROJECT_ROOT / "data" / "db" / "app.db")
     models_dir: str = str(_PROJECT_ROOT / "models")
 
-    # Default True so fresh installs work without torch; set False after
-    # `poetry install --with training` to enable real PEFT LoRA.
-    training_use_mock: bool = True
+    # Cap simultaneous live games (batch create still accepts up to 50).
+    max_concurrent_games: int = 5
 
     config_dir: str = str(_PROJECT_ROOT / "config")
 

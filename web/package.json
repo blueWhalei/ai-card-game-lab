@@ -9,7 +9,10 @@
     "preview": "vite preview",
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
-    "lint": "run-s lint:*",
+    "lint": "run-s lint:oxlint lint:eslint",
+    "lint:ci": "oxlint . && eslint . --cache",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
@@ -29,6 +32,7 @@
     "tailwindcss": "^4.2.2",
     "vue": "^3.5.30",
     "vue-echarts": "^8.0.1",
+    "vue-i18n": "^11.4.10",
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
@@ -48,6 +52,7 @@
     "typescript": "~5.9.3",
     "vite": "^7.3.1",
     "vite-plugin-vue-devtools": "^8.0.7",
+    "vitest": "^3.2.4",
     "vue-tsc": "^3.2.5"
   },
   "engines": {

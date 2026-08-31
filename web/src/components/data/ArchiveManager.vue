@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import {
@@ -20,18 +21,21 @@ import UiSpinner from '@/components/ui/Spinner.vue'
 import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 
+const { t } = useI18n()
 const stats = ref<ArchiveStats | null>(null)
 const files = ref<ArchiveFile[]>([])
 const loading = ref(false)
 const daysOld = ref(30)
 const dryRun = ref(true)
 
-const fileColumns: TableColumn<ArchiveFile>[] = [
-  { key: 'filename', label: '文件名' },
-  { key: 'size', label: '大小', render: (row) => formatBytes(row.size_bytes) },
-  { key: 'games_count', label: '对局数' },
-  { key: 'created_at', label: '创建时间', render: (row) => formatDateTime(row.created_at) },
-]
+const fileColumns = computed(
+  (): TableColumn<ArchiveFile>[] => [
+    { key: 'filename', label: t('data.colFilename') },
+    { key: 'size', label: t('data.colSize'), render: (row) => formatBytes(row.size_bytes) },
+    { key: 'games_count', label: t('data.colGames') },
+    { key: 'created_at', label: t('common.createdAt'), render: (row) => formatDateTime(row.created_at) },
+  ],
+)
 
 async function refresh() {
   loading.value = true
@@ -40,7 +44,7 @@ async function refresh() {
     stats.value = s
     files.value = list
   } catch (e: unknown) {
-    showApiError(e, '加载归档信息失败')
+    showApiError(e, t('data.archiveFailed'))
   } finally {
     loading.value = false
   }
@@ -56,19 +60,19 @@ async function handleArchive() {
     })
     toast.success(
       dryRun.value
-        ? `预览：可归档 ${result.archived_games} 局`
-        : `已归档 ${result.archived_games} 局 → ${result.archive_file ?? ''}`,
+        ? t('data.previewArchive', { n: result.archived_games })
+        : t('data.archived', { n: result.archived_games, file: result.archive_file ?? '' }),
     )
     await refresh()
   } catch (e: unknown) {
-    showApiError(e, '归档失败')
+    showApiError(e, t('data.doArchiveFailed'))
   }
 }
 
 async function handleCleanup() {
   const ok = await confirmDialog({
-    title: '确认清理',
-    message: dryRun.value ? '预览清理结果？' : '将永久删除旧数据，不可恢复。继续？',
+    title: t('data.confirmCleanup'),
+    message: dryRun.value ? t('data.previewCleanupQ') : t('data.cleanupWarn'),
     danger: !dryRun.value,
   })
   if (!ok) return
@@ -79,28 +83,31 @@ async function handleCleanup() {
     })
     toast.success(
       dryRun.value
-        ? `预览：可删除 ${result.deleted_games} 局`
-        : `已删除 ${result.deleted_games} 局，释放 ${formatBytes(result.freed_bytes)}`,
+        ? t('data.previewDelete', { n: result.deleted_games })
+        : t('data.deletedFreed', {
+            n: result.deleted_games,
+            bytes: formatBytes(result.freed_bytes),
+          }),
     )
     await refresh()
   } catch (e: unknown) {
-    showApiError(e, '清理失败')
+    showApiError(e, t('data.cleanupFailed'))
   }
 }
 
 async function handleDeleteFile(filename: string) {
   const ok = await confirmDialog({
-    title: '确认',
-    message: `删除归档文件 ${filename}？`,
+    title: t('common.confirm'),
+    message: t('data.deleteArchive', { name: filename }),
     danger: true,
   })
   if (!ok) return
   try {
     await deleteArchive(filename)
-    toast.success('已删除')
+    toast.success(t('error.deleted'))
     await refresh()
   } catch (e: unknown) {
-    showApiError(e, '删除失败')
+    showApiError(e, t('error.deleteFailed'))
   }
 }
 </script>
@@ -110,47 +117,47 @@ async function handleDeleteFile(filename: string) {
     <UiSpinner v-if="loading" overlay />
 
     <div class="ink-card">
-      <h3 class="mb-4 text-base font-semibold text-ink-text">归档统计</h3>
+      <h3 class="mb-4 text-base font-semibold text-ink-text">{{ t('data.archiveStats') }}</h3>
       <div v-if="stats" class="grid grid-cols-2 gap-4 md:grid-cols-4">
         <div>
           <div class="text-xl font-semibold">{{ stats.total_games }}</div>
-          <div class="text-xs text-ink-text-muted">可归档对局</div>
+          <div class="text-xs text-ink-text-muted">{{ t('data.archivable') }}</div>
         </div>
         <div>
           <div class="text-xl font-semibold">{{ stats.archive_files }}</div>
-          <div class="text-xs text-ink-text-muted">归档文件数</div>
+          <div class="text-xs text-ink-text-muted">{{ t('data.archiveFiles') }}</div>
         </div>
         <div>
           <div class="text-xl font-semibold">{{ formatBytes(stats.archive_size_bytes) }}</div>
-          <div class="text-xs text-ink-text-muted">归档体积</div>
+          <div class="text-xs text-ink-text-muted">{{ t('data.archiveSize') }}</div>
         </div>
         <div>
           <div class="text-xl font-semibold">{{ formatDateTime(stats.oldest_game) }}</div>
-          <div class="text-xs text-ink-text-muted">最早对局</div>
+          <div class="text-xs text-ink-text-muted">{{ t('data.oldestGame') }}</div>
         </div>
       </div>
     </div>
 
     <div class="ink-card">
-      <h3 class="mb-4 text-base font-semibold text-ink-text">操作</h3>
+      <h3 class="mb-4 text-base font-semibold text-ink-text">{{ t('data.operations') }}</h3>
       <div class="mb-4 flex flex-wrap items-center gap-4">
         <div class="flex items-center gap-2">
-          <span class="text-sm text-ink-text-muted">天数阈值</span>
-          <UiInputNumber v-model="daysOld" :min="1" :max="3650" class="w-28" />
+          <span class="text-sm text-ink-text-muted">{{ t('data.dayThreshold') }}</span>
+          <UiInputNumber v-model="daysOld" :min="1" :max="3650" />
         </div>
-        <UiCheckbox v-model="dryRun" label="仅预览（dry run）" />
-        <UiButton @click="handleArchive">归档旧对局</UiButton>
-        <UiButton variant="danger" @click="handleCleanup">清理旧数据</UiButton>
+        <UiCheckbox v-model="dryRun" :label="t('data.dryRun')" />
+        <UiButton @click="handleArchive">{{ t('data.archiveOld') }}</UiButton>
+        <UiButton variant="danger" @click="handleCleanup">{{ t('data.cleanupOld') }}</UiButton>
       </div>
-      <p class="text-xs text-ink-text-muted">清理默认至少 90 天；生产环境请先 dry run。</p>
+      <p class="text-xs text-ink-text-muted">{{ t('data.cleanupHint') }}</p>
     </div>
 
     <div class="ink-card">
-      <h3 class="mb-4 text-base font-semibold text-ink-text">归档文件</h3>
+      <h3 class="mb-4 text-base font-semibold text-ink-text">{{ t('data.archiveFilesTitle') }}</h3>
       <UiTable :columns="fileColumns" :rows="files" row-key="filename">
         <template #actions="{ row }">
           <UiButton size="sm" variant="danger" @click="handleDeleteFile(row.filename)">
-            删除
+            {{ t('common.delete') }}
           </UiButton>
         </template>
       </UiTable>

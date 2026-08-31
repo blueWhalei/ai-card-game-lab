@@ -48,6 +48,7 @@ from app.core.events import get_event_bus
 from app.database import get_db_connection
 from app.services.experiment_config_service import ExperimentConfigService
 from app.services.experiment_config_stats_service import ExperimentConfigStatsService
+from app.services.experiment_service import ExperimentService
 from app.services.ai_service import AIService
 from app.services.data_service import DataService
 from app.services.decision_service import DecisionService
@@ -60,6 +61,7 @@ if TYPE_CHECKING:
 else:
     from app.services.prompt_service import PromptService as PromptServiceType
 
+from app.services.demo_seed_service import DemoSeedService
 from app.services.system_service import SystemService
 from app.services.trace_service import TraceService
 from app.services.training_service import TrainingService
@@ -213,6 +215,7 @@ def get_game_orchestration_service() -> GameOrchestrationService:
         event_bus=get_event_bus(),
         decision_service=get_decision_service(),
         trace_service=get_trace_service(),
+        max_concurrent_games=settings.max_concurrent_games,
     )
 
 
@@ -237,6 +240,17 @@ def get_game_service() -> GameService:
         orchestration_service=get_game_orchestration_service(),
         replay_service=get_game_replay_service(),
         experiment_config_service=get_experiment_config_service(),
+        settings=settings,
+    )
+
+
+@lru_cache
+def get_experiment_service() -> ExperimentService:
+    """Singleton experiment (run) service."""
+    settings = get_settings()
+    return ExperimentService(
+        sqlite_path=settings.sqlite_path,
+        game_service=get_game_service(),
     )
 
 
@@ -258,8 +272,19 @@ def get_training_service() -> TrainingService:
         sqlite_path=settings.sqlite_path,
         data_dir=settings.data_dir,
         models_dir=settings.models_dir,
-        training_use_mock=settings.training_use_mock,
         ollama_base_url=settings.ollama_base_url,
+        llama_cpp_dir=settings.llama_cpp_dir,
+        ollama_bin=settings.ollama_bin,
+    )
+
+
+@lru_cache
+def get_demo_seed_service() -> DemoSeedService:
+    """Singleton demo seed service."""
+    settings = get_settings()
+    return DemoSeedService(
+        sqlite_path=settings.sqlite_path,
+        data_dir=settings.data_dir,
     )
 
 

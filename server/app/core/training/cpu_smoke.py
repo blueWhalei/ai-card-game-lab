@@ -31,5 +31,5 @@ def assert_memory_available_for_smoke(available_mb: float) -> None:
     if available_mb < MIN_AVAILABLE_MEMORY_MB:
         raise ValueError(
             f"Available memory {available_mb:.0f}MB < {MIN_AVAILABLE_MEMORY_MB}MB; "
-            "refuse CPU smoke training to avoid system freeze. Free RAM or use Mock."
+            "refuse CPU smoke training to avoid system freeze. Free RAM or use a machine with more memory."
         )
