@@ -65,11 +65,6 @@ export const experimentConfigApi = {
   delete: (id: string) =>
     apiClient.delete('/api/v1/experiment-configs', { params: { id } }),
 
-  getStats: (id: string) =>
-    apiClient.get<never, ApiResponse<ExperimentConfigStats>>(
-      `/api/v1/experiment-configs/${id}/stats`,
-    ),
-
   getAllStats: () =>
     apiClient.get<never, ApiResponse<ExperimentConfigStats[]>>('/api/v1/experiment-configs/stats'),
 }

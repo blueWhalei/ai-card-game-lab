@@ -32,7 +32,6 @@ ai-card-game-lab/
 │   │   │       ├── prompt.py           # 提示词模板管理
 │   │   │       ├── trace.py            # AI 决策追踪 API
 │   │   │       ├── decision.py         # 决策点数据 API (SFT 训练样本)
-│   │   │       ├── migration.py        # 数据库迁移工具 API
 │   │   │       └── system.py           # 健康检查 / startup-check / seed-demo / 归档
 │   │   │
 │   │   ├── schemas/                     # ---------- Pydantic 模型 ----------
@@ -119,9 +118,7 @@ ai-card-game-lab/
 │   │   │   │   └── jsonl_writer.py    # JSONL 文件写入器
 │   │   │   │
 │   │   │   ├── database/               # 数据库抽象层（预留迁移接口）
-│   │   │   │   ├── __init__.py
-│   │   │   │   ├── backend.py         # DatabaseBackend ABC + SQLiteBackend
-│   │   │   │   └── migration.py       # 迁移工具（分析/导出/生成 schema）
+│   │   │   │   └── backend.py         # DatabaseBackend ABC + SQLiteBackend
 │   │   │   │
 │   │   │   ├── training/              # 训练模块
 │   │   │   │   ├── __init__.py

@@ -51,16 +51,6 @@ export const promptsApi = {
   list: (params?: ListPromptsParams) =>
     apiClient.get<never, ApiResponse<PromptTemplateResponse[]>>('/api/v1/prompts', { params }),
 
-  listVersions: (template_key: string, active_only?: boolean) =>
-    apiClient.get<never, ApiResponse<PromptTemplateResponse[]>>(`/api/v1/prompts/${template_key}`, {
-      params: { active_only },
-    }),
-
-  get: (template_key: string, version: string) =>
-    apiClient.get<never, ApiResponse<PromptTemplateResponse>>(
-      `/api/v1/prompts/${template_key}/${version}`,
-    ),
-
   create: (data: CreatePromptRequest) =>
     apiClient.post<never, ApiResponse<PromptTemplateResponse>>('/api/v1/prompts', data),
 

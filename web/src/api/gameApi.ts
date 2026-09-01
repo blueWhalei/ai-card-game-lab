@@ -52,25 +52,6 @@ export interface ReplayData {
   thinking: Record<number, string>
 }
 
-export interface RoundData {
-  game_id: string
-  round_num: number
-  player_id: string
-  action_type: string
-  cards: string[]
-  hand_snapshot: string[]
-  all_hands: Record<string, string[]>
-  prompt: Array<{ role: string; content: string }>
-  raw_response: string | null
-  thinking: string
-  prompt_tokens: number | null
-  completion_tokens: number | null
-  response_time_ms: number | null
-  model_provider: string | null
-  model_name: string | null
-  created_at: string
-}
-
 export const gameApi = {
   list: (params?: Record<string, string | number>) =>
     apiClient.get<never, ApiResponse<PaginatedData<GameItem>>>('/api/v1/games', { params }),
@@ -90,9 +71,6 @@ export const gameApi = {
 
   replay: (id: string) =>
     apiClient.get<never, ApiResponse<ReplayData>>(`/api/v1/games/${id}/replay`),
-
-  rounds: (id: string) =>
-    apiClient.get<never, ApiResponse<RoundData[]>>(`/api/v1/games/${id}/rounds`),
 
   batch: (data: BatchCreateRequest) =>
     apiClient.post<never, ApiResponse<{ game_ids: string[]; count: number }>>(

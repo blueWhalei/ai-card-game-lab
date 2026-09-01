@@ -9,7 +9,6 @@ from app.api.v1 import (
     experiment_config,
     experiment_config_stats,
     game,
-    migration,
     prompt,
     system,
     trace,
@@ -42,4 +41,3 @@ api_router.include_router(trace.router, prefix="/api/v1/traces", tags=["traces"]
 api_router.include_router(
     decision.router, prefix="/api/v1/decision-points", tags=["decision-points"]
 )
-api_router.include_router(migration.router, prefix="/api/v1/migration", tags=["migration"])

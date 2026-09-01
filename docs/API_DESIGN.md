@@ -204,7 +204,6 @@ GET    /api/v1/data/stats                    # 数据总览统计（?experiment_
 GET    /api/v1/datasets                      # 数据集列表
 POST   /api/v1/datasets                      # 创建数据集（按对局筛选导出）
 POST   /api/v1/datasets/from-decisions       # 从决策点登记 ChatML（训练台首选路径）
-GET    /api/v1/datasets/{dataset_id}         # 数据集详情
 DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 ```
 
@@ -398,7 +397,6 @@ POST   /api/v1/system/cleanup                # 执行数据清理
 
 ```
 GET    /api/v1/experiment-configs/stats              # 所有配置统计
-GET    /api/v1/experiment-configs/{config_id}/stats   # 单个配置统计
 ```
 
 #### GET /api/v1/experiment-configs/stats — 所有配置统计
@@ -415,6 +413,7 @@ GET    /api/v1/experiment-configs/{config_id}/stats   # 单个配置统计
       "wins": 30,
       "losses": 20,
       "win_rate": 0.6,
+      "last_game_id": "game_abc123",
       "last_game_at": "2024-01-15T10:00:00Z"
     }
   ]
@@ -424,12 +423,14 @@ GET    /api/v1/experiment-configs/{config_id}/stats   # 单个配置统计
 ### 2.9 提示词管理
 
 ```
-GET    /api/v1/prompts                       # 提示词模板列表
+GET    /api/v1/prompts                       # 提示词模板列表（?template_key= & active_only=）
 POST   /api/v1/prompts                       # 创建提示词模板
-GET    /api/v1/prompts/{template_id}         # 模板详情
-PUT    /api/v1/prompts/{template_id}         # 更新模板
-DELETE /api/v1/prompts/{template_id}         # 删除模板
-GET    /api/v1/prompts/active/{template_key} # 获取当前激活版本
+PUT    /api/v1/prompts/{template_key}/{version}      # 更新模板
+DELETE /api/v1/prompts/{template_key}/{version}      # 删除模板
+POST   /api/v1/prompts/{template_key}/activate       # 激活版本
+POST   /api/v1/prompts/{template_key}/deactivate     # 停用版本
+GET    /api/v1/prompts/ab-stats              # A/B 统计
+PUT    /api/v1/prompts/ab-config             # A/B 配置
 ```
 
 ### 2.10 AI 决策追踪

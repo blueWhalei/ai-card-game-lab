@@ -21,21 +21,15 @@ class ExperimentConfigStatsService:
 
             stats: list[dict[str, Any]] = []
             for config_id in config_ids:
-                stat = await self._build_config_stats(repo, config_id)
+                stat = await self._build_config_stats(
+                    repo,
+                    config_id,
+                    include_last_game_id=True,
+                )
                 stats.append(stat)
 
         stats.sort(key=lambda x: x["games_played"], reverse=True)
         return stats
-
-    async def get_config_stats(self, config_id: str) -> dict[str, Any]:
-        """Get statistics for a single experiment config."""
-        async with connect_sqlite(self._sqlite_path) as db:
-            repo = ExperimentConfigStatsRepository(db)
-            return await self._build_config_stats(
-                repo,
-                config_id,
-                include_last_game_id=True,
-            )
 
     async def _build_config_stats(
         self,

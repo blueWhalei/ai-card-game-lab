@@ -130,21 +130,6 @@ async def get_replay(
     return ApiResponse(data=data)
 
 
-@router.get("/{game_id}/rounds")
-async def get_game_rounds(
-    game_id: str,
-    db: aiosqlite.Connection = Depends(get_db),
-    service: GameService = Depends(get_game_service),
-) -> ApiResponse[list[dict[str, Any]]]:
-    """Return all rounds for a game (works for running and finished games)."""
-    rows = await service.get_game_rounds(game_id, db=db)
-    for row in rows:
-        for field in ("cards", "hand_snapshot", "prompt"):
-            if isinstance(row.get(field), str):
-                row[field] = json.loads(row[field])
-    return ApiResponse(data=rows)
-
-
 @router.post("/batch", status_code=201)
 async def batch_create(
     body: BatchCreateRequest,

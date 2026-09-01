@@ -10,7 +10,6 @@ import structlog
 
 from app.database import open_db_connection
 from app.repositories.game_repo import GameRepository
-from app.repositories.round_repo import RoundRepository
 from app.utils.exceptions import (
     GameAlreadyStartedError,
     GameNotFoundError,
@@ -333,12 +332,3 @@ class GameService:
             Dictionary containing game info, rounds, and thinking data
         """
         return await self._replay_service.get_replay_data(game_id)
-
-    async def get_game_rounds(
-        self,
-        game_id: str,
-        db: aiosqlite.Connection,
-    ) -> list[dict[str, Any]]:
-        """Return all rounds for a game (running or finished)."""
-        round_repo = RoundRepository(db)
-        return await round_repo.list_by_game(game_id)

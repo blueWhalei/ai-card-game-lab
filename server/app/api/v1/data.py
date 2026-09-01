@@ -51,16 +51,6 @@ async def create_dataset_from_decisions(
     return ApiResponse(data=dataset)
 
 
-@router.get("/datasets/{dataset_id}")
-async def get_dataset(
-    dataset_id: str,
-    service: DataService = Depends(get_data_service),
-) -> ApiResponse[dict[str, Any]]:
-    """Get dataset details."""
-    dataset = await service.get_dataset(dataset_id)
-    return ApiResponse(data=dataset)
-
-
 @router.delete("/datasets/{dataset_id}", status_code=204, response_class=Response)
 async def delete_dataset(
     dataset_id: str,

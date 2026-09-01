@@ -88,8 +88,5 @@ export const dataApi = {
   createDatasetFromDecisions: (data: CreateDatasetFromDecisionsRequest) =>
     apiClient.post<never, ApiResponse<DatasetItem>>('/api/v1/datasets/from-decisions', data),
 
-  getDataset: (id: string) =>
-    apiClient.get<never, ApiResponse<DatasetItem>>(`/api/v1/datasets/${id}`),
-
   deleteDataset: (id: string) => apiClient.delete(`/api/v1/datasets/${id}`),
 }

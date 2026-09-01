@@ -33,39 +33,6 @@ async def list_prompt_templates(
     return ApiResponse(data=templates)
 
 
-@router.get("/{template_key}", response_model=ApiResponse[list[PromptTemplateResponse]])
-async def list_template_versions(
-    template_key: str,
-    active_only: bool = Query(False, description="Show only active versions"),
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
-) -> ApiResponse[list[PromptTemplateResponse]]:
-    """List all versions of a specific template."""
-    templates = await service.list_templates(
-        template_key=template_key,
-        active_only=active_only,
-    )
-    return ApiResponse(data=templates)
-
-
-@router.get(
-    "/{template_key}/{version}",
-    response_model=ApiResponse[PromptTemplateResponse],
-)
-async def get_template(
-    template_key: str,
-    version: str,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
-) -> ApiResponse[PromptTemplateResponse]:
-    """Get a specific template version."""
-    template = await service.get_template(template_key, version)
-    if not template:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Template {template_key}:{version} not found",
-        )
-    return ApiResponse(data=template)
-
-
 @router.post(
     "",
     status_code=status.HTTP_201_CREATED,

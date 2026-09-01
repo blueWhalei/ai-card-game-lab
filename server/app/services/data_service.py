@@ -113,15 +113,6 @@ class DataService:
             repo = DatasetRepository(db)
             return await repo.list_all()
 
-    async def get_dataset(self, dataset_id: str) -> dict[str, Any]:
-        """Get a single dataset by ID."""
-        async with connect_sqlite(self._sqlite_path) as db:
-            repo = DatasetRepository(db)
-            try:
-                return await repo.get_by_id(dataset_id)
-            except KeyError:
-                raise DatasetNotFoundError(dataset_id)
-
     async def create_dataset(self, request: CreateDatasetRequest) -> dict[str, Any]:
         """Scan JSONL game files, filter, and export a dataset."""
         dataset_id = generate_id("ds")
