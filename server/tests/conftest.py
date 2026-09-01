@@ -47,6 +47,8 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     with pytest.MonkeyPatch.context() as m:
         m.setenv("SQLITE_PATH", test_settings.sqlite_path)
         m.setenv("DATA_DIR", test_settings.data_dir)
+        # Seed configs use DeepSeek. CI has no .env; GameService checks this key.
+        m.setenv("DEEPSEEK_API_KEY", test_settings.deepseek_api_key)
 
         app = create_app(settings=test_settings)
         await dependencies.get_experiment_config_service().initialize()

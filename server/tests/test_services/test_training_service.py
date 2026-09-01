@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
+from unittest.mock import patch
 
 import aiosqlite
 import pytest
@@ -36,7 +37,14 @@ async def test_create_task_raises_dataset_not_found(tmp_path: Path) -> None:
         ),
     )
 
-    with pytest.raises(DatasetNotFoundError):
+    with (
+        patch("app.core.training.sft.training_deps_available", return_value=True),
+        patch(
+            "app.services.training_service._probe_cuda_available",
+            return_value=True,
+        ),
+        pytest.raises(DatasetNotFoundError),
+    ):
         await service.create_task(request)
 
 

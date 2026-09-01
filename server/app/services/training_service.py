@@ -23,7 +23,9 @@ from app.core.training.sft import run_sft_training
 from app.core.training.verify import ollama_list_tags, ollama_smoke_decision
 from app.database import open_db_connection
 from app.repositories.dataset_repo import DatasetRepository
+from app.repositories.experiment_repo import ExperimentRepository
 from app.repositories.training_repo import TrainingTaskRepository
+from app.services.experiment_service import ExperimentNotFoundError
 from app.schemas.training import CreateTrainingTaskRequest
 from app.utils.exceptions import (
     DatasetNotFoundError,
@@ -149,6 +151,12 @@ class TrainingService:
                 dataset = await ds_repo.get_by_id(request.dataset_id)
             except KeyError as exc:
                 raise DatasetNotFoundError(request.dataset_id) from exc
+            if request.experiment_id:
+                exp_repo = ExperimentRepository(db)
+                try:
+                    await exp_repo.get_by_id(request.experiment_id)
+                except KeyError as exc:
+                    raise ExperimentNotFoundError(request.experiment_id) from exc
 
         # Per-task cancel flag, threaded into the LoRA path so cancel_task
         # can cooperatively interrupt the Trainer loop.

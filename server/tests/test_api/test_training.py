@@ -210,6 +210,16 @@ async def test_cancel_terminal_task_returns_400(client: AsyncClient, monkeypatch
 
 async def test_create_and_list_task_by_experiment(client: AsyncClient, monkeypatch) -> None:
     dataset_id = await _seed_dataset(client)
+    exp_res = await client.post(
+        "/api/v1/experiments",
+        json={
+            "name": "link-train",
+            "player_ids": ["cfg_temp_09", "cfg_temp_06", "cfg_temp_12"],
+            "target_games": 1,
+        },
+    )
+    assert exp_res.status_code == 201, exp_res.text
+    exp_id = exp_res.json()["data"]["id"]
 
     import app.core.training.sft as sft_mod
     import app.services.training_service as svc_mod
@@ -227,16 +237,16 @@ async def test_create_and_list_task_by_experiment(client: AsyncClient, monkeypat
             json={
                 "name": "exp-linked",
                 "dataset_id": dataset_id,
-                "experiment_id": "exp_test_link",
+                    "experiment_id": exp_id,
                 "config": {},
             },
         )
         assert create_res.status_code == 201, create_res.text
-        assert create_res.json()["data"]["experiment_id"] == "exp_test_link"
+        assert create_res.json()["data"]["experiment_id"] == exp_id
 
         listed = await client.get(
             "/api/v1/training/tasks",
-            params={"experiment_id": "exp_test_link"},
+            params={"experiment_id": exp_id},
         )
         assert listed.status_code == 200
         items = listed.json()["data"]["items"]
