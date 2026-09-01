@@ -1,195 +1,234 @@
 ---
-description: 
+description: Agent guide for AI Card Game Lab
 alwaysApply: true
 ---
 
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for agents working in this repository.
 
-## Project Overview
+## Project overview
 
-AI Card Game Lab (AI卡牌游戏实验室) — a platform for running AI-vs-AI card games, collecting gameplay data, and fine-tuning LLMs. The primary product object is an **experiment** (run): fixed player configs + target game count, with collect / train / register-as-player / control-experiment from the detail workspace. The backend orchestrates game engines and LLM providers; the frontend provides real-time observation via WebSocket.
+AI Card Game Lab is a local research tool for AI-vs-AI card games: run games, observe decisions, collect data, and fine-tune small models.
+
+The primary product object is an **experiment** (run): a fixed set of player configs plus a target game count. Collect, observe, register-and-train, open a control experiment, and compare runs from the experiment workspace. Scatter games (no experiment) still exist on `/game`.
+
+Monorepo:
+
+| Workspace | Stack |
+|-----------|--------|
+| `server/` | Python 3.11+ / FastAPI / Poetry / aiosqlite |
+| `web/` | Vue 3 + TypeScript / Vite / Tailwind v4 / Reka UI |
+
+Default frontend port is `5173` (proxies `/api` and `/api/v1/games/ws` to `localhost:8000`).
 
 ## Commands
 
-### Backend (server/)
+### Backend (`server/`)
 
 ```bash
 cd server
-
-# Install dependencies
 poetry install
-
-# Run dev server
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-# Run all tests
 poetry run pytest
-
-# Run a single test file
 poetry run pytest tests/test_api/test_system.py
-
-# Run a single test by name
 poetry run pytest -k "test_health"
-
-# Lint + format
 poetry run ruff check .
 poetry run ruff format .
-
-# Type check
 poetry run mypy app/
 ```
 
-### Frontend (web/)
+Training extras (PEFT LoRA): `poetry install --with training`.
+
+### Frontend (`web/`)
 
 ```bash
 cd web
-
-# Install dependencies
 npm install
-
-# Dev server (proxies /api to localhost:8000)
 npm run dev
-
-# Build (runs type-check + vite build in parallel)
 npm run build
-
-# Lint (oxlint then eslint, both with --fix)
 npm run lint
-
-# Format
 npm run format
-
-# Type check only
 npm run type-check
+npm test
 ```
 
 ## Architecture
 
-Monorepo with two workspaces: `server/` (Python 3.11+ / FastAPI / Poetry) and `web/` (Vue 3 / TypeScript / Vite / Tailwind v4).
-
-### Backend Layering (strict one-way dependency)
+Strict one-way backend dependency:
 
 ```
 API (app/api/) → Service (app/services/) → Repository (app/repositories/) → database
-                                          → Core (app/core/)
+                                         → Core (app/core/)
 ```
 
-- **API layer** — route handlers, request validation, response serialization. Never calls Core or Repository directly.
-- **Service layer** — business orchestration, cross-module coordination.
-- **Repository layer** — SQLite data access via aiosqlite.
-- **Core layer** (`app/core/`) — pure domain logic, framework-independent:
-  - `engine/` — `GameEngine` ABC + `GameEngineRegistry`. Engines are stateless; state flows through `GameState` dataclasses. New games register via the registry, no if-else chains.
-  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Provider implementations: `OpenAICompatibleClient` (covers OpenAI, DashScope, DeepSeek, Kimi, ZhipuAI, Yi, Baichuan, MiniMax), `OllamaClient`. All configured via `dependencies.py`. Streaming supports `stream_options: {"include_usage": true}` for token usage tracking. `StreamChunk` carries optional `usage` field on the final chunk.
-  - `collector/` — JSONL writer for game data.
-  - `training/` — SFT dataset exporter (JSONL → ChatML format) + PEFT LoRA. Missing deps refuse task creation. CPU smoke clamps apply without GPU. State machine: pending → exporting → training → completed/failed.
-- **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` contains WS endpoint logic.
-- **Schemas** (`app/schemas/`) — Pydantic models for request/response. Shared `ApiResponse` envelope.
-- **Config** — `app/config.py` uses `pydantic-settings`, reads from env vars / `.env` file at project root.
+- **API** — routes, validation, serialization. Never call Core or Repository.
+- **Service** — orchestration. Singletons do not hold DB connections; background work opens its own connection.
+- **Repository** — SQLite via aiosqlite.
+- **Core** — framework-independent domain logic:
+  - `engine/` — `GameEngine` ABC + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
+  - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
+  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`.
+  - `collector/` — JSONL writer.
+  - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
+  - `events/` — in-process `EventBus` + game lifecycle events.
+- **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
+- **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
+- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. `config/experiment_configs.yaml` is first-boot seed only.
 
-### Frontend Structure
+## Frontend
 
-- Vue 3 Composition API (`<script setup lang="ts">`) + Pinia stores + Vue Router
-- `src/api/` — typed Axios client with interceptors; `src/stores/` — one store per domain
-- `src/composables/` — `useWebSocket`, `usePagination`
-- `src/components/` organized by domain: `game/`, `data/`, `trace/`, `common/`
-- `src/views/` — `ExperimentListView` (home), `ExperimentDetailView`, `GameView`, `GameObserverView`, `ExperimentConfigView`, `DataView`, `TrainingView`, `PromptView`, `TraceView`, `DecisionView`, `SettingsView`（`/pipeline` 重定向到首页）
-- Dual shells: `layouts/WorkbenchLayout.vue` (grouped nav; 实验 first) + `layouts/ObserverLayout.vue` (fullscreen)
-- Headless UI kit: `components/ui/*` (Reka UI + Ink Lab tokens); charts via ECharts
-- Runtime config: experiment configs + prompt templates in SQLite; secrets/paths via `.env`; `config/experiment_configs.yaml` is seed-only
-- Vite dev server proxies `/api` → `localhost:8000` and WebSocket at `/api/v1/games/ws`
+- Vue 3 `<script setup lang="ts">`, Pinia, Vue Router, vue-i18n (`zh-CN` + `en`). New user-facing copy goes through i18n.
+- `src/api/` — typed Axios client (`client.ts` normalizes errors). Domain modules: `experimentApi`, `experimentConfigApi`, `gameApi`, `dataApi`, `decision`, `traces`, `trainingApi`, `prompts`, `systemApi`, `archive`.
+- `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
+- `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.
+- Dual shells:
+  - `WorkbenchLayout.vue` — grouped nav: Lab (experiments, player configs, scatter games) / Pipeline (data, decisions, training) / Tune (prompts, traces, settings). Page enter fade only (`ink-page`); do not wrap the observer shell.
+  - `ObserverLayout.vue` — fullscreen watch / replay.
+- UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Charts: ECharts.
+- Observation uses **one** `GenericBoard` list board. Do not add `components/game/boards/<Game>Board.vue` or branch `GameObserverView` by `game_type`.
 
-### Experiments (first-class runs)
+### Routes
 
-- Table `experiments`; `games.experiment_id` nullable (scatter games remain on `/game`)
-- API: `GET/POST /api/v1/experiments`, `GET /api/v1/experiments/{id}`, `POST /api/v1/experiments/{id}/collect`
-- Decision/trace list + ChatML export / `datasets/from-decisions` accept `experiment_id`
-- UI: `/` list + `/experiments/:id` workspace (collect, register+train, control experiment); Training models tab「登记为选手」→ Ollama tag config
+| Path | View |
+|------|------|
+| `/` | `ExperimentListView` (home) |
+| `/experiments/:id` | `ExperimentDetailView` (workspace) |
+| `/experiments/compare` | `ExperimentCompareView` |
+| `/pipeline` | redirect to `/` |
+| `/game` | `GameView` (scatter games) |
+| `/game/:id` | `GameObserverView` (Observer shell) |
+| `/experiment-configs` | `ExperimentConfigView` (`/ai-players` redirects here) |
+| `/data` | `DataView` |
+| `/decisions` | `DecisionView` |
+| `/training` | `TrainingView` |
+| `/prompt` | `PromptView` |
+| `/traces` | `TraceView` |
+| `/settings` | `SettingsView` (read-only: providers, paths, storage) |
 
-### Game Observer Features
+Deep links: `/decisions?experiment_id=` and `/traces?experiment_id=`.
 
-- Real-time WebSocket observation with player cards, card display, action history
-- Tabbed right panel: "出牌记录" (action history) | "AI 思考" (thinking panel)
-- ThinkingPanel shows full AI reasoning per round with response time, token usage, collapsible entries
-- PlayerCard displays response time badge, round/total token counts, and truncated thinking with expand link
-- Replay mode for finished games: step-by-step playback with play/pause, prev/next, speed control
-- Batch game creation: run 1-50 games at once for data collection
+## Experiments
 
-### Database Tables
+- Table `experiments`. `games.experiment_id` is nullable (scatter games stay on `/game`).
+- Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
+- Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
+- Detail workspace: collect / pause, watch, register-and-train, control experiment, compare.
+- Training models tab can register an Ollama tag as a player config.
 
-`experiments`, `games`, `rounds`, `datasets`, `training_tasks`, `prompt_templates`, `traces`, `spans`, `decision_points`, `experiment_configs` — all in SQLite via aiosqlite. Schema defined in `app/database.py`.
+Main HTTP:
 
-### Decision Points for SFT Training
+```
+GET/POST /api/v1/experiments
+GET      /api/v1/experiments/compare?ids=a,b
+GET      /api/v1/experiments/{id}
+POST     /api/v1/experiments/{id}/collect
+```
 
-Key decision points are recorded for supervised fine-tuning:
+Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`.
 
-- **State-Action Pairs** — Every AI decision records: hand cards, opponent hand counts, last action, game phase, legal actions, chosen action, AI thinking
-- **Quality Scoring** — After game ends, decisions are tagged with outcome (win/lose) and quality score (0.3-0.8)
-- **ChatML Export** — Export decision points to ChatML format for SFT training
+## Game observer
 
-API endpoints:
-- `GET /api/v1/decision-points` — List decision points (filter by game_id, experiment_id, player_id, quality)
-- `GET /api/v1/decision-points/{id}` — Get decision point detail
-- `GET /api/v1/decision-points/stats` — Aggregate statistics
-- `POST /api/v1/decision-points/export` — Export to ChatML format (optional `experiment_id`)
-- `POST /api/v1/datasets/from-decisions` — Register ChatML dataset (optional `experiment_id`)
+- WebSocket: `WS /api/v1/games/ws/{game_id}`.
+- Live: `GenericBoard` + action history / thinking panel. Thinking seat uses `ink-obs-glow` (not a full-card pulse).
+- Finished games: step replay (play/pause, prev/next, speed).
+- Demo game (no experiment): homepage “load demo” → `POST /api/v1/system/seed-demo`.
 
-Frontend: `DecisionView.vue` with decision list and detail panels.
+## Database (SQLite)
 
-### AI Decision Observability
+Schema lives in `app/database.py`. Tables:
 
-Lightweight observability platform for AI decision tracing:
+`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`), `experiment_configs`.
 
-- **Trace Recording** — Every AI decision records: game state snapshot, prompt version, LLM response, parsed action, metrics (response time, parser type)
-- **Span Tracking** — Sub-operations (tool calls) tracked as independent spans
-- **Performance Metrics** — Aggregated stats: avg/min/max response time, parser success rate
-- **Prompt Version Comparison** — A/B testing support for prompt effectiveness
-- **Real-time WebSocket** — Trace events broadcast to connected clients
+JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-API endpoints:
-- `GET /api/v1/traces` — List traces (filter by game_id, experiment_id, player_id)
-- `GET /api/v1/traces/{trace_id}` — Get trace detail with spans
-- `GET /api/v1/traces/metrics` — Aggregated performance metrics
-- `GET /api/v1/traces/compare` — Compare prompt versions
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality. SFT filtering uses `train_usable`. Export defaults to `include_thinking=false`.
 
-Frontend: `TraceView.vue` with `TraceDetail.vue` and `TraceMetrics.vue` components.
+## Decision points (SFT)
 
-### Data Dashboard Features
+Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking.
 
-The data page (`DataView.vue`) splits stats vs operations:
+```
+GET  /api/v1/decision-points          # page / page_size (default 10), filters include experiment_id, train_usable
+GET  /api/v1/decision-points/{id}
+GET  /api/v1/decision-points/stats
+POST /api/v1/decision-points/export   # writes JSONL only; does not register a dataset
+POST /api/v1/datasets/from-decisions  # register ChatML for the training page
+```
 
-- **总览** (`OverviewTab` → `StatCards`) — corpus snapshot only: scale KPIs, token totals, game-quality KPIs + wins-by-role pie. No per-model bar charts.
-- **AI 性能** (`AIPerformanceTab`) — per-model comparison: latency P50/P95, win-rate bar + table, token-by-model bar, response-time-by-model bar. Each chart appears once.
-- **数据集 / 存储 / 归档** — ChatML datasets, disk usage, cleanup.
+UI: `DecisionView.vue`. Empty-file export does **not** appear on Training.
 
-Backend: `DataService.get_stats()` aggregates from `games` and `rounds`.
+## Traces
 
-### Adding a New Card Game
+```
+GET /api/v1/traces            # PaginatedData; game_id / experiment_id / player_id
+GET /api/v1/traces/{trace_id}
+GET /api/v1/traces/metrics
+GET /api/v1/traces/compare
+```
 
-1. Create `server/app/core/engine/<game_name>/` with engine implementation inheriting `GameEngine`
-2. Register in `server/app/core/engine/__init__.py`
-3. Implement `get_public_info(..., is_observer=True)` to emit the universal **ObserverSnapshot**
-   (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`)
-4. Optional: Prompt / Parser for the new game
+UI: `TraceView.vue`, `TraceDetail.vue`, `TraceMetrics.vue`.
 
-**Do not** add `web/src/components/game/boards/<GameName>Board.vue` or branch `GameObserverView`
-by `game_type`. Observation uses a single `GenericBoard` list board.
+## Data page
 
-No API/Service/Repository changes needed — routing is automatic via `game_type`.
+`DataView.vue` tabs (query `?tab=`):
 
-## Key Conventions
+- **Overview** (`OverviewTab` → `StatCards`) — corpus KPIs, tokens, game-quality KPIs, wins-by-role pie. No per-model bars here.
+- **AI performance** (`AIPerformanceTab`) — per-model latency P50/P95, win-rate, tokens, response time. Each chart once.
+- **Datasets / storage / archive**.
 
-- 规范文档默认对新增代码和本次修改范围内的代码强制生效；存量代码按“发现即修、逐步收敛”推进。
-- Python: all new or modified functions require full type annotations using 3.11+ syntax (`list[...]`, `X | Y`, `X | None`). Avoid `typing.List/Dict/Optional/Union`; when touching old code,补齐同范围内缺失的类型标注。
-- Python: async for all I/O (LLM calls, DB, file). CPU-bound work goes to `asyncio.to_thread()`.
-- Python: structlog for logging with key-value pairs, never f-strings in log calls.
-- Python: custom exception hierarchy rooted at `AppError` (in `app/utils/exceptions.py`), caught by global handler.
-- Python: Ruff for lint+format (line-length 100), mypy strict mode is the target standard for new and modified code.
-- Frontend: strict TypeScript is the target standard; new and modified code must avoid `any`, and touched legacy code should be narrowed where practical.
-- Frontend: use shared API error normalization in `src/api/client.ts` and shared UI-facing helpers such as `src/utils/error.ts` instead of scattering ad-hoc error display logic.
-- Frontend: `@` alias maps to `web/src/`.
-- Tests: pytest with `asyncio_mode = "auto"`. Test client uses `httpx.AsyncClient` with `ASGITransport`.
-- Git: conventional commits `<type>(<scope>): <subject>`. Branches: `master`, `dev`, `feat/<name>`, `fix/<name>`.
-- No cross-layer calls (API must not skip Service to reach Core/Repository).
-- No global mutable state. No `print()` for debugging.
+`DataService.get_stats(experiment_id=...)` aggregates `games` + `rounds`.
+
+## Training / deploy
+
+- Create task: `POST /api/v1/training/tasks` (refuses if training extra missing).
+- Models: `GET/DELETE /api/v1/models`, `POST .../export`, `POST .../push-ollama`, `POST .../verify`.
+- Push-to-Ollama needs `LLAMA_CPP_DIR` in `.env`. Optional register-as-player after push.
+
+## Adding a card game
+
+1. Add `server/app/core/engine/<game_name>/` implementing `GameEngine`.
+2. Register in `get_engine_registry()` (`dependencies.py` / engine package init).
+3. `get_public_info(..., is_observer=True)` must emit `ObserverSnapshot` (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`).
+4. Optional: prompts / parsers for that game.
+
+Do **not** add a per-game Vue board or `game_type` branches in `GameObserverView`.
+
+Routing is by `game_type`; no API/Service/Repository changes for a well-behaved engine.
+
+## Adding an LLM provider
+
+- If the vendor is OpenAI-compatible (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
+- A new `LLMClient` subclass is only for a non-compatible protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
+- Player configs are edited in the Experiment Configs UI (SQLite). YAML is seed only.
+
+## Key conventions
+
+- Coding standards apply to **new and touched** code; fix legacy in the same range when you see it (`docs/CODING_STANDARDS.md`).
+- Python: annotate new/changed functions with 3.11+ syntax (`list[...]`, `X | Y`, `X | None`). Do not use `typing.List/Dict/Optional/Union`.
+- Python: async for I/O. CPU-bound work via `asyncio.to_thread()`.
+- Python: structlog key-value pairs; no f-strings in log calls; no `print()`.
+- Python: exceptions inherit `AppError` (`app/utils/exceptions.py`).
+- Python: Ruff line-length 100; mypy strict is the target for new/changed code.
+- Frontend: no new `any`; narrow legacy `any` in files you touch.
+- Frontend: shared API errors via `src/api/client.ts` and `src/utils/error.ts`.
+- Frontend: `@` → `web/src/`.
+- Tests: pytest `asyncio_mode = auto`; `httpx.AsyncClient` + `ASGITransport`. Frontend: Vitest (`src/**/*.spec.ts`).
+- Git: conventional commits `<type>(<scope>): <subject>`. Integration branch is **`develop`**. `origin/HEAD` is `master`. Do not create a feature branch unless the user asks.
+- No cross-layer calls. No global mutable state.
+
+## Documentation map
+
+| Doc | Role |
+|-----|------|
+| `README.md` | Human getting-started (Chinese) |
+| `docs/E2E_PIPELINE.md` | Collect → train → Ollama loop + scripts |
+| `docs/ARCHITECTURE.md` | Layering, events, WS, schema |
+| `docs/PROJECT_STRUCTURE.md` | Directory map |
+| `docs/CODING_STANDARDS.md` | Python / Vue / Git rules |
+| `docs/API_DESIGN.md` | REST + WebSocket contract |
+| `docs/EXAMPLES.md` | How to extend engines / providers |
+| `config/README.md` | YAML seed vs `.env` |
+| `docs/欢乐斗地主经典玩法规则.md` | Dou Dizhu rules reference |
+
+Prefer this file and the code when a long-form doc disagrees.

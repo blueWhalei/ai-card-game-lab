@@ -1,6 +1,6 @@
 # 架构设计文档
 
-> 本文档基于《AI卡牌游戏实验室 - 详细设计说明书》，确定采用 **方案A（去掉 Node.js 中间层，Python FastAPI 统一后端）** 后的最终架构设计。
+> FastAPI 统一后端（无 Node 中间层）。与代码冲突时以 `server/app/` 和 `CLAUDE.md` 为准。
 
 ## 1. 架构决策记录
 
@@ -172,9 +172,9 @@ class GameService:
 | 子模块 | 职责 | 关键类 |
 |--------|------|--------|
 | `engine/` | 游戏引擎，含规则、状态管理 | `GameEngine` (ABC), `DoudizhuEngine` |
-| `ai/` | LLM 统一调用，提示词构建 | `LLMClient` (ABC), `LLMClientFactory` |
+| `ai/` | LLM 统一调用，提示词构建 | `LLMClient` (ABC), `OpenAICompatibleClient`, `OllamaClient`, `LLMClientFactory` |
 | `collector/` | 对局数据采集与归档 | `JsonlWriter` |
-| `training/` | SFT 数据导出 + PEFT LoRA | `export_sft_dataset`, `run_sft_training` |
+| `training/` | SFT 导出 + PEFT LoRA + 部署辅助 | `exporter.py`, `sft.py`, `deploy.py`（无项目级 `Trainer` ABC） |
 
 ### 3.4 基础设施层
 
@@ -332,7 +332,7 @@ class DatasetCreatedEvent(DomainEvent):
     @property
     def event_type(self) -> str:
         return "dataset.created"
-````
+```
 
 ### 6.4 创建事件处理器
 
@@ -352,7 +352,6 @@ class DataExportHandler(AsyncEventHandler):
     async def handle(self, event: GameEndedEvent) -> None:
         # 异步执行数据导出逻辑
         await self._export_game_data(event.game_id)
-```
 ```
 
 **同步处理器**（适用于 CPU 密集型操作）：
@@ -425,7 +424,6 @@ def get_game_service() -> GameService:
 | `PromptBuilder` | `get_prompt_builder()` | 提示词构建器 |
 | `JsonlWriter` | `get_jsonl_writer()` | JSONL 数据写入器 |
 | `GameService` | `get_game_service()` | 对局业务服务 |
-| `DataService` | `get_data_service()` | 数据服务 |
 | `DataService` | `get_data_service()` | 数据服务 |
 | `TrainingService` | `get_training_service()` | 训练服务 |
 | `SystemService` | `get_system_service()` | 系统服务 |
@@ -549,26 +547,45 @@ class ConnectionManager:
 
 ## 9. 数据库设计（SQLite）
 
+权威 schema 以 `server/app/database.py` 为准。
+
+### 9.0 experiments 表
+
+```sql
+CREATE TABLE experiments (
+    id            TEXT PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    notes         TEXT    NOT NULL DEFAULT '',
+    game_type     TEXT    NOT NULL,
+    player_ids    TEXT    NOT NULL,
+    target_games  INTEGER NOT NULL DEFAULT 1,
+    created_at    TEXT    NOT NULL,
+    updated_at    TEXT    NOT NULL
+);
+```
+
 ### 9.1 games 表
 
 ```sql
 CREATE TABLE games (
-    id            TEXT PRIMARY KEY,
-    game_type     TEXT    NOT NULL,
-    status        TEXT    NOT NULL DEFAULT 'created',  -- created/running/paused/finished
-    player_ids    TEXT    NOT NULL,                     -- JSON array
-    winner_id     TEXT,
-    winner_role   TEXT,
-    total_rounds  INTEGER DEFAULT 0,
-    data_file     TEXT    NOT NULL,                     -- JSONL 文件相对路径
-    created_at    TEXT    NOT NULL,
-    finished_at   TEXT,
-    metadata      TEXT                                  -- JSON, 扩展字段
+    id             TEXT PRIMARY KEY,
+    game_type      TEXT    NOT NULL,
+    status         TEXT    NOT NULL DEFAULT 'created',  -- created/running/paused/finished
+    player_ids     TEXT    NOT NULL,
+    winner_id      TEXT,
+    winner_role    TEXT,
+    total_rounds   INTEGER DEFAULT 0,
+    data_file      TEXT    NOT NULL,
+    created_at     TEXT    NOT NULL,
+    finished_at    TEXT,
+    metadata       TEXT,
+    experiment_id  TEXT    REFERENCES experiments(id)   -- 散局为 NULL
 );
 
 CREATE INDEX idx_games_type ON games(game_type);
 CREATE INDEX idx_games_status ON games(status);
 CREATE INDEX idx_games_created ON games(created_at);
+CREATE INDEX idx_games_experiment ON games(experiment_id);
 ```
 
 ### 9.2 rounds 表
@@ -629,11 +646,12 @@ CREATE TABLE training_tasks (
     result        TEXT,              -- JSON, 训练结果
     model_path    TEXT,
     created_at    TEXT    NOT NULL,
-    finished_at   TEXT
+    finished_at   TEXT,
+    experiment_id TEXT    REFERENCES experiments(id)
 );
 ```
 
-### 7.6 prompt_templates 表
+### 9.4 prompt_templates 表
 
 ```sql
 CREATE TABLE prompt_templates (
@@ -685,6 +703,41 @@ CREATE TABLE spans (
 CREATE INDEX idx_spans_trace ON spans(trace_id);
 ```
 
+### 9.7 decision_points 表
+
+```sql
+CREATE TABLE decision_points (
+    id              TEXT PRIMARY KEY,
+    game_id         TEXT    NOT NULL,
+    round_number    INTEGER NOT NULL,
+    player_id       TEXT    NOT NULL,
+    hand_cards      TEXT    NOT NULL,
+    opponent_hands  TEXT,
+    last_action     TEXT,
+    game_phase      TEXT    NOT NULL,
+    legal_actions   TEXT    NOT NULL,
+    chosen_action   TEXT    NOT NULL,
+    thinking        TEXT,
+    outcome         TEXT,
+    quality_score   REAL    DEFAULT 0.5,  -- 终局结果分，非招法质量
+    train_usable    INTEGER NOT NULL DEFAULT 1,
+    created_at      TEXT    NOT NULL
+);
+```
+
+### 9.8 experiment_configs 表
+
+```sql
+CREATE TABLE experiment_configs (
+    id            TEXT PRIMARY KEY,
+    name          TEXT    NOT NULL,
+    notes         TEXT    NOT NULL DEFAULT '',
+    model_config  TEXT    NOT NULL,
+    created_at    TEXT    NOT NULL,
+    updated_at    TEXT    NOT NULL
+);
+```
+
 ## 10. 可扩展性设计
 
 ### 10.1 新增游戏
@@ -697,13 +750,9 @@ CREATE INDEX idx_spans_trace ON spans(trace_id);
 
 ### 10.2 新增 LLM 供应商
 
-1. 在 `core/ai/providers/` 下创建新文件
-2. 继承 `LLMClient` 抽象基类
-3. 在 `LLMClientFactory` 注册
-4. 在 UI「实验配置」页配置使用（`config/experiment_configs.yaml` 仅作首次 seed）
+OpenAI 兼容协议（`POST /chat/completions` + Bearer）：在 `dependencies.py` 的 provider 列表和 `config.py` / `.env` 增加项即可，**不要**新建 client 类。  
+非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「实验配置」页选用（YAML 仅 seed）。
 
 ### 10.3 新增训练算法
 
-1. 在 `core/training/` 下创建新训练器
-2. 实现统一的 `Trainer` 接口
-3. Service 层通过 `training_type` 参数路由到对应训练器
+当前实现是 `core/training/sft.py` 的 PEFT LoRA（内部使用 HuggingFace `Trainer`）。仓库**没有**统一的 `Trainer` ABC。新算法应扩展 `training_service` + `core/training/`，并由 `training_type` 路由。

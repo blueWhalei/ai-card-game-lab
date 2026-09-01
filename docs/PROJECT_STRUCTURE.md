@@ -1,6 +1,6 @@
 # 目录结构说明
 
-> 本文档定义项目的完整目录规划，说明每个目录和关键文件的职责。开发时严格遵循此结构。
+> 目录地图。与代码冲突时以仓库实际文件和 `CLAUDE.md` 为准。
 
 ## 完整目录树
 
@@ -32,17 +32,18 @@ ai-card-game-lab/
 │   │   │       ├── prompt.py           # 提示词模板管理
 │   │   │       ├── trace.py            # AI 决策追踪 API
 │   │   │       ├── decision.py         # 决策点数据 API (SFT 训练样本)
-│   │   │       ├── player_stats.py     # （已合并至 experiment_config_stats）
 │   │   │       ├── migration.py        # 数据库迁移工具 API
-│   │   │       └── system.py           # 系统健康检查 + 配置 + 归档管理
+│   │   │       └── system.py           # 健康检查 / startup-check / seed-demo / 归档
 │   │   │
 │   │   ├── schemas/                     # ---------- Pydantic 模型 ----------
 │   │   │   ├── __init__.py
 │   │   │   ├── common.py              # 通用响应包装 (ApiResponse, PaginatedData)
 │   │   │   ├── game.py                # 对局请求/响应模型
+│   │   │   ├── experiment.py          # 实验（run）请求/响应模型
 │   │   │   ├── experiment_config.py   # 实验配置请求/响应模型
 │   │   │   ├── data.py                # 数据/数据集请求/响应模型
 │   │   │   ├── training.py            # 训练任务请求/响应模型
+│   │   │   ├── prompt.py              # 提示词模板请求/响应模型
 │   │   │   ├── archive.py             # 归档/清理请求/响应模型
 │   │   │   └── system.py              # 系统配置请求/响应模型
 │   │   │
@@ -56,12 +57,14 @@ ai-card-game-lab/
 │   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite + YAML seed）
 │   │   │   ├── experiment_config_stats_service.py  # 实验配置战绩统计
 │   │   │   ├── data_service.py        # 数据统计 + 数据集导出
-│   │   │   ├── training_service.py    # 训练任务编排（状态机 + mock 训练）
+│   │   │   ├── training_service.py    # 训练任务编排（PEFT LoRA / CPU 冒烟）
 │   │   │   ├── prompt_service.py      # 提示词模板管理
 │   │   │   ├── trace_service.py       # AI 决策追踪服务
 │   │   │   ├── decision_service.py    # 决策点采集服务 (SFT 训练样本)
 │   │   │   ├── archive_service.py     # 数据归档与清理服务
-│   │   │   └── system_service.py      # 系统配置服务
+│   │   │   ├── demo_seed_service.py   # 演示对局种子
+│   │   │   ├── startup_recovery.py    # 启动恢复
+│   │   │   └── system_service.py      # 系统配置 / 供应商状态
 │   │   │
 │   │   ├── repositories/               # ---------- 数据访问层 ----------
 │   │   │   ├── __init__.py
@@ -72,7 +75,11 @@ ai-card-game-lab/
 │   │   │   ├── prompt_repo.py         # 提示词模板数据访问 (SQLite)
 │   │   │   ├── experiment_repo.py             # 实验（run）数据访问
 │   │   │   ├── experiment_config_repo.py       # 实验配置数据访问 (SQLite)
-│   │   │   └── experiment_config_stats_repo.py # 实验配置战绩统计 (SQLite)
+│   │   │   ├── experiment_config_stats_repo.py # 实验配置战绩统计 (SQLite)
+│   │   │   ├── decision_repo.py       # 决策点
+│   │   │   ├── trace_repo.py          # 追踪
+│   │   │   ├── archive_repo.py        # 归档
+│   │   │   └── stats_repo.py          # 聚合统计
 │   │   │
 │   │   ├── core/                        # ---------- 核心领域层 ----------
 │   │   │   ├── __init__.py
@@ -81,6 +88,7 @@ ai-card-game-lab/
 │   │   │   │   ├── __init__.py
 │   │   │   │   ├── base.py            # GameEngine ABC + GameState/GameAction 基类
 │   │   │   │   ├── registry.py        # GameEngineRegistry 注册中心
+│   │   │   │   ├── observer_types.py  # ObserverSnapshot 协议
 │   │   │   │   └── doudizhu/          # 斗地主引擎（独立子包）
 │   │   │   │       ├── __init__.py
 │   │   │   │       ├── engine.py      # DoudizhuEngine 实现
@@ -96,9 +104,8 @@ ai-card-game-lab/
 │   │   │   │   ├── provider_config.py  # LLMProviderConfig 配置驱动
 │   │   │   │   ├── providers/         # LLM 供应商实现
 │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── openai_client.py  # OpenAI 兼容 (DeepSeek/Kimi/MiniMax/ZhipuAI/Yi/Baichuan)
-│   │   │   │   │   ├── ollama_client.py
-│   │   │   │   │   └── dashscope_client.py
+│   │   │   │   │   ├── openai_client.py  # OpenAICompatibleClient（含 DashScope 等兼容厂商）
+│   │   │   │   │   └── ollama_client.py
 │   │   │   │   ├── parsers/            # AI 响应解析
 │   │   │   │   │   ├── action_parser.py  # 出牌动作解析
 │   │   │   │   │   └── bid_parser.py     # 叫分解析
@@ -116,10 +123,14 @@ ai-card-game-lab/
 │   │   │   │   ├── backend.py         # DatabaseBackend ABC + SQLiteBackend
 │   │   │   │   └── migration.py       # 迁移工具（分析/导出/生成 schema）
 │   │   │   │
-│   │   │   └── training/              # 训练模块
-│   │   │       ├── __init__.py
-│   │   │       ├── sft.py             # PEFT LoRA SFT（缺依赖则拒绝）
-│   │   │       └── exporter.py        # JSONL → ChatML SFT 格式导出
+│   │   │   ├── training/              # 训练模块
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── sft.py             # PEFT LoRA SFT（缺依赖则拒绝）
+│   │   │   │   ├── exporter.py        # JSONL → ChatML SFT 格式导出
+│   │   │   │   ├── deploy.py          # merge / GGUF / Ollama 辅助
+│   │   │   │   └── cpu_smoke.py       # 无 GPU 步数/样本钳制
+│   │   │   │
+│   │   │   └── events/                # 领域事件（EventBus + game lifecycle）
 │   │   │
 │   │   ├── websocket/                   # ---------- WebSocket ----------
 │   │   │   ├── __init__.py
@@ -181,20 +192,27 @@ ai-card-game-lab/
 │   │   │   ├── prompts.ts             # 提示词模板 API
 │   │   │   ├── traces.ts              # AI 决策追踪 API
 │   │   │   ├── decision.ts            # 决策点数据 API
+│   │   │   ├── systemApi.ts           # 健康检查 / 供应商 / seed-demo
 │   │   │   └── archive.ts             # 归档/清理 API
 │   │   │
 │   │   ├── composables/                # 可复用组合式函数
 │   │   │   ├── useWebSocket.ts        # WebSocket 连接管理
-│   │   │   └── usePagination.ts       # 分页逻辑
+│   │   │   ├── useGameWebSocket.ts    # 观战专用 WS
+│   │   │   ├── usePagination.ts       # 分页逻辑
+│   │   │   ├── useTweenNumber.ts      # 数字滚动
+│   │   │   ├── useTheme.ts / useLocale.ts / useFieldWidth.ts
 │   │   │
 │   │   ├── utils/                      # 前端工具函数
 │   │   │   ├── error.ts               # API 错误消息映射与统一展示入口
 │   │   │   └── format.ts              # 时间/字节/百分比格式化工具
 │   │   │
+│   │   ├── i18n/                        # vue-i18n（zh-CN + en）
+│   │   │
 │   │   ├── components/                 # 组件
+│   │   │   ├── ui/                    # Reka UI + Ink Lab 控件
 │   │   │   ├── common/                # 通用/共享组件
-│   │   │   │   ├── AppHeader.vue
-│   │   │   │   ├── AppSidebar.vue
+│   │   │   │   ├── HeaderToggles.vue
+│   │   │   │   ├── WorkbenchFilterBar.vue
 │   │   │   │   ├── LoadingSpinner.vue
 │   │   │   │   └── EmptyState.vue
 │   │   │   │
@@ -208,19 +226,21 @@ ai-card-game-lab/
 │   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
-│   │   │   │   ├── PlayerCard.vue    # 玩家卡片（角色/手牌/思考状态/耗时）
-│   │   │   │   └── ThinkingPanel.vue # AI 思考历史面板（可折叠）
+│   │   │   │   ├── GenericBoard.vue   # 唯一观战牌桌（列表）
+│   │   │   │   ├── ThinkingPanel.vue # AI 思考历史面板
+│   │   │   │   └── GameReplayControls.vue
 │   │   │   │
 │   │   │   ├── data/                  # 数据相关组件
-│   │   │   │   ├── StatCards.vue     # 统计卡片 + ECharts 图表（含 Token/对局/AI表现/响应时间 5 大板块）
-│   │   │   │   ├── DatasetList.vue   # 数据集表格 + 创建对话框
-│   │   │   │   ├── StorageMonitor.vue # 存储空间监控卡片
-│   │   │   │   ├── ArchiveManager.vue # 数据归档与清理管理
-│   │   │   │   └── tabs/                # 数据页签标签组件
-│   │   │   │       ├── OverviewTab.vue  # 总览（加载 StatCards）
-│   │   │   │       ├── DatasetTab.vue   # 数据集管理
-│   │   │   │       ├── StorageTab.vue   # 存储管理
-│   │   │   │       └── ArchiveTab.vue   # 归档清理
+│   │   │   │   ├── StatCards.vue     # 总览 KPI / 角色胜负饼图（不含按模型柱状图）
+│   │   │   │   ├── DatasetList.vue
+│   │   │   │   ├── StorageMonitor.vue
+│   │   │   │   ├── ArchiveManager.vue
+│   │   │   │   └── tabs/
+│   │   │   │       ├── OverviewTab.vue
+│   │   │   │       ├── AIPerformanceTab.vue  # 按模型对比（各图只出现一次）
+│   │   │   │       ├── DatasetTab.vue
+│   │   │   │       ├── StorageTab.vue
+│   │   │   │       └── ArchiveTab.vue
 │   │   │   │
 │   │   │   └── trace/                # 追踪组件
 │   │   │       ├── TraceDetail.vue   # 决策详情展示
@@ -242,14 +262,15 @@ ai-card-game-lab/
 │   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
 │   │   │
 │   │   ├── layouts/                    # 双壳布局
-│   │   │   ├── WorkbenchLayout.vue    # 侧栏分组导航（实验室/管道/调参）
+│   │   │   ├── WorkbenchLayout.vue    # 侧栏：Lab / Pipeline / Tune
 │   │   │   └── ObserverLayout.vue     # 全屏观战壳
 │   │   │
 │   │   ├── styles/                     # 全局样式
-│   │   │   ├── index.css              # 全局样式入口
+│   │   │   ├── index.css
 │   │   │   ├── tokens.css             # Ink Lab CSS 变量
+│   │   │   ├── motion.css             # 进出场 / 骨架 / 观战光晕
 │   │   │   ├── variables.css          # 兼容入口（转 tokens）
-│   │   │   └── components.css         # 共享组件样式
+│   │   │   └── components.css
 │   │   │
 │   │   └── types/                      # 全局 TypeScript 类型
 │   │       ├── game.ts                # 游戏领域类型
@@ -275,16 +296,19 @@ ai-card-game-lab/
 ├── models/                              # ===== 训练产出模型 (gitignore) =====
 │
 ├── docs/                                # ===== 项目文档 =====
-│   ├── ARCHITECTURE.md                 # 架构设计
-│   ├── PROJECT_STRUCTURE.md            # 目录结构（本文档）
-│   ├── CODING_STANDARDS.md             # 编码规范
-│   └── API_DESIGN.md                   # API 设计
+│   ├── ARCHITECTURE.md
+│   ├── PROJECT_STRUCTURE.md
+│   ├── CODING_STANDARDS.md
+│   ├── API_DESIGN.md
+│   ├── E2E_PIPELINE.md
+│   ├── EXAMPLES.md
+│   └── 欢乐斗地主经典玩法规则.md
 │
+├── CLAUDE.md                            # Agent 入口（英文）
 ├── .gitignore
-├── .env.example                        # 环境变量模板
+├── .env.example
 ├── LICENSE
-├── README.md
-└── AI卡牌游戏实验室 - 详细设计说明书.md  # 原始需求设计文档
+└── README.md
 ```
 
 ## 各层职责速查

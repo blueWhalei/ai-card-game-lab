@@ -435,9 +435,9 @@ chore(deps): upgrade FastAPI to 0.110
 
 | 分支 | 用途 |
 |------|------|
-| `master` | 稳定版本 |
-| `dev` | 开发主线 |
-| `feat/<name>` | 功能开发 |
+| `master` | 稳定版本（`origin/HEAD`） |
+| `develop` | 开发主线 |
+| `feat/<name>` | 功能开发（仅在明确要求时新建） |
 | `fix/<name>` | Bug 修复 |
 
 ### 3.3 禁止事项清单

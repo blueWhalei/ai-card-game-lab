@@ -1,6 +1,6 @@
 # API 设计规范
 
-> 本文档定义后端 RESTful API 与 WebSocket 接口的设计标准，前后端开发时必须遵循。
+> 接口约定。运行中的路径与字段以 `http://localhost:8000/docs` 和 `server/app/api/` 为准。
 
 ## 1. 通用约定
 
@@ -77,7 +77,7 @@ WebSocket:  /api/v1/games/ws/{game_id}
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `page` | int | 1 | 当前页（从 1 开始） |
-| `page_size` | int | 20 | 每页条数（最大 100） |
+| `page_size` | int | 10（决策点/追踪列表）；部分列表仍为 20 | 每页条数（决策点/追踪上限 200） |
 
 ### 1.6 排序参数
 
@@ -199,10 +199,11 @@ DELETE /api/v1/experiment-configs/{config_id}        # 删除配置
 ### 2.3 数据管理
 
 ```
-GET    /api/v1/data/stats                    # 数据总览统计
+GET    /api/v1/data/stats                    # 数据总览统计（?experiment_id= 按实验过滤，不含散局）
 
 GET    /api/v1/datasets                      # 数据集列表
-POST   /api/v1/datasets                      # 创建数据集（筛选导出）
+POST   /api/v1/datasets                      # 创建数据集（按对局筛选导出）
+POST   /api/v1/datasets/from-decisions       # 从决策点登记 ChatML（训练台首选路径）
 GET    /api/v1/datasets/{dataset_id}         # 数据集详情
 DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 ```
@@ -238,36 +239,10 @@ DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 }
 ```
 
-#### GET /api/v1/data/stats — 数据总览统计
+#### POST /api/v1/datasets/from-decisions — 从决策点登记数据集
 
-**Response**:
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "total_games": 150,
-    "total_rounds": 2300,
-    "games_by_type": {"doudizhu": 150},
-    "models_usage": {"deepseek-chat": 1200, "qwen-turbo": 800},
-    "avg_response_time_ms": 1234.5,
-    "total_tokens": 580000,
-    "total_prompt_tokens": 320000,
-    "total_completion_tokens": 260000,
-    "tokens_by_model": {"deepseek-chat": 450000, "qwen-turbo": 130000},
-    "avg_game_rounds": 15.3,
-    "games_with_winner": 140,
-    "wins_by_role": {"landlord": 50, "peasant": 90},
-    "ai_win_rates": [
-      {"model": "deepseek-chat", "games": 100, "wins": 60, "win_rate": 0.6},
-      {"model": "qwen-turbo", "games": 100, "wins": 40, "win_rate": 0.4}
-    ],
-    "p50_response_ms": 980.5,
-    "p95_response_ms": 3200.0,
-    "response_time_by_model": {"deepseek-chat": 1500.2, "qwen-turbo": 800.0}
-  }
-}
-```
+SFT 首选路径。接受 `experiment_id` / `game_id` / `train_usable` / `include_thinking`（默认 false）。登记后出现在训练页。  
+`POST /api/v1/decision-points/export` 只写磁盘 JSONL，**不会**自动登记。
 
 #### POST /api/v1/datasets — 创建数据集
 
@@ -291,12 +266,16 @@ DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 
 ```
 GET    /api/v1/training/tasks                # 训练任务列表（分页）
-POST   /api/v1/training/tasks                # 创建训练任务
+POST   /api/v1/training/tasks                # 创建训练任务（缺 training 依赖则拒绝）
 GET    /api/v1/training/tasks/{task_id}      # 任务详情（含进度）
+POST   /api/v1/training/tasks/{task_id}/cancel
 DELETE /api/v1/training/tasks/{task_id}      # 删除任务记录
 
 GET    /api/v1/models                        # 模型仓库列表
 DELETE /api/v1/models/{model_id}             # 删除模型
+POST   /api/v1/models/{model_id}/export      # 导出部署包
+POST   /api/v1/models/{model_id}/push-ollama # merge→GGUF→ollama create（需 LLAMA_CPP_DIR）
+POST   /api/v1/models/{model_id}/verify      # Ollama 冒烟验证
 ```
 
 #### POST /api/v1/training/tasks — 创建训练任务
@@ -321,35 +300,17 @@ DELETE /api/v1/models/{model_id}             # 删除模型
 
 ```
 GET    /api/v1/system/health                 # 健康检查
-GET    /api/v1/system/config                 # 系统配置（脱敏）
-PATCH  /api/v1/system/config                 # 更新系统配置
+GET    /api/v1/system/config                 # 系统配置（脱敏，只读；设置页不提供 PATCH）
+GET    /api/v1/system/startup-check          # 首次运行就绪检查
+POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎元数据（min/max players）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
+GET    /api/v1/system/runtime-stats          # 运行时资源快照
 ```
 
-#### PATCH /api/v1/system/config — 更新系统配置
-
-**Request**:
-```json
-{
-  "auto_archive_enabled": true,
-  "archive_after_days": 30
-}
-```
-
-**Response**:
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "auto_archive_enabled": true,
-    "archive_after_days": 30
-  }
-}
-```
+设置页为只读展示。归档天数等通过归档/清理接口传入，不经 `PATCH /system/config`。
 
 ### 2.7 数据归档与清理
 
@@ -485,9 +446,10 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
 **Query Parameters**:
 ```
 ?game_id=game_xxx
-&player_id=ai_bluffer
-&limit=100
-&offset=0
+&experiment_id=exp_xxx
+&player_id=cfg_temp_09
+&page=1
+&page_size=10
 ```
 
 **Response**:
@@ -495,21 +457,26 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
 {
   "code": 0,
   "message": "success",
-  "data": [
-    {
-      "id": "tr_xxx",
-      "game_id": "game_xxx",
-      "round_number": 3,
-      "player_id": "ai_bluffer",
-      "model": "gpt-4o",
-      "prompt_version": "v2",
-      "metrics": {
-        "response_time_ms": 1234,
-        "used_langchain_parser": true
-      },
-      "created_at": "2024-01-01T10:00:00Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "tr_xxx",
+        "game_id": "game_xxx",
+        "round_number": 3,
+        "player_id": "cfg_temp_09",
+        "model": "gpt-4o",
+        "prompt_version": "v2",
+        "metrics": {
+          "response_time_ms": 1234,
+          "used_langchain_parser": true
+        },
+        "created_at": "2024-01-01T10:00:00Z"
+      }
+    ],
+    "total": 1,
+    "page": 1,
+    "page_size": 10
+  }
 }
 ```
 
@@ -778,10 +745,10 @@ class PaginatedData(BaseModel, Generic[T]):
 用于 SFT 训练数据的采集和导出。
 
 ```
-GET    /api/v1/decision-points              # 决策点列表
+GET    /api/v1/decision-points              # 决策点列表（PaginatedData；page/page_size 默认 10）
 GET    /api/v1/decision-points/{id}         # 决策点详情
-GET    /api/v1/decision-points/stats        # 统计数据
-POST   /api/v1/decision-points/export       # 导出 ChatML 格式
+GET    /api/v1/decision-points/stats        # 统计数据（?experiment_id=）
+POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登记数据集）
 ```
 
 #### GET /api/v1/decision-points — 决策点列表
@@ -789,13 +756,15 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 格式
 **Query Parameters**:
 ```
 ?game_id=game_xxx
-&player_id=ai_bluffer
+&experiment_id=exp_xxx
+&player_id=cfg_temp_09
 &min_quality=0.7
 &max_quality=1.0
 &game_phase=endgame
 &outcome=win
-&limit=100
-&offset=0
+&train_usable=true
+&page=1
+&page_size=10
 ```
 
 **Response**:
@@ -803,27 +772,33 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 格式
 {
   "code": 0,
   "message": "Found 50 decision points",
-  "data": [
-    {
-      "id": "dp_xxx",
-      "game_id": "game_xxx",
-      "round_number": 15,
-      "player_id": "ai_bluffer",
-      "hand_cards": [3, 3, 4, 4, 5, 5, 13, 13, 14, 14, 53],
-      "opponent_hands": {"ai_cautious": 5, "ai_random": 3},
-      "last_action": {"player": "ai_cautious", "action_type": "PAIR", "cards": [7, 7]},
-      "game_phase": "endgame",
-      "legal_actions": [
-        {"action_type": "PASS"},
-        {"action_type": "PAIR", "cards": [3, 3]}
-      ],
-      "chosen_action": {"action_type": "PAIR", "cards": [13, 13]},
-      "thinking": "对手牌数较少，用中等对子压制...",
-      "outcome": "win",
-      "quality_score": 0.8,
-      "created_at": "2024-01-01T10:00:00Z"
-    }
-  ]
+  "data": {
+    "items": [
+      {
+        "id": "dp_xxx",
+        "game_id": "game_xxx",
+        "round_number": 15,
+        "player_id": "cfg_temp_09",
+        "hand_cards": [3, 3, 4, 4, 5, 5, 13, 13, 14, 14, 53],
+        "opponent_hands": {"cfg_low_temp": 5, "cfg_ollama": 3},
+        "last_action": {"player": "cfg_low_temp", "action_type": "PAIR", "cards": [7, 7]},
+        "game_phase": "endgame",
+        "legal_actions": [
+          {"action_type": "PASS"},
+          {"action_type": "PAIR", "cards": [3, 3]}
+        ],
+        "chosen_action": {"action_type": "PAIR", "cards": [13, 13]},
+        "thinking": "对手牌数较少，用中等对子压制...",
+        "outcome": "win",
+        "quality_score": 0.8,
+        "train_usable": true,
+        "created_at": "2024-01-01T10:00:00Z"
+      }
+    ],
+    "total": 50,
+    "page": 1,
+    "page_size": 10
+  }
 }
 ```
 
@@ -850,9 +825,11 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 格式
 **Request**:
 ```json
 {
-  "game_id": "game_xxx",
+  "experiment_id": "exp_xxx",
   "min_quality": 0.7,
-  "outcome": "win"
+  "outcome": "win",
+  "train_usable_only": true,
+  "include_thinking": false
 }
 ```
 

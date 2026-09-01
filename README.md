@@ -174,12 +174,13 @@ model_config:
 
 | 文档 | 说明 |
 |------|------|
+| [CLAUDE.md](CLAUDE.md) | Agent / 开发入口（英文，与代码同步） |
 | [端到端闭环](docs/E2E_PIPELINE.md) | 1 小时采集→训练→部署指南与脚本 |
 | [架构设计](docs/ARCHITECTURE.md) | 系统架构、分层设计、核心流程 |
 | [目录结构](docs/PROJECT_STRUCTURE.md) | 目录规划与模块职责 |
 | [编码规范](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue 编码标准 |
 | [API 设计](docs/API_DESIGN.md) | RESTful API + WebSocket 接口规范 |
-| [详细设计说明书](AI卡牌游戏实验室%20-%20详细设计说明书.md) | 完整的功能设计文档（历史基线；产品以本 README 与代码为准） |
+| [开发示例](docs/EXAMPLES.md) | 新增引擎 / LLM 供应商 / 事件处理器 |
 
 ## 开发路线图
 
@@ -218,10 +219,10 @@ model_config:
 > **脚本闭环**：见 [docs/E2E_PIPELINE.md](docs/E2E_PIPELINE.md)
 
 ### 第四阶段：扩展与优化（持续）
+- [x] 实验间对比（`/experiments/compare` + `GET /api/v1/experiments/compare`）
+- [x] 一键 merge→GGUF→`ollama create`（训练台「推送到 Ollama」，需 `LLAMA_CPP_DIR`）
 - [ ] 新增游戏引擎（三国杀等）
 - [ ] 强化训练能力（如 PPO 等）
-- [ ] 实验间对比与评测台
-- [ ] 一键 merge→GGUF→ollama create
 
 ## License
 

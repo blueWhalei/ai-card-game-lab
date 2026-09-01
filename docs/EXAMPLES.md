@@ -206,42 +206,24 @@ def get_engine_registry() -> GameEngineRegistry:
     return registry
 ```
 
-### 1.5 创建前端牌桌组件
+### 1.5 观战协议（不要新建 Board 组件）
 
-创建 `web/src/components/game/boards/GuessNumberBoard.vue`：
+实现 `get_public_info(..., is_observer=True)`，输出 `ObserverSnapshot`
+（见 `server/app/core/engine/observer_types.py`）：`game_type` / `phase` / `round` /
+`current_player_id` / `players[]` / `table.slots` / `extras`。
 
-```vue
-<template>
-  <div class="guess-number-board">
-    <div class="range-display">
-      当前范围: {{ gameState.current_range[0] }} - {{ gameState.current_range[1] }}
-    </div>
-    <div class="guesses-history">
-      <h3>猜测历史</h3>
-      <ul>
-        <li v-for="guess in gameState.guesses" :key="guess.guess">
-          {{ guess.player }}: {{ guess.guess }} ({{ guess.result }})
-        </li>
-      </ul>
-    </div>
-  </div>
-</template>
-
-<script setup lang="ts">
-defineProps<{
-  gameState: {
-    current_range: [number, number]
-    guesses: Array<{ player: string; guess: number; result: string }>
-  }
-}>()
-</script>
-```
+**禁止**新建 `web/src/components/game/boards/<Game>Board.vue`，也**禁止**按 `game_type`
+修改 `GameObserverView`。观战统一走 `GenericBoard`。
 
 ---
 
 ## 2. 如何添加新 LLM 供应商
 
-本示例演示如何添加一个新的 LLM 供应商（以 Claude 为例）。
+若厂商遵循 OpenAI `POST /chat/completions` + Bearer（DeepSeek / DashScope / Kimi 等），
+只需在 `dependencies.py` 的 `openai_compatible_providers` 列表和 `config.py` / `.env`
+增加一项，**不要**新建 client 类。
+
+下面示例仅适用于**非兼容协议**（以 Anthropic Messages API 为例）。
 
 ### 2.1 创建客户端实现
 
