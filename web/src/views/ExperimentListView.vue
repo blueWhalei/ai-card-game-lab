@@ -210,7 +210,6 @@ onMounted(() => {
     <EmptyState
       v-else-if="experiments.length === 0"
       :title="t('experiment.emptyTitle')"
-      :description="t('experiment.emptyDesc')"
     >
       <template #action>
         <div class="flex flex-wrap justify-center gap-2">
@@ -277,7 +276,6 @@ onMounted(() => {
     <UiDialog
       v-model:open="createOpen"
       :title="t('experiment.createTitle')"
-      :description="t('experiment.createDesc')"
     >
       <div class="space-y-4">
         <div>

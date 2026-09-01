@@ -159,7 +159,7 @@ PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/concl
 POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
 GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率）
 GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step
-POST   /api/v1/experiments/{id}/collect      # 按实验配置批量开局（benchmark 模式用固定 deal_seed）
+POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（benchmark 用固定发牌种子 deal_seed）
 ```
 
 `GET /api/v1/experiments/{id}` 附加字段：
@@ -176,26 +176,26 @@ POST   /api/v1/experiments/{id}/collect      # 按实验配置批量开局（ben
 
 **Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`。
 
-数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含散局。
+数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 
-### 2.2 实验配置管理
+### 2.2 选手配置管理（API：`/experiment-configs`）
 
 ```
-GET    /api/v1/experiment-configs                    # 实验配置列表
-POST   /api/v1/experiment-configs                    # 创建实验配置
+GET    /api/v1/experiment-configs                    # 选手配置列表
+POST   /api/v1/experiment-configs                    # 创建选手配置
 GET    /api/v1/experiment-configs/{config_id}        # 配置详情
 PUT    /api/v1/experiment-configs/{config_id}        # 更新配置
 DELETE /api/v1/experiment-configs/{config_id}        # 删除配置
 ```
 
-#### POST /api/v1/experiment-configs — 创建实验配置
+#### POST /api/v1/experiment-configs — 创建选手配置
 
 **Request**:
 ```json
 {
   "id": "cfg_high_temp",
   "name": "High Temp 1.2",
-  "notes": "高 temperature 对照实验",
+  "notes": "高温度对照组",
   "model_config_data": {
     "provider": "openai",
     "model_name": "gpt-4",
@@ -209,11 +209,11 @@ DELETE /api/v1/experiment-configs/{config_id}        # 删除配置
 ### 2.3 数据管理
 
 ```
-GET    /api/v1/data/stats                    # 数据总览统计（?experiment_id= 按实验过滤，不含散局）
+GET    /api/v1/data/stats                    # 数据总览统计（?experiment_id= 按实验过滤，不含试玩对局）
 
 GET    /api/v1/datasets                      # 数据集列表
 POST   /api/v1/datasets                      # 创建数据集（按对局筛选导出）
-POST   /api/v1/datasets/from-decisions       # 从决策点登记 ChatML（训练台首选路径）
+POST   /api/v1/datasets/from-decisions       # 从决策点登记 ChatML（训练页首选路径）
 DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 ```
 
@@ -250,7 +250,7 @@ DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 
 #### POST /api/v1/datasets/from-decisions — 从决策点登记数据集
 
-SFT 首选路径。接受 `experiment_id` / `game_id` / `train_usable` / `include_thinking`（默认 false）/ `eval_ratio`（0–0.5，按 `game_id` 拆分 train/eval 两个 JSONL）。登记后出现在训练页。  
+SFT 首选路径。接受 `experiment_id` / `game_id` / `train_usable` / `include_thinking`（默认 false）/ `eval_ratio`（0–0.5，验证集比例；按 `game_id` 拆分 train/eval 两个 JSONL）。登记后出现在训练页。  
 `POST /api/v1/decision-points/export` 只写磁盘 JSONL，**不会**自动登记。
 
 #### POST /api/v1/datasets — 创建数据集
@@ -284,7 +284,7 @@ GET    /api/v1/models                        # 模型仓库列表
 DELETE /api/v1/models/{model_id}             # 删除模型
 POST   /api/v1/models/{model_id}/export      # 导出部署包
 POST   /api/v1/models/{model_id}/push-ollama # merge→GGUF→ollama create（需 LLAMA_CPP_DIR）
-POST   /api/v1/models/{model_id}/verify      # Ollama 冒烟验证
+POST   /api/v1/models/{model_id}/verify      # Ollama 快速验证
 ```
 
 #### POST /api/v1/training/tasks — 创建训练任务
@@ -314,7 +314,7 @@ GET    /api/v1/system/startup-check          # 首次运行就绪检查
 POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎元数据（min/max players）
-GET    /api/v1/system/benchmark-seeds        # 基准测验固定 deal_seed 列表（50 个）
+GET    /api/v1/system/benchmark-seeds        # 基准测验固定发牌种子列表（50 个）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
 GET    /api/v1/system/runtime-stats          # 运行时资源快照
@@ -404,7 +404,7 @@ POST   /api/v1/system/cleanup                # 执行数据清理
 }
 ```
 
-### 2.8 实验配置统计
+### 2.8 选手配置统计（API：`/experiment-configs/stats`）
 
 ```
 GET    /api/v1/experiment-configs/stats              # 所有配置统计

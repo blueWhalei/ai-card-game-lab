@@ -357,9 +357,9 @@ CLAUDE_API_KEY=your-key-here
 CLAUDE_BASE_URL=https://api.anthropic.com/v1
 ```
 
-### 2.4 在实验配置中使用
+### 2.4 在选手配置中使用
 
-在前端「实验配置」页新增选手，字段示例：
+在前端「选手配置」页新增选手，字段示例：
 
 | 字段 | 示例 |
 |------|------|

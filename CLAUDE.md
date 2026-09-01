@@ -11,7 +11,7 @@ Guidance for agents working in this repository.
 
 AI Card Game Lab is a local research tool for AI-vs-AI card games: run games, observe decisions, collect data, and fine-tune small models.
 
-The primary product object is an **experiment** (run): a fixed set of player configs plus a target game count. Collect, observe, register-and-train, open a control experiment, and compare runs from the experiment workspace. Scatter games (no experiment) still exist on `/game`.
+The primary product object is an **experiment** (run): a fixed set of player configs plus a target game count. Collect, observe, register-and-train, open a control experiment, and compare runs from the experiment detail page. Trial games (no experiment; zh: 试玩对局) still exist on `/game`.
 
 Monorepo:
 
@@ -74,7 +74,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `events/` — in-process `EventBus` + game lifecycle events.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
-- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Experiment Configs UI; there is no YAML seed.
+- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Player configs UI (`/experiment-configs`); there is no YAML seed.
 
 ## Frontend
 
@@ -83,10 +83,10 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
 - `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.
 - Dual shells:
-  - `WorkbenchLayout.vue` — grouped nav: Lab (experiments, player configs, scatter games) / Pipeline (data, decisions, training) / Tune (prompts, traces, settings). Page enter fade only (`ink-page`); do not wrap the observer shell. Layout owns the page title/hint; list pages should not repeat an in-page subtitle.
+  - `WorkbenchLayout.vue` — grouped nav: Lab / Data & training / Tune (zh: 研究 / 数据与训练 / 调试). Page enter fade only (`ink-page`); do not wrap the observer shell. Layout owns the page title; list pages should not repeat an in-page subtitle. Brand logo at `/logo.png` in sidebar header. **Usage guide** (`/guide`) is header-only via `HeaderToggles` (book icon), not in the sidebar.
   - `ObserverLayout.vue` — fullscreen watch / replay.
 - UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Density helpers: `KpiStrip`, `NameChips`, `CompactRecordList`, `UiTable` compact mode. Charts: ECharts.
-- Experiment detail embeds `DecisionWorkbenchPanel` / `TraceWorkbenchPanel` via `?tab=`; standalone Decision/Trace/Data/Training views show `ExperimentContextBar` when `experiment_id` is set.
+- Experiment detail is a **stage workbench** (collect, watch, next-step primary CTA); decisions/traces/training live on Pipeline pages with `?experiment_id=`. Legacy `/experiments/:id?tab=decisions|traces|training` redirects to those pages.
 - Observation uses **one** `GenericBoard` list board. Do not add `components/game/boards/<Game>Board.vue` or branch `GameObserverView` by `game_type`.
 
 ### Routes
@@ -94,10 +94,10 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 | Path | View |
 |------|------|
 | `/` | `ExperimentListView` (home) |
-| `/experiments/:id` | `ExperimentDetailView` (workspace) |
+| `/experiments/:id` | `ExperimentDetailView` (detail page; stage workbench with primary CTA) |
 | `/experiments/compare` | `ExperimentCompareView` |
 | `/pipeline` | redirect to `/` |
-| `/game` | `GameView` (scatter games) |
+| `/game` | `GameView` (trial games — zh: 试玩对局) |
 | `/game/:id` | `GameObserverView` (Observer shell) |
 | `/experiment-configs` | `ExperimentConfigView` (`/ai-players` redirects here) |
 | `/data` | `DataView` |
@@ -106,21 +106,22 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 | `/prompt` | `PromptView` |
 | `/traces` | `TraceView` |
 | `/settings` | `SettingsView` (read-only: providers, paths, storage) |
+| `/guide` | `GuideView` (usage guide: modules, flow diagrams; TOC on the right on desktop) |
 
 Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experiment_id=`, `/training?experiment_id=`. Tool pages with `experiment_id` show a context bar back to the experiment detail.
 
 ## Experiments
 
 - Table `experiments` includes `hypothesis`, `conclusion`, `tags` (JSON array), plus existing `notes` and frozen `protocol`.
-- `games.experiment_id` is nullable (scatter games stay on `/game`).
+- `games.experiment_id` is nullable (trial games on `/game` stay outside experiments).
 - Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
-- Detail workspace: **notebook** (hypothesis/conclusion/tags/timeline), **next-step** bar, collect / pause, watch, register-and-train (with optional `eval_ratio`), control experiment, compare, clone, manifest download.
+- Detail page: `ExperimentDetailContextBar` (`next_step` primary action), games list, optional results strip + players tab after first finished game; **archive** dialog (notebook, protocol, validation, clone/manifest). Collect / pause, watch, register-and-train, control, compare via primary action or ⋯ menu.
 - `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
-- Detail content tabs: games / players / **decisions** / **traces** / training; sync with `?tab=` (e.g. `/experiments/:id?tab=decisions`).
+- Detail tabs: **games** / **players** only (`?tab=players`); deep analysis uses Pipeline deep links above.
 - Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, and per-seat as-landlord win rate (needs `metadata.landlord_id`).
 - `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `validation_ready`), and `next_step`.
-- Training models tab can register an Ollama tag as a player config.
+- Completed training tasks for the experiment appear on `/training?experiment_id=`; model repo can register an Ollama tag as a player config.
 
 Main HTTP:
 
@@ -209,7 +210,7 @@ Routing is by `game_type`; no API/Service/Repository changes for a well-behaved 
 
 - If the vendor is OpenAI-compatible (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
 - A new `LLMClient` subclass is only for a non-compatible protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
-- Player configs are created and edited in the Experiment Configs UI (SQLite). There is no YAML seed.
+- Player configs are created and edited in the Player configs UI (SQLite). There is no YAML seed.
 
 ## Key conventions
 

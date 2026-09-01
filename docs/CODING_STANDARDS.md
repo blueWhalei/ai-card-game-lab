@@ -386,21 +386,24 @@ export const gameApi = {
 
 - 优先使用 Tailwind 原子类，减少自定义 CSS
 - 重复出现的样式组合通过 `@apply` 提取为组件类
-- 颜色、间距等设计 Token 统一在 `tailwind.config.ts` 中定义
-- Element Plus 组件的定制通过 CSS 变量覆盖，不修改 Tailwind 配置
+- 设计 Token 统一在 `styles/tokens.css`（Ink Lab）；动效见 `styles/motion.css`
+- UI 组件基于 Reka UI；定制通过 CSS 变量与 Tailwind 类，不引入 Element Plus
 
 ```css
 /* styles/components.css */
 @layer components {
   .card-container {
-    @apply rounded-lg border border-gray-200 bg-white p-4 shadow-sm;
-  }
-
-  .btn-primary {
-    @apply rounded-md bg-blue-600 px-4 py-2 text-white hover:bg-blue-700;
+    @apply rounded-lg border border-ink-border bg-ink-surface p-4;
   }
 }
 ```
+
+### 2.7 文案与 i18n
+
+- 所有面向用户的文案走 `web/src/i18n/locales/zh-CN.ts` 与 `en.ts`，组件内禁止硬编码中文/英文（调试日志除外）
+- 中文产品用语与 UI 一致：如 **选手配置**、**试玩对局**、**实验详情页**、**数据与训练**；避免英译腔造词（如「跑表台」）
+- 技术专名可保留英文：Ollama、LoRA、ChatML、API 密钥、P50/P95、`.env` 等
+- 新增页面或按钮时同步更新中英两套 locale
 
 ## 3. 通用规范
 

@@ -424,12 +424,9 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container">
-    <div class="mb-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <p class="min-w-0 text-sm text-ink-text-secondary">
-        {{ t('training.subtitle') }}
-      </p>
+    <div class="mb-5 flex justify-end">
       <UiButton
-        class="shrink-0 whitespace-nowrap self-start"
+        class="shrink-0 whitespace-nowrap"
         :disabled="!trainingDepsAvailable"
         @click="openCreateDialog"
       >
@@ -561,7 +558,6 @@ onUnmounted(() => {
             class="w-full"
           />
         </div>
-        <p class="text-xs text-ink-text-muted">{{ t('training.commonHint') }}</p>
 
         <details class="group rounded-ink border border-ink-border">
           <summary

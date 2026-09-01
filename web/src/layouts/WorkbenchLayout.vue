@@ -66,30 +66,10 @@ const isExperimentDetail = computed(
 )
 
 const pageTitle = computed(() => {
+  if (route.path === '/guide') return t('guide.title')
   if (route.path.startsWith('/experiments/compare')) return t('nav.experimentCompare')
   if (isExperimentDetail.value) return ''
   return flatItems.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
-})
-
-const pageHint = computed(() => {
-  const hints: Record<string, string> = {
-    '/': t('nav.hintHome'),
-    '/game': t('nav.hintGame'),
-    '/experiment-configs': t('nav.hintConfigs'),
-    '/decisions': t('nav.hintDecisions'),
-    '/data': t('nav.hintData'),
-    '/training': t('nav.hintTraining'),
-    '/prompt': t('nav.hintPrompt'),
-    '/traces': t('nav.hintTraces'),
-    '/settings': t('nav.hintSettings'),
-  }
-  if (route.path.startsWith('/experiments/compare')) {
-    return t('nav.hintCompare')
-  }
-  if (isExperimentDetail.value) {
-    return ''
-  }
-  return hints[activePath.value] ?? ''
 })
 
 const showPageChrome = computed(() => Boolean(pageTitle.value))
@@ -128,11 +108,11 @@ function go(path: string): void {
         :title="t('app.name')"
         @click="go('/')"
       >
-        <span
-          class="flex h-9 w-9 shrink-0 items-center justify-center rounded-ink bg-ink-primary text-sm font-semibold text-[var(--ink-primary-fg)]"
-        >
-          {{ t('app.lab') }}
-        </span>
+        <img
+          src="/logo.png"
+          :alt="t('app.name')"
+          class="h-9 w-9 shrink-0 rounded-ink object-contain"
+        />
         <span
           :class="
             cn(
@@ -258,7 +238,10 @@ function go(path: string): void {
           @click="mobileOpen = false"
         />
         <aside class="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-ink-paper-elevated p-3 shadow-[var(--ink-shadow-md)]">
-          <p class="mb-4 px-2 text-base font-semibold">{{ t('app.name') }}</p>
+          <div class="mb-4 flex items-center gap-2.5 px-2">
+            <img src="/logo.png" :alt="t('app.name')" class="h-8 w-8 shrink-0 rounded-ink object-contain" />
+            <p class="text-base font-semibold">{{ t('app.name') }}</p>
+          </div>
           <div v-for="group in groups" :key="group.id" class="mb-4 space-y-1">
             <p class="px-2 text-sm font-semibold tracking-wide text-ink-text-secondary">
               {{ group.label }}
@@ -290,7 +273,6 @@ function go(path: string): void {
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <h1 class="page-title">{{ pageTitle }}</h1>
-            <p v-if="pageHint" class="page-subtitle">{{ pageHint }}</p>
           </div>
           <HeaderToggles class="-mt-0.5" />
         </div>

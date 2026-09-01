@@ -48,8 +48,8 @@
 │                     前端 (Vue 3 + TypeScript)                     │
 │                                                                   │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
-│  │ 实验工作台 │ │ 牌局观察器 │ │ 数据/决策  │ │ 训练控制台 │   │
-│  │ (详情 Tab) │ │ (WebSocket)│ │ / 追踪     │ │            │   │
+│  │ 实验详情页 │ │ 牌局观察器 │ │ 数据与训练 │ │ 训练页     │   │
+│  │ (对局/选手)│ │ (WebSocket)│ │ 决策/追踪  │ │            │   │
 │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
 │                                                                   │
 │  Tailwind CSS + Reka UI（Ink Lab tokens；双壳 Workbench/Observer） │
@@ -419,7 +419,7 @@ def get_game_service() -> GameService:
 | `Settings` | `get_settings()` | 应用配置 |
 | `GameEngineRegistry` | `get_engine_registry()` | 游戏引擎注册中心 |
 | `LLMClientFactory` | `get_llm_factory()` | LLM 客户端工厂 |
-| `ExperimentConfigService` | `get_experiment_config_service()` | 实验配置管理 |
+| `ExperimentConfigService` | `get_experiment_config_service()` | 选手配置管理 |
 | `ExperimentService` | `get_experiment_service()` | 实验（run）CRUD / 采集 / 跨实验对比 |
 | `PromptBuilder` | `get_prompt_builder()` | 提示词构建器 |
 | `JsonlWriter` | `get_jsonl_writer()` | JSONL 数据写入器 |
@@ -579,7 +579,7 @@ CREATE TABLE games (
     created_at     TEXT    NOT NULL,
     finished_at    TEXT,
     metadata       TEXT,
-    experiment_id  TEXT    REFERENCES experiments(id)   -- 散局为 NULL
+    experiment_id  TEXT    REFERENCES experiments(id)   -- 试玩对局为 NULL
 );
 
 CREATE INDEX idx_games_type ON games(game_type);
@@ -728,7 +728,7 @@ CREATE TABLE decision_points (
 ### 9.8 experiment_configs 表
 
 ```sql
-CREATE TABLE experiment_configs (
+CREATE TABLE experiment_configs (  -- 选手配置（UI 名称；API 路径 experiment-configs）
     id            TEXT PRIMARY KEY,
     name          TEXT    NOT NULL,
     notes         TEXT    NOT NULL DEFAULT '',
@@ -751,7 +751,7 @@ CREATE TABLE experiment_configs (
 ### 10.2 新增 LLM 供应商
 
 OpenAI 兼容协议（`POST /chat/completions` + Bearer）：在 `dependencies.py` 的 provider 列表和 `config.py` / `.env` 增加项即可，**不要**新建 client 类。  
-非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「实验配置」页创建并选用。
+非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「选手配置」页创建并选用。
 
 ### 10.3 新增训练算法
 

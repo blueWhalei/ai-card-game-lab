@@ -190,7 +190,6 @@ onMounted(fetchConfigs)
       <EmptyState
         v-else-if="configs.length === 0"
         :title="t('config.emptyTitle')"
-        :description="t('config.emptyDesc')"
       >
         <template #action>
           <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>

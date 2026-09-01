@@ -6,7 +6,7 @@ A local lab for AI-vs-AI card games: watch model decisions, collect play data, a
 
 ## What it does
 
-- **Experiment workbench**: an experiment is first-class — player count comes from the engine min/max. Collect, watch, register training, start a control run, and compare experiments from the detail page.
+- **Experiment detail**: an experiment is first-class — player count comes from the engine min/max. Start games, watch, register training, start a control run, and compare experiments from the detail page.
 - **Shared game engine**: common card-game pieces so new titles plug in quickly (first game: Dou Dizhu).
 - **Live chain-of-thought**: WebSocket streams AI reasoning, including streamed tokens and usage.
 - **Collect loop**: full JSONL archive plus SQLite indexes; decision points export to ChatML, filterable by experiment.
@@ -44,7 +44,7 @@ cd ai-card-game-lab
 cp .env.example .env          # macOS / Linux
 # copy .env.example .env      # Windows cmd
 # Edit .env: add at least one cloud API key, or use local Ollama
-# Create player configs in the Experiment Configs UI; there is no YAML seed
+# Create player configs on the Player configs page; there is no YAML seed
 
 # 3. Python deps
 cd server
@@ -62,7 +62,7 @@ npm run dev
 ### First-run checklist
 
 1. `.env` is copied, and you have either a cloud API key or local Ollama.
-2. Open **Experiment Configs** and create as many players as the engine needs (Dou Dizhu needs 3). The list starts empty — use the empty-state button.
+2. Open **Player configs** and create as many players as the engine needs (Dou Dizhu needs 3). The list starts empty — use the empty-state button.
 3. After the backend starts, see http://localhost:8000/api/v1/system/startup-check for warnings.
 4. Collecting games checks the selected config’s API key; a missing key is rejected up front, not after kickoff.
 5. Training needs `cd server && poetry install --with training`. Missing deps block task creation; no GPU uses CPU smoke.
@@ -72,14 +72,14 @@ npm run dev
 
 Open http://localhost:5173 — the home page is the **experiment list**.
 
-1. **Create player configs** on Experiment Configs (model / temperature / …) for each engine slot
+1. **Create player configs** on the Player configs page (model / temperature / …) for each engine slot
 2. **Create an experiment**: pick configs + target game count → open detail (**does not** start games, so you do not burn a key by accident)
 3. **Collect / start n more**: batch-start from the detail page; watch live games, replay finished ones
 4. **Register and train**: when trainable decisions > 0, register ChatML and create a training task (register-only if training deps are missing)
 5. **Training · model repo**: export a deploy bundle → (local GGUF + `ollama create`) → **Register as player**
 6. **Control experiment**: pick the new player plus the same number of baselines as engine slots → collect again; **Compare experiments** for win-rate CI / latency / tokens
 
-The Games sidebar still creates scatter games. Experiment detail tabs cover **games / players / decisions / traces / training** (`?tab=decisions`, etc.). Sidebar Decision / Trace / Data / Training pages also accept `?experiment_id=` and show a context bar back to the experiment.
+The **Trial games** sidebar creates games not tied to an experiment. Experiment detail has **Games / Players** tabs only; decisions, traces, data, and training live under **Data & training** with `?experiment_id=` deep links and a context bar back to the experiment. See **Usage guide** at `/guide` (book icon in the header).
 
 You can also run the script loop (not via an experiment object):
 
@@ -94,13 +94,13 @@ Full notes: [end-to-end pipeline](docs/E2E_PIPELINE.md).
 ### URLs
 
 - UI: http://localhost:5173 (dev)
-  - **Ink Lab dual shell**: experiment list by default; `/experiments/:id` is the workbench; `/game/:id` is fullscreen watch (`GenericBoard`)
+  - **Ink Lab dual shell**: experiment list by default; `/experiments/:id` is experiment detail; `/game/:id` is fullscreen watch (`GenericBoard`); `/guide` is the usage guide
 - API docs: http://localhost:8000/docs (Swagger)
 - Alternate docs: http://localhost:8000/redoc (ReDoc)
 
 ### Player configs
 
-Configs live only in **SQLite** and are created or edited on the Experiment Configs page. There is no YAML seed: the table is empty on first boot. Create enough configs for the engine slots before you create an experiment.
+Configs live only in **SQLite** and are created or edited on the Player configs page. There is no YAML seed: the table is empty on first boot. Create enough configs for the engine slots before you create an experiment.
 
 ### API keys
 
@@ -115,9 +115,9 @@ OPENAI_API_KEY=sk-your-openai-key
 OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-### Scatter games (optional)
+### Trial games (optional)
 
-The Games page can still create 1–50 games that are not tied to an experiment. They still feed decisions and the dashboard. Prefer experiment-detail collect when you want filtering and controls.
+The Trial games page can still create 1–50 games that are not tied to an experiment. They still feed decisions and the dashboard. Prefer starting games from experiment detail when you want filtering and controls.
 
 ### Watching
 
@@ -126,7 +126,7 @@ The Games page can still create 1–50 games that are not tied to an experiment.
 
 ### Provider field examples
 
-Fill these on the Experiment Configs page:
+Fill these on the Player configs page:
 
 | provider | example model_name |
 |----------|--------------------|
@@ -143,9 +143,10 @@ Sampling uses `temperature`, `top_p`, and `max_tokens`. Put intent in `notes` (e
 |-----|------|
 | [CLAUDE.md](CLAUDE.md) | Agent / developer entry (English, kept with the code) |
 | [End-to-end pipeline](docs/E2E_PIPELINE.md) | ~1 hour collect → train → deploy + scripts |
+| Usage guide | Frontend `/guide` (header book icon): modules and flow diagrams |
 | [Architecture](docs/ARCHITECTURE.md) | Layers and core flows |
 | [Project structure](docs/PROJECT_STRUCTURE.md) | Directory map |
-| [Coding standards](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue |
+| [Coding standards](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue + i18n copy rules |
 | [API design](docs/API_DESIGN.md) | REST + WebSocket |
 | [Examples](docs/EXAMPLES.md) | New engine / provider / event handler |
 
@@ -169,10 +170,10 @@ Sampling uses `temperature`, `top_p`, and `max_tokens`. Put intent in `notes` (e
 - [x] One-shot scripts (`scripts/e2e_pipeline.*`)
 
 ### Phase 3 — experiments
-- [x] List / detail workbench (collect, summary, in-detail decisions/traces, deep links + context bar)
+- [x] List / detail page (primary CTA, results strip, Games & Players tabs; pipeline deep links)
 - [x] Per-experiment decision export + register-and-train
 - [x] Register a trained model as an Ollama player + control experiment
-- [x] Workbench density (KPI strip, compact lists, compare matrix) + prompts / scatter games / configs aligned
+- [x] UI density (KPI strip, compact lists, compare matrix) + prompts / trial games / configs aligned; centralized `/guide`
 
 > **Note**: `quality_score` on a decision is an **outcome** score (win 0.8 / loss 0.3 / draw 0.5), not a move-quality score. SFT filtering uses `train_usable`. Register-and-train lives on the experiment detail page (and on Decisions). Export defaults to `include_thinking=false`.
 >

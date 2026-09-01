@@ -732,7 +732,6 @@ onMounted(() => {
     <UiDialog
       v-model:open="registerOpen"
       :title="t('experiment.registerTitle')"
-      :description="t('experiment.registerDesc')"
     >
       <div class="space-y-3">
         <p class="text-sm text-ink-text-secondary">

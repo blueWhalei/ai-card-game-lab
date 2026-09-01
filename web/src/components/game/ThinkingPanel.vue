@@ -223,11 +223,15 @@ const isActivelyStreaming = computed(() => {
             v-if="entry.promptTokens || entry.completionTokens || entry.totalTokens"
             class="flex flex-wrap gap-2 text-[11px] text-ink-obs-muted"
           >
-            <span v-if="entry.promptTokens != null">Prompt: {{ entry.promptTokens }}</span>
-            <span v-if="entry.completionTokens != null"
-              >Completion: {{ entry.completionTokens }}</span
-            >
-            <span v-if="entry.totalTokens != null">Total: {{ entry.totalTokens }}</span>
+            <span v-if="entry.promptTokens != null">{{
+              t('game.promptTokens', { n: entry.promptTokens })
+            }}</span>
+            <span v-if="entry.completionTokens != null">{{
+              t('game.completionTokens', { n: entry.completionTokens })
+            }}</span>
+            <span v-if="entry.totalTokens != null">{{
+              t('game.tokenTotal', { n: entry.totalTokens })
+            }}</span>
           </div>
 
           <details

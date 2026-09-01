@@ -17,7 +17,7 @@ function formatAvgMs(ms: number, traceCount: number): string {
 </script>
 
 <template>
-  <section class="space-y-2">
+  <section class="space-y-3">
     <p
       v-if="(summary.total_games ?? 0) === 0"
       class="rounded-ink-md border border-dashed border-ink-border bg-ink-surface px-4 py-6 text-center text-sm text-ink-text-secondary"

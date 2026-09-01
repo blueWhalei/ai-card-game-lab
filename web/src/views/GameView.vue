@@ -290,7 +290,6 @@ watch(
       <EmptyState
         v-if="!loading && games.length === 0"
         :title="t('game.emptyTitle')"
-        :description="t('game.emptyDesc')"
       >
         <template #action>
           <div class="flex flex-wrap gap-2">

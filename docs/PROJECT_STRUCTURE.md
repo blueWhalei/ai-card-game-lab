@@ -25,8 +25,8 @@ ai-card-game-lab/
 │   │   │       ├── __init__.py
 │   │   │       ├── game.py             # 对局 CRUD + 控制
 │   │   │       ├── experiment.py               # 实验（run）CRUD / 采集
-│   │   │       ├── experiment_config.py        # 实验配置管理
-│   │   │       ├── experiment_config_stats.py  # 实验配置统计 API
+│   │   │       ├── experiment_config.py        # 选手配置 API（路径 experiment-configs）
+│   │   │       ├── experiment_config_stats.py  # 选手配置统计 API
 │   │   │       ├── data.py             # 数据统计 + 数据集管理
 │   │   │       ├── training.py         # 训练任务 + 模型仓库
 │   │   │       ├── prompt.py           # 提示词模板管理
@@ -39,7 +39,7 @@ ai-card-game-lab/
 │   │   │   ├── common.py              # 通用响应包装 (ApiResponse, PaginatedData)
 │   │   │   ├── game.py                # 对局请求/响应模型
 │   │   │   ├── experiment.py          # 实验（run）请求/响应模型
-│   │   │   ├── experiment_config.py   # 实验配置请求/响应模型
+│   │   │   ├── experiment_config.py   # 选手配置请求/响应模型
 │   │   │   ├── data.py                # 数据/数据集请求/响应模型
 │   │   │   ├── training.py            # 训练任务请求/响应模型
 │   │   │   ├── prompt.py              # 提示词模板请求/响应模型
@@ -53,10 +53,10 @@ ai-card-game-lab/
 │   │   │   ├── game_replay_service.py # 对局回放服务
 │   │   │   ├── ai_service.py          # AI 调用业务编排（重试 + 解析）
 │   │   │   ├── experiment_service.py          # 实验（run）编排 / 采集 / summary
-│   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite，UI 创建）
-│   │   │   ├── experiment_config_stats_service.py  # 实验配置战绩统计
+│   │   │   ├── experiment_config_service.py   # 选手配置 CRUD（SQLite，UI 创建）
+│   │   │   ├── experiment_config_stats_service.py  # 选手配置战绩统计
 │   │   │   ├── data_service.py        # 数据统计 + 数据集导出
-│   │   │   ├── training_service.py    # 训练任务编排（PEFT LoRA / CPU 冒烟）
+│   │   │   ├── training_service.py    # 训练任务编排（PEFT LoRA / CPU 快速验证）
 │   │   │   ├── prompt_service.py      # 提示词模板管理
 │   │   │   ├── trace_service.py       # AI 决策追踪服务
 │   │   │   ├── decision_service.py    # 决策点采集服务 (SFT 训练样本)
@@ -73,8 +73,8 @@ ai-card-game-lab/
 │   │   │   ├── training_repo.py       # 训练任务数据访问 (SQLite)
 │   │   │   ├── prompt_repo.py         # 提示词模板数据访问 (SQLite)
 │   │   │   ├── experiment_repo.py             # 实验（run）数据访问
-│   │   │   ├── experiment_config_repo.py       # 实验配置数据访问 (SQLite)
-│   │   │   ├── experiment_config_stats_repo.py # 实验配置战绩统计 (SQLite)
+│   │   │   ├── experiment_config_repo.py       # 选手配置数据访问 (SQLite)
+│   │   │   ├── experiment_config_stats_repo.py # 选手配置战绩统计 (SQLite)
 │   │   │   ├── decision_repo.py       # 决策点
 │   │   │   ├── trace_repo.py          # 追踪
 │   │   │   ├── archive_repo.py        # 归档
@@ -210,23 +210,31 @@ ai-card-game-lab/
 │   │   ├── components/                 # 组件
 │   │   │   ├── ui/                    # Reka UI + Ink Lab 控件（含 compact Table）
 │   │   │   ├── common/                # 通用/共享组件
-│   │   │   │   ├── HeaderToggles.vue
+│   │   │   │   ├── HeaderToggles.vue      # 主题 / 语言 / 使用说明（/guide）
 │   │   │   │   ├── WorkbenchFilterBar.vue  # 决策/追踪筛选（可锁定 experiment）
-│   │   │   │   ├── ExperimentContextBar.vue # 工具页回实验上下文条
+│   │   │   │   ├── ExperimentContextBar.vue # Pipeline 页回实验上下文条
 │   │   │   │   ├── KpiStrip.vue / NameChips.vue / CompactRecordList.vue
 │   │   │   │   ├── LoadingSpinner.vue
 │   │   │   │   └── EmptyState.vue
 │   │   │   │
-│   │   │   ├── experiment/            # 实验详情拆出的 Tab / 对话框
+│   │   │   ├── experiment/            # 实验详情：顶栏 / 结果摘要 / Tab / 档案
+│   │   │   │   ├── ExperimentDetailContextBar.vue
+│   │   │   │   ├── ExperimentResultsStrip.vue
+│   │   │   │   ├── ExperimentMetaPanel.vue       # 实验档案（⋯ 对话框）
+│   │   │   │   ├── ExperimentNotebookPanel.vue
 │   │   │   │   ├── ExperimentGamesTab.vue
 │   │   │   │   ├── ExperimentPlayersTab.vue
-│   │   │   │   ├── ExperimentTrainingTab.vue
+│   │   │   │   ├── ExperimentTrainingTab.vue     # 遗留组件，详情页未引用
 │   │   │   │   └── ExperimentControlDialog.vue
 │   │   │   │
-│   │   │   ├── decision/              # 决策工作台面板（详情嵌入 + 独立页）
+│   │   │   ├── guide/                 # 使用说明 /guide
+│   │   │   │   ├── GuideModuleSection.vue
+│   │   │   │   └── GuideFlowDiagram.vue
+│   │   │   │
+│   │   │   ├── decision/              # 决策点面板（侧栏独立页；可带 experiment_id）
 │   │   │   │   └── DecisionWorkbenchPanel.vue
 │   │   │   │
-│   │   │   ├── training/              # 训练台任务 / 模型 / 实时日志
+│   │   │   ├── training/              # 训练页：任务 / 模型仓库 / 实时日志
 │   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
@@ -247,27 +255,28 @@ ai-card-game-lab/
 │   │   │   │       └── ArchiveTab.vue
 │   │   │   │
 │   │   │   └── trace/                # 追踪组件
-│   │   │       ├── TraceWorkbenchPanel.vue # 追踪工作台（详情嵌入 + 独立页）
+│   │   │       ├── TraceWorkbenchPanel.vue # 追踪面板（侧栏独立页；可带 experiment_id）
 │   │   │       ├── TraceDetail.vue   # 决策详情展示
 │   │   │       ├── TraceMetrics.vue  # 性能指标仪表盘
 │   │   │       └── ResponseTimeChart.vue # AI 响应时间趋势图
 │   │   │
 │   │   ├── views/                      # 页面级组件（路由对应）
-│   │   │   ├── GameView.vue           # 对局列表 + 创建
+│   │   │   ├── GameView.vue           # 试玩对局列表 + 创建
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
 │   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /；/pipeline 重定向至此）
 │   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
-│   │   │   ├── ExperimentDetailView.vue # 工作台 /experiments/:id（?tab= 含 decisions/traces）
-│   │   │   ├── ExperimentConfigView.vue  # 实验配置 CRUD
+│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（Tab：对局 / 选手表现）
+│   │   │   ├── ExperimentConfigView.vue  # 选手配置 CRUD
+│   │   │   ├── GuideView.vue          # 使用说明 /guide（桌面端目录在右侧）
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
-│   │   │   ├── TrainingView.vue       # 训练控制台（任务列表 + 模型仓库 + 创建对话框）
+│   │   │   ├── TrainingView.vue       # 训练页（任务列表 + 模型仓库 + 创建对话框）
 │   │   │   ├── PromptView.vue         # 提示词管理（模板列表 + 版本控制）
 │   │   │   ├── TraceView.vue          # 决策追踪（薄壳 → TraceWorkbenchPanel）
 │   │   │   ├── DecisionView.vue       # 决策点（薄壳 → DecisionWorkbenchPanel）
 │   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
 │   │   │
 │   │   ├── layouts/                    # 双壳布局
-│   │   │   ├── WorkbenchLayout.vue    # 侧栏：Lab / Pipeline / Tune
+│   │   │   ├── WorkbenchLayout.vue    # 侧栏：研究 / 数据与训练 / 调试
 │   │   │   └── ObserverLayout.vue     # 全屏观战壳
 │   │   │
 │   │   ├── styles/                     # 全局样式
