@@ -25,18 +25,26 @@ class ExperimentRepository:
         created_at: str,
         updated_at: str,
         protocol: dict[str, Any] | None = None,
+        *,
+        hypothesis: str = "",
+        conclusion: str = "",
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
+        tag_list = tags or []
         await self._db.execute(
             """
             INSERT INTO experiments (
-                id, name, notes, game_type, player_ids, target_games,
-                protocol, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                id, name, notes, hypothesis, conclusion, tags, game_type, player_ids,
+                target_games, protocol, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 experiment_id,
                 name,
                 notes,
+                hypothesis,
+                conclusion,
+                json.dumps(tag_list, ensure_ascii=False),
                 game_type,
                 json.dumps(player_ids, ensure_ascii=False),
                 target_games,
@@ -90,6 +98,136 @@ class ExperimentRepository:
             (updated_at, experiment_id),
         )
         await self._db.commit()
+
+    async def update_fields(
+        self,
+        experiment_id: str,
+        *,
+        updated_at: str,
+        fields: dict[str, Any],
+    ) -> dict[str, Any]:
+        if not fields:
+            return await self.get_by_id(experiment_id)
+        allowed = {"name", "notes", "hypothesis", "conclusion", "tags"}
+        parts: list[str] = []
+        values: list[Any] = []
+        for key, value in fields.items():
+            if key not in allowed:
+                continue
+            if key == "tags":
+                value = json.dumps(list(value), ensure_ascii=False)
+            parts.append(f"{key} = ?")
+            values.append(value)
+        if not parts:
+            return await self.get_by_id(experiment_id)
+        parts.append("updated_at = ?")
+        values.append(updated_at)
+        values.append(experiment_id)
+        await self._db.execute(
+            f"UPDATE experiments SET {', '.join(parts)} WHERE id = ?",
+            tuple(values),
+        )
+        await self._db.commit()
+        return await self.get_by_id(experiment_id)
+
+    async def list_control_experiments(self, source_experiment_id: str) -> list[dict[str, Any]]:
+        """Experiments whose protocol.source_experiment_id points to source."""
+        cursor = await self._db.execute(
+            "SELECT id, name, created_at, protocol FROM experiments ORDER BY created_at DESC"
+        )
+        rows = await cursor.fetchall()
+        results: list[dict[str, Any]] = []
+        for row in rows:
+            data = dict(row)
+            raw_protocol = data.get("protocol")
+            protocol: dict[str, Any] = {}
+            if isinstance(raw_protocol, str):
+                try:
+                    parsed = json.loads(raw_protocol)
+                    if isinstance(parsed, dict):
+                        protocol = parsed
+                except json.JSONDecodeError:
+                    protocol = {}
+            if str(protocol.get("source_experiment_id") or "") == source_experiment_id:
+                results.append(
+                    {
+                        "id": str(data["id"]),
+                        "name": str(data["name"]),
+                        "created_at": str(data["created_at"]),
+                    }
+                )
+        return results
+
+    async def first_game_timestamps(self, experiment_id: str) -> dict[str, str | None]:
+        cursor = await self._db.execute(
+            """
+            SELECT MIN(created_at) AS first_created,
+                   MIN(finished_at) AS first_finished
+            FROM games
+            WHERE experiment_id = ?
+            """,
+            (experiment_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return {"first_collect": None, "first_finished": None}
+        return {
+            "first_collect": row["first_created"],
+            "first_finished": row["first_finished"],
+        }
+
+    async def first_dataset_at(self, experiment_id: str) -> str | None:
+        cursor = await self._db.execute(
+            "SELECT created_at, filters FROM datasets ORDER BY created_at ASC"
+        )
+        rows = await cursor.fetchall()
+        for row in rows:
+            raw_filters = row["filters"]
+            filters: dict[str, Any] = {}
+            if isinstance(raw_filters, str):
+                try:
+                    parsed = json.loads(raw_filters)
+                    if isinstance(parsed, dict):
+                        filters = parsed
+                except json.JSONDecodeError:
+                    filters = {}
+            if str(filters.get("experiment_id") or "") == experiment_id:
+                return str(row["created_at"])
+        return None
+
+    async def first_training_completed_at(self, experiment_id: str) -> str | None:
+        cursor = await self._db.execute(
+            """
+            SELECT finished_at FROM training_tasks
+            WHERE experiment_id = ? AND status = 'completed' AND finished_at IS NOT NULL
+            ORDER BY finished_at ASC LIMIT 1
+            """,
+            (experiment_id,),
+        )
+        row = await cursor.fetchone()
+        return str(row["finished_at"]) if row and row["finished_at"] else None
+
+    async def count_decisions_by_usability(self, experiment_id: str) -> dict[str, int]:
+        cursor = await self._db.execute(
+            """
+            SELECT
+                SUM(CASE WHEN dp.train_usable = 1 THEN 1 ELSE 0 END) AS usable,
+                SUM(CASE WHEN dp.train_usable = 0 THEN 1 ELSE 0 END) AS not_usable,
+                COUNT(*) AS total
+            FROM decision_points dp
+            INNER JOIN games g ON g.id = dp.game_id
+            WHERE g.experiment_id = ?
+            """,
+            (experiment_id,),
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return {"usable": 0, "not_usable": 0, "total": 0}
+        return {
+            "usable": int(row["usable"] or 0),
+            "not_usable": int(row["not_usable"] or 0),
+            "total": int(row["total"] or 0),
+        }
 
     async def list_games(self, experiment_id: str) -> list[dict[str, Any]]:
         cursor = await self._db.execute(
@@ -335,4 +473,16 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     raw_protocol = data.get("protocol")
     if isinstance(raw_protocol, str):
         data["protocol"] = json.loads(raw_protocol)
+    raw_tags = data.get("tags")
+    if isinstance(raw_tags, str):
+        try:
+            parsed_tags = json.loads(raw_tags)
+            data["tags"] = parsed_tags if isinstance(parsed_tags, list) else []
+        except json.JSONDecodeError:
+            data["tags"] = []
+    elif raw_tags is None:
+        data["tags"] = []
+    for text_key in ("hypothesis", "conclusion"):
+        if data.get(text_key) is None:
+            data[text_key] = ""
     return data

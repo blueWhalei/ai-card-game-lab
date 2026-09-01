@@ -148,7 +148,7 @@ class DataService:
         datasets_dir.mkdir(parents=True, exist_ok=True)
         output_path = datasets_dir / f"{dataset_id}_chatml.jsonl"
 
-        filepath, sample_count = await self._decision_service.export_chatml(
+        filepath, sample_count, split_meta = await self._decision_service.export_chatml(
             game_id=request.game_id,
             experiment_id=request.experiment_id,
             player_id=request.player_id,
@@ -159,6 +159,7 @@ class DataService:
             train_usable_only=request.train_usable_only,
             include_thinking=request.include_thinking,
             output_path=str(output_path),
+            eval_ratio=request.eval_ratio,
         )
         if not filepath or sample_count == 0:
             output_path.unlink(missing_ok=True)
@@ -177,7 +178,18 @@ class DataService:
             "min_quality": request.min_quality,
             "outcome": request.outcome,
             "game_phase": request.game_phase,
+            "eval_ratio": request.eval_ratio,
+            "eval_sample_count": split_meta.get("eval_sample_count", 0),
+            "eval_game_ids": split_meta.get("eval_game_ids") or [],
         }
+        eval_file = split_meta.get("eval_file_path")
+        if eval_file:
+            try:
+                filters["eval_file_path"] = str(
+                    Path(eval_file).relative_to(self._data_dir)
+                )
+            except ValueError:
+                filters["eval_file_path"] = eval_file
         async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             return await repo.create({

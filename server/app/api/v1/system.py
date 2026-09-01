@@ -80,6 +80,19 @@ async def runtime_stats(
     return ApiResponse(data=service.get_runtime_stats())
 
 
+@router.get("/benchmark-seeds")
+async def benchmark_seeds() -> ApiResponse[dict[str, Any]]:
+    from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
+
+    return ApiResponse(
+        data={
+            "game_type": "doudizhu",
+            "count": len(BENCHMARK_DEAL_SEEDS),
+            "description": "Fixed deal seeds for benchmark-mode experiments",
+        }
+    )
+
+
 @router.get("/archive/stats")
 async def get_archive_stats(
     archive_service: ArchiveService = Depends(get_archive_service),

@@ -173,12 +173,20 @@ class DecisionService:
             repo = DecisionRepository(db)
 
             total = await repo.count_total(experiment_id)
+            usability = await repo.count_usability(experiment_id)
             quality = await repo.get_quality_stats(experiment_id)
             outcome_counts = await repo.get_outcome_counts(experiment_id)
             phase_counts = await repo.get_phase_counts(experiment_id)
 
+        usable = usability["usable"]
+        not_usable = usability["not_usable"]
+        total_all = usability["total"]
+        usable_rate = (usable / total_all) if total_all else 0.0
         return {
             "total": total,
+            "train_usable_count": usable,
+            "not_usable_count": not_usable,
+            "usable_rate": round(usable_rate, 4),
             **quality,
             "outcome_counts": outcome_counts,
             "phase_counts": phase_counts,
@@ -196,10 +204,11 @@ class DecisionService:
         train_usable_only: bool = True,
         include_thinking: bool = False,
         output_path: str | None = None,
-    ) -> tuple[str, int]:
+        eval_ratio: float = 0.0,
+    ) -> tuple[str, int, dict[str, Any]]:
         """Export decision points to ChatML format JSONL.
 
-        Returns (filepath, count). Empty filepath when nothing to export.
+        Returns (train_filepath, train_count, split_meta). Empty filepath when nothing to export.
         """
         train_usable_filter: bool | None
         if train_usable is not None:
@@ -225,7 +234,7 @@ class DecisionService:
                 min_quality=min_quality,
                 train_usable=train_usable_filter,
             )
-            return "", 0
+            return "", 0, {}
 
         if output_path:
             filepath = Path(output_path)
@@ -237,22 +246,53 @@ class DecisionService:
 
         filepath.parent.mkdir(parents=True, exist_ok=True)
 
+        split_meta: dict[str, Any] = {
+            "eval_ratio": eval_ratio,
+            "eval_sample_count": 0,
+            "eval_file_path": None,
+            "eval_game_ids": [],
+        }
+
+        train_items = items
+        eval_items: list[dict[str, Any]] = []
+        if eval_ratio > 0 and items:
+            game_ids = sorted({str(item["game_id"]) for item in items})
+            eval_count = max(1, int(len(game_ids) * eval_ratio))
+            eval_game_ids = set(game_ids[:eval_count])
+            train_items = [i for i in items if str(i["game_id"]) not in eval_game_ids]
+            eval_items = [i for i in items if str(i["game_id"]) in eval_game_ids]
+            split_meta["eval_game_ids"] = sorted(eval_game_ids)
+            split_meta["eval_sample_count"] = len(eval_items)
+
+        if not train_items:
+            return "", 0, split_meta
+
         lines = [
             json.dumps(_to_chatml(item, include_thinking=include_thinking), ensure_ascii=False)
-            for item in items
+            for item in train_items
         ]
         await asyncio.to_thread(_write_lines, filepath, lines)
+
+        if eval_items:
+            eval_path = filepath.with_name(f"{filepath.stem}_eval{filepath.suffix}")
+            eval_lines = [
+                json.dumps(_to_chatml(item, include_thinking=include_thinking), ensure_ascii=False)
+                for item in eval_items
+            ]
+            await asyncio.to_thread(_write_lines, eval_path, eval_lines)
+            split_meta["eval_file_path"] = str(eval_path)
 
         logger.info(
             "export_chatml_completed",
             filepath=str(filepath),
-            count=len(items),
+            count=len(train_items),
+            eval_count=len(eval_items),
             include_thinking=include_thinking,
             train_usable_only=train_usable_only,
             experiment_id=experiment_id,
         )
 
-        return str(filepath), len(items)
+        return str(filepath), len(train_items), split_meta
 
 
 def _write_lines(filepath: Path, lines: list[str]) -> None:

@@ -6,6 +6,8 @@ import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   experimentStatusLabel,
+  experimentNextStepLabel,
+  isBenchmarkExperiment,
   EXPERIMENT_STATUS_VARIANT,
   type Experiment,
   type ExperimentStatus,
@@ -25,6 +27,7 @@ import {
   uniqueFilledIds,
 } from '@/utils/experimentWorkbench'
 import ExperimentControlDialog from '@/components/experiment/ExperimentControlDialog.vue'
+import ExperimentNotebookPanel from '@/components/experiment/ExperimentNotebookPanel.vue'
 import ExperimentGamesTab from '@/components/experiment/ExperimentGamesTab.vue'
 import ExperimentPlayersTab from '@/components/experiment/ExperimentPlayersTab.vue'
 import ExperimentTrainingTab from '@/components/experiment/ExperimentTrainingTab.vue'
@@ -40,6 +43,7 @@ import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiDropdownMenu from '@/components/ui/DropdownMenu.vue'
 import type { DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
+import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiProgress from '@/components/ui/Progress.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
@@ -89,6 +93,11 @@ function setContentTab(tab: ContentTab): void {
   void router.replace({ query: q })
 }
 const controlOpen = ref(false)
+const cloneOpen = ref(false)
+const cloneName = ref('')
+const cloning = ref(false)
+const registerOpen = ref(false)
+const registerEvalRatio = ref(0.1)
 const creatingControl = ref(false)
 const actionGameId = ref<string | null>(null)
 const pausingAll = ref(false)
@@ -114,6 +123,8 @@ function configLabel(id: string): string {
 }
 
 const summary = computed(() => experiment.value?.summary)
+const validation = computed(() => experiment.value?.validation ?? null)
+const nextStep = computed(() => experiment.value?.next_step ?? null)
 const protocol = computed(() => experiment.value?.protocol ?? null)
 const protocolPlayers = computed(() => protocol.value?.players ?? [])
 const protocolDrift = computed(() => {
@@ -181,6 +192,14 @@ const canRegisterTrain = computed(
   () => (summary.value?.train_usable_decisions ?? 0) > 0 && !registeringTrain.value,
 )
 
+const registerPreview = computed(() => {
+  const usable = summary.value?.train_usable_decisions ?? 0
+  const notUsable = summary.value?.not_usable_decisions ?? 0
+  const gameEstimate = Math.max(1, Math.ceil((summary.value?.finished_games ?? 1) * registerEvalRatio.value))
+  const evalCount = Math.max(0, Math.min(usable, gameEstimate))
+  return { usable, notUsable, train: Math.max(0, usable - evalCount), eval: evalCount }
+})
+
 const collectCta = computed(() => {
   const status = summary.value?.status
   if (status === 'pending_collect') return t('experiment.startGames')
@@ -212,7 +231,7 @@ const openMenuItems = computed((): DropdownMenuItemDef[] => [
 function onOpenMenuSelect(id: string): void {
   switch (id) {
     case 'train':
-      void registerAndTrain()
+      openRegisterDialog()
       break
     case 'decisions':
       goDecisions()
@@ -593,6 +612,110 @@ function goData(): void {
   })
 }
 
+function goCompareWithSuggested(): void {
+  const ids = validation.value?.suggested_compare_ids ?? [experimentId.value]
+  void router.push({
+    path: '/experiments/compare',
+    query: { ids: ids.join(',') },
+  })
+}
+
+function handleNextStep(): void {
+  const step = nextStep.value
+  if (!step) return
+  switch (step.action) {
+    case 'collect':
+      collectOpen.value = true
+      break
+    case 'games':
+      setContentTab('games')
+      break
+    case 'decisions':
+      setContentTab('decisions')
+      break
+    case 'train':
+      openRegisterDialog()
+      break
+    case 'control':
+      openControlDialog()
+      break
+    case 'compare':
+      goCompareWithSuggested()
+      break
+    default:
+      setContentTab('games')
+      break
+  }
+}
+
+function downloadManifest(): void {
+  if (!experiment.value) return
+  const payload = {
+    experiment: {
+      id: experiment.value.id,
+      name: experiment.value.name,
+      hypothesis: experiment.value.hypothesis,
+      notes: experiment.value.notes,
+      conclusion: experiment.value.conclusion,
+      tags: experiment.value.tags,
+      game_type: experiment.value.game_type,
+      player_ids: experiment.value.player_ids,
+      target_games: experiment.value.target_games,
+      created_at: experiment.value.created_at,
+    },
+    protocol: experiment.value.protocol,
+    summary: experiment.value.summary,
+    timeline: experiment.value.timeline,
+    validation: experiment.value.validation,
+  }
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${experiment.value.id}-manifest.json`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function openCloneDialog(): void {
+  if (!experiment.value) return
+  cloneName.value = `${experiment.value.name} (copy)`
+  cloneOpen.value = true
+}
+
+async function submitClone(): Promise<void> {
+  if (!experiment.value || !cloneName.value.trim()) return
+  cloning.value = true
+  try {
+    const res = await experimentApi.clone(experiment.value.id, {
+      name: cloneName.value.trim(),
+      copy_deal_seeds: true,
+      copy_hypothesis: true,
+    })
+    cloneOpen.value = false
+    toast.success(t('experiment.cloned'))
+    void router.push(`/experiments/${res.data.id}`)
+  } catch (e: unknown) {
+    showApiError(e, t('experiment.cloneFailed'))
+  } finally {
+    cloning.value = false
+  }
+}
+
+function onNotebookSaved(updated: Experiment): void {
+  experiment.value = { ...experiment.value!, ...updated }
+}
+
+function openRegisterDialog(): void {
+  registerEvalRatio.value = 0.1
+  registerOpen.value = true
+}
+
+async function submitRegister(): Promise<void> {
+  registerOpen.value = false
+  await registerAndTrain(registerEvalRatio.value)
+}
+
 function goCompare(): void {
   void router.push({
     path: '/experiments/compare',
@@ -600,7 +723,7 @@ function goCompare(): void {
   })
 }
 
-async function registerAndTrain(): Promise<void> {
+async function registerAndTrain(evalRatio = 0): Promise<void> {
   if (!experiment.value || !canRegisterTrain.value) return
   registeringTrain.value = true
   try {
@@ -613,6 +736,7 @@ async function registerAndTrain(): Promise<void> {
       experiment_id: experiment.value.id,
       train_usable_only: true,
       include_thinking: false,
+      eval_ratio: evalRatio,
     })
     const dataset = dsRes.data
 
@@ -777,6 +901,9 @@ onUnmounted(() => {
               <UiBadge :variant="statusOf(summary.status).variant">
                 {{ statusOf(summary.status).label }}
               </UiBadge>
+              <UiBadge v-if="isBenchmarkExperiment(experiment)" variant="accent">
+                {{ t('experiment.modeBenchmark') }}
+              </UiBadge>
               <span class="text-sm text-ink-text-secondary">
                 {{
                   t('experiment.progressLabel', {
@@ -821,6 +948,49 @@ onUnmounted(() => {
         >
           {{ noticeText }}
         </button>
+
+        <ExperimentNotebookPanel :experiment="experiment" @saved="onNotebookSaved" />
+
+        <div
+          v-if="nextStep"
+          class="flex flex-wrap items-center justify-between gap-2 rounded-ink border border-ink-primary/30 bg-ink-primary-muted/40 px-3 py-2"
+        >
+          <p class="text-sm text-ink-text">{{ experimentNextStepLabel(nextStep.id) }}</p>
+          <UiButton size="sm" @click="handleNextStep">
+            {{ t('experiment.nextStepAction') }}
+          </UiButton>
+        </div>
+
+        <div
+          v-if="validation"
+          class="flex flex-wrap items-center gap-2 rounded-ink border border-ink-border bg-ink-surface-muted px-3 py-2 text-xs text-ink-text-secondary sm:text-sm"
+        >
+          <span class="font-medium text-ink-text">{{ t('experiment.validationTitle') }}</span>
+          <UiBadge :variant="validation.validation_ready ? 'success' : 'warning'">
+            {{
+              validation.validation_ready
+                ? t('experiment.validationReady')
+                : t('experiment.validationPending')
+            }}
+          </UiBadge>
+          <span>{{ t('experiment.validationPaired', { n: validation.paired_n }) }}</span>
+          <span>
+            {{
+              t('experiment.validationControls', {
+                n: validation.control_experiment_ids.length,
+              })
+            }}
+          </span>
+          <button
+            v-for="cid in validation.control_experiment_ids"
+            :key="cid"
+            type="button"
+            class="text-ink-primary hover:underline"
+            @click="router.push(`/experiments/${cid}`)"
+          >
+            {{ shortExperimentId(cid) }}
+          </button>
+        </div>
 
         <details
           v-if="protocol"
@@ -871,6 +1041,14 @@ onUnmounted(() => {
                 })
               }}
             </p>
+            <div class="flex flex-wrap gap-2 pt-1">
+              <UiButton size="sm" variant="secondary" @click="downloadManifest">
+                {{ t('experiment.downloadManifest') }}
+              </UiButton>
+              <UiButton size="sm" variant="secondary" @click="openCloneDialog">
+                {{ t('experiment.cloneExperiment') }}
+              </UiButton>
+            </div>
           </div>
         </details>
 
@@ -980,6 +1158,9 @@ onUnmounted(() => {
         v-else-if="contentTab === 'training'"
         :tasks="trainingTasks"
         :experiment-id="experimentId"
+        :validation="validation"
+        @open-control="openControlDialog"
+        @compare="goCompareWithSuggested"
       />
 
       <DecisionWorkbenchPanel
@@ -1043,5 +1224,43 @@ onUnmounted(() => {
       :loading="creatingControl"
       @submit="submitControl"
     />
+
+    <UiDialog v-model:open="cloneOpen" :title="t('experiment.cloneTitle')" :description="t('experiment.cloneDesc')">
+      <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.cloneName') }}</label>
+      <UiInput v-model="cloneName" />
+      <template #footer>
+        <UiButton variant="secondary" @click="cloneOpen = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton :loading="cloning" @click="submitClone">{{ t('experiment.cloneConfirm') }}</UiButton>
+      </template>
+    </UiDialog>
+
+    <UiDialog
+      v-model:open="registerOpen"
+      :title="t('experiment.registerTitle')"
+      :description="t('experiment.registerDesc')"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-ink-text-secondary">
+          {{ t('experiment.registerUsable', { n: registerPreview.usable }) }} ·
+          {{ t('experiment.registerNotUsable', { n: registerPreview.notUsable }) }}
+        </p>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+            {{ t('experiment.registerEvalRatio') }}
+          </label>
+          <UiInputNumber v-model="registerEvalRatio" :min="0" :max="0.5" :step="0.05" />
+        </div>
+        <p class="text-sm text-ink-text-secondary">
+          {{ t('experiment.registerTrainCount', { n: registerPreview.train }) }} ·
+          {{ t('experiment.registerEvalCount', { n: registerPreview.eval }) }}
+        </p>
+      </div>
+      <template #footer>
+        <UiButton variant="secondary" @click="registerOpen = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton :loading="registeringTrain" @click="submitRegister">
+          {{ t('experiment.registerConfirm') }}
+        </UiButton>
+      </template>
+    </UiDialog>
   </div>
 </template>

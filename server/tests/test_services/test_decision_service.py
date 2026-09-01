@@ -102,7 +102,7 @@ class TestDecisionServiceExport:
         self, decision_service: DecisionService, tmp_path: Path
     ) -> None:
         await _create_sample(decision_service, thinking="地主剩3张需管牌")
-        path, count = await decision_service.export_chatml(
+        path, count, _ = await decision_service.export_chatml(
             include_thinking=False,
             train_usable_only=True,
         )
@@ -119,7 +119,7 @@ class TestDecisionServiceExport:
         self, decision_service: DecisionService
     ) -> None:
         await _create_sample(decision_service, thinking="地主剩3张需管牌")
-        path, count = await decision_service.export_chatml(include_thinking=True)
+        path, count, _ = await decision_service.export_chatml(include_thinking=True)
         assert count == 1
         sample = json.loads(Path(path).read_text(encoding="utf-8").strip())
         assert "原因: 地主剩3张需管牌" in sample["messages"][2]["content"]
@@ -136,11 +136,11 @@ class TestDecisionServiceExport:
             legal=[{"action_type": "PASS", "cards": []}],
             thinking=None,
         )
-        path, count = await decision_service.export_chatml(train_usable_only=True)
+        path, count, _ = await decision_service.export_chatml(train_usable_only=True)
         assert count == 1
         assert path
 
-        path_all, count_all = await decision_service.export_chatml(train_usable_only=False)
+        path_all, count_all, _ = await decision_service.export_chatml(train_usable_only=False)
         assert count_all == 2
         assert path_all
 

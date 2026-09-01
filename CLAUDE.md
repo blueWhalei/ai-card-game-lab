@@ -111,24 +111,30 @@ Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experi
 
 ## Experiments
 
-- Table `experiments`. `games.experiment_id` is nullable (scatter games stay on `/game`).
+- Table `experiments` includes `hypothesis`, `conclusion`, `tags` (JSON array), plus existing `notes` and frozen `protocol`.
+- `games.experiment_id` is nullable (scatter games stay on `/game`).
 - Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
-- Detail workspace: collect / pause, watch, register-and-train, control experiment, compare.
+- Detail workspace: **notebook** (hypothesis/conclusion/tags/timeline), **next-step** bar, collect / pause, watch, register-and-train (with optional `eval_ratio`), control experiment, compare, clone, manifest download.
+- `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
 - Detail content tabs: games / players / **decisions** / **traces** / training; sync with `?tab=` (e.g. `/experiments/:id?tab=decisions`).
 - Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, and per-seat as-landlord win rate (needs `metadata.landlord_id`).
+- `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `validation_ready`), and `next_step`.
 - Training models tab can register an Ollama tag as a player config.
 
 Main HTTP:
 
 ```
 GET/POST /api/v1/experiments
+PATCH    /api/v1/experiments/{id}
+POST     /api/v1/experiments/{id}/clone
 GET      /api/v1/experiments/compare?ids=a,b
 GET      /api/v1/experiments/{id}
 POST     /api/v1/experiments/{id}/collect
+GET      /api/v1/system/benchmark-seeds
 ```
 
-Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`.
+Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`.
 
 ## Game observer
 

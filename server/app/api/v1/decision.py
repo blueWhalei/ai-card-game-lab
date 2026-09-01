@@ -41,6 +41,9 @@ class DecisionStatsResponse(BaseModel):
     max_quality: float
     outcome_counts: dict[str, int]
     phase_counts: dict[str, int]
+    train_usable_count: int = 0
+    not_usable_count: int = 0
+    usable_rate: float = 0.0
 
 
 class ExportRequest(BaseModel):
@@ -131,7 +134,7 @@ async def export_chatml(
     service: DecisionService = Depends(get_decision_service),
 ) -> ApiResponse[ExportResponse]:
     """Export decision points to ChatML format JSONL."""
-    filepath, count = await service.export_chatml(
+    filepath, count, _split = await service.export_chatml(
         game_id=request.game_id,
         experiment_id=request.experiment_id,
         player_id=request.player_id,

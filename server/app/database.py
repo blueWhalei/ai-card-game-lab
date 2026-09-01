@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS experiments (
     id            TEXT PRIMARY KEY,
     name          TEXT    NOT NULL,
     notes         TEXT    NOT NULL DEFAULT '',
+    hypothesis    TEXT    NOT NULL DEFAULT '',
+    conclusion    TEXT    NOT NULL DEFAULT '',
+    tags          TEXT    NOT NULL DEFAULT '[]',
     game_type     TEXT    NOT NULL,
     player_ids    TEXT    NOT NULL,
     target_games  INTEGER NOT NULL DEFAULT 1,
@@ -251,6 +254,15 @@ async def init_db(sqlite_path: str) -> None:
             await db.execute("ALTER TABLE experiments ADD COLUMN protocol TEXT")
         except aiosqlite.OperationalError:
             pass
+        for col, ddl in (
+            ("hypothesis", "ALTER TABLE experiments ADD COLUMN hypothesis TEXT NOT NULL DEFAULT ''"),
+            ("conclusion", "ALTER TABLE experiments ADD COLUMN conclusion TEXT NOT NULL DEFAULT ''"),
+            ("tags", "ALTER TABLE experiments ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"),
+        ):
+            try:
+                await db.execute(ddl)
+            except aiosqlite.OperationalError:
+                pass
         await _migrate_ai_players_to_experiment_configs(db)
         await db.commit()
 

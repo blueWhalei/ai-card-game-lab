@@ -154,11 +154,21 @@ WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 
 ```
 GET    /api/v1/experiments                   # 实验列表
-POST   /api/v1/experiments                   # 创建实验（选手人数由引擎 min/max 校验）
+POST   /api/v1/experiments                   # 创建实验（选手人数由引擎 min/max 校验；可选 hypothesis/tags/collect_mode）
+PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/conclusion/tags
+POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
 GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率）
-GET    /api/v1/experiments/{id}              # 实验详情 + summary
-POST   /api/v1/experiments/{id}/collect      # 按实验配置批量开局
+GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step
+POST   /api/v1/experiments/{id}/collect      # 按实验配置批量开局（benchmark 模式用固定 deal_seed）
 ```
+
+`GET /api/v1/experiments/{id}` 附加字段：
+
+- `timeline[]` — `created` / `first_collect` / `first_finished` / `dataset_registered` / `training_completed` / `control_created`
+- `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`
+- `next_step` — `{ id, label_key, action? }` 下一步引导
+
+创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。
 
 #### GET /api/v1/experiments/compare
 
@@ -240,7 +250,7 @@ DELETE /api/v1/datasets/{dataset_id}         # 删除数据集
 
 #### POST /api/v1/datasets/from-decisions — 从决策点登记数据集
 
-SFT 首选路径。接受 `experiment_id` / `game_id` / `train_usable` / `include_thinking`（默认 false）。登记后出现在训练页。  
+SFT 首选路径。接受 `experiment_id` / `game_id` / `train_usable` / `include_thinking`（默认 false）/ `eval_ratio`（0–0.5，按 `game_id` 拆分 train/eval 两个 JSONL）。登记后出现在训练页。  
 `POST /api/v1/decision-points/export` 只写磁盘 JSONL，**不会**自动登记。
 
 #### POST /api/v1/datasets — 创建数据集
@@ -304,6 +314,7 @@ GET    /api/v1/system/startup-check          # 首次运行就绪检查
 POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎元数据（min/max players）
+GET    /api/v1/system/benchmark-seeds        # 基准测验固定 deal_seed 列表（50 个）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
 GET    /api/v1/system/runtime-stats          # 运行时资源快照
@@ -816,7 +827,10 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
     "min_quality": 0.3,
     "max_quality": 0.8,
     "outcome_counts": {"win": 50, "lose": 80, "draw": 20},
-    "phase_counts": {"early": 30, "mid": 70, "endgame": 50}
+    "phase_counts": {"early": 30, "mid": 70, "endgame": 50},
+    "train_usable_count": 120,
+    "not_usable_count": 30,
+    "usable_rate": 0.8
   }
 }
 ```

@@ -245,3 +245,126 @@ async def test_compare_paired_wins(db_path: str) -> None:
     assert b_stats["cfg_b"]["paired_wins"] == 1
     assert by_id["exp-a"]["paired_seat_wins"][0] == 1
     assert by_id["exp-b"]["paired_seat_wins"][0] == 1
+
+
+async def test_clone_preserves_deal_seeds(db_path: str) -> None:
+    gs = _fake_game_service()
+    service = ExperimentService(sqlite_path=db_path, game_service=gs)
+    source = await service.create_experiment(
+        name="source",
+        notes="n",
+        hypothesis="h1",
+        game_type="doudizhu",
+        player_ids=["cfg_a", "cfg_b", "cfg_c"],
+        target_games=3,
+        collect_mode="benchmark",
+    )
+    now = datetime.now(tz=UTC).isoformat()
+    async with aiosqlite.connect(db_path) as db:
+        repo = ExperimentRepository(db)
+        protocol = dict(source["protocol"])
+        protocol["deal_seeds"] = [100001, 100002, 100003]
+        await repo.update_protocol(source["id"], protocol, updated_at=now)
+
+    cloned = await service.clone_experiment(
+        source["id"],
+        name="cloned",
+        copy_deal_seeds=True,
+        copy_hypothesis=True,
+    )
+    assert cloned["id"] != source["id"]
+    assert cloned["hypothesis"] == "h1"
+    assert cloned["protocol"]["deal_seeds"] == [100001, 100002, 100003]
+    assert cloned["protocol"]["collect_mode"] == "benchmark"
+
+
+async def test_validation_lists_control_experiments(db_path: str) -> None:
+    gs = _fake_game_service()
+    service = ExperimentService(sqlite_path=db_path, game_service=gs)
+    source = await service.create_experiment(
+        name="source",
+        notes="",
+        game_type="doudizhu",
+        player_ids=["cfg_a", "cfg_b", "cfg_c"],
+        target_games=5,
+    )
+    now = datetime.now(tz=UTC).isoformat()
+    async with aiosqlite.connect(db_path) as db:
+        repo = ExperimentRepository(db)
+        protocol = dict(source["protocol"])
+        protocol["deal_seeds"] = [10, 20, 30, 40, 50]
+        await repo.update_protocol(source["id"], protocol, updated_at=now)
+
+    control = await service.create_experiment(
+        name="control",
+        notes="",
+        game_type="doudizhu",
+        player_ids=["cfg_lora", "cfg_b", "cfg_c"],
+        target_games=5,
+        source_experiment_id=source["id"],
+        pair_deals=True,
+    )
+
+    detail = await service.get_experiment(source["id"], include_games=False)
+    validation = detail["validation"]
+    assert control["id"] in validation["control_experiment_ids"]
+    assert validation["suggested_compare_ids"][0] == source["id"]
+    assert control["id"] in validation["suggested_compare_ids"]
+
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO games (
+                id, game_type, status, player_ids, winner_id, total_rounds,
+                data_file, created_at, experiment_id, metadata
+            ) VALUES
+                ('gc1', 'doudizhu', 'finished', ?, 'cfg_lora', 8, 'c1.jsonl', ?, ?, '{"deal_seed":10,"paired":true}'),
+                ('gc2', 'doudizhu', 'finished', ?, 'cfg_b', 8, 'c2.jsonl', ?, ?, '{"deal_seed":20,"paired":true}'),
+                ('gc3', 'doudizhu', 'finished', ?, 'cfg_lora', 8, 'c3.jsonl', ?, ?, '{"deal_seed":30,"paired":true}'),
+                ('gc4', 'doudizhu', 'finished', ?, 'cfg_b', 8, 'c4.jsonl', ?, ?, '{"deal_seed":40,"paired":true}'),
+                ('gc5', 'doudizhu', 'finished', ?, 'cfg_lora', 8, 'c5.jsonl', ?, ?, '{"deal_seed":50,"paired":true}')
+            """,
+            (
+                '["cfg_lora","cfg_b","cfg_c"]',
+                now,
+                control["id"],
+                '["cfg_lora","cfg_b","cfg_c"]',
+                now,
+                control["id"],
+                '["cfg_lora","cfg_b","cfg_c"]',
+                now,
+                control["id"],
+                '["cfg_lora","cfg_b","cfg_c"]',
+                now,
+                control["id"],
+                '["cfg_lora","cfg_b","cfg_c"]',
+                now,
+                control["id"],
+            ),
+        )
+        await db.commit()
+
+    ready = await service.get_experiment(source["id"], include_games=False)
+    assert ready["validation"]["validation_ready"] is False
+
+    async with aiosqlite.connect(db_path) as db:
+        for i in range(5):
+            await db.execute(
+                """
+                INSERT INTO games (
+                    id, game_type, status, player_ids, winner_id, total_rounds,
+                    data_file, created_at, experiment_id, metadata
+                ) VALUES (?, 'doudizhu', 'finished', ?, 'cfg_a', 8, ?, ?, ?, '{}')
+                """,
+                (
+                    f"gs{i}",
+                    '["cfg_a","cfg_b","cfg_c"]',
+                    f"s{i}.jsonl",
+                    now,
+                    source["id"],
+                ),
+            )
+        await db.commit()
+
+    ready_after = await service.get_experiment(source["id"], include_games=False)
+    assert ready_after["validation"]["validation_ready"] is True

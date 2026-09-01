@@ -9,6 +9,45 @@ export type ExperimentStatus =
   | 'ready_review'
   | 'ready_more'
 
+export type CollectMode = 'free' | 'benchmark'
+
+export type ExperimentNextStepId =
+  | 'collect'
+  | 'watch'
+  | 'decisions'
+  | 'review_decisions'
+  | 'register_train'
+  | 'open_control'
+  | 'compare'
+  | 'collect_more'
+  | 'review'
+
+export type ExperimentNextStepAction =
+  | 'collect'
+  | 'games'
+  | 'decisions'
+  | 'train'
+  | 'control'
+  | 'compare'
+
+export interface ExperimentTimelineEvent {
+  id: string
+  at: string
+  ref_id: string | null
+}
+
+export interface ExperimentValidation {
+  control_experiment_ids: string[]
+  validation_ready: boolean
+  suggested_compare_ids: string[]
+  paired_n: number
+}
+
+export interface ExperimentNextStep {
+  id: ExperimentNextStepId
+  action: ExperimentNextStepAction
+}
+
 export interface ExperimentPlayerStat {
   player_id: string
   wins: number
@@ -43,6 +82,7 @@ export interface ExperimentProtocol {
   source_experiment_id: string | null
   pair_deals: boolean
   deal_seeds: number[]
+  collect_mode?: CollectMode
 }
 
 export interface ExperimentSummary {
@@ -53,6 +93,8 @@ export interface ExperimentSummary {
   finished_games: number
   games_with_winner: number
   train_usable_decisions: number
+  not_usable_decisions?: number
+  decision_total?: number
   train_usable_rate?: number
   decision_count?: number
   avg_rounds: number
@@ -79,6 +121,9 @@ export interface Experiment {
   id: string
   name: string
   notes: string
+  hypothesis: string
+  conclusion: string
+  tags: string[]
   game_type: string
   player_ids: string[]
   target_games: number
@@ -87,16 +132,36 @@ export interface Experiment {
   updated_at: string
   summary: ExperimentSummary
   games?: GameItem[]
+  timeline?: ExperimentTimelineEvent[]
+  validation?: ExperimentValidation
+  next_step?: ExperimentNextStep
 }
 
 export interface CreateExperimentRequest {
   name: string
   notes?: string
+  hypothesis?: string
+  tags?: string[]
   game_type?: string
   player_ids: string[]
   target_games: number
   source_experiment_id?: string | null
   pair_deals?: boolean
+  collect_mode?: CollectMode
+}
+
+export interface UpdateExperimentRequest {
+  name?: string
+  notes?: string
+  hypothesis?: string
+  conclusion?: string
+  tags?: string[]
+}
+
+export interface CloneExperimentRequest {
+  name?: string
+  copy_deal_seeds?: boolean
+  copy_hypothesis?: boolean
 }
 
 export interface CollectExperimentRequest {
@@ -128,6 +193,7 @@ export interface ExperimentCompareRow {
   notes: string
   game_type: string
   player_ids: string[]
+  protocol?: ExperimentProtocol | null
   finished_games: number
   games_with_winner: number
   avg_rounds: number
@@ -166,6 +232,12 @@ export const experimentApi = {
   create: (data: CreateExperimentRequest) =>
     apiClient.post<never, ApiResponse<Experiment>>('/api/v1/experiments', data),
 
+  update: (id: string, data: UpdateExperimentRequest) =>
+    apiClient.patch<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}`, data),
+
+  clone: (id: string, data?: CloneExperimentRequest) =>
+    apiClient.post<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}/clone`, data ?? {}),
+
   collect: (id: string, data: CollectExperimentRequest) =>
     apiClient.post<never, ApiResponse<CollectExperimentResult>>(
       `/api/v1/experiments/${id}/collect`,
@@ -191,4 +263,18 @@ export const EXPERIMENT_STATUS_VARIANT: Record<
 
 export function experimentStatusLabel(status: ExperimentStatus): string {
   return tt(`experiment.status.${status}`)
+}
+
+export function experimentNextStepLabel(id: ExperimentNextStepId): string {
+  return tt(`experiment.nextStep.${id}`)
+}
+
+export function experimentTimelineLabel(id: string): string {
+  return tt(`experiment.timeline.${id}`)
+}
+
+export function isBenchmarkExperiment(experiment: {
+  protocol?: ExperimentProtocol | null
+}): boolean {
+  return experiment.protocol?.collect_mode === 'benchmark'
 }

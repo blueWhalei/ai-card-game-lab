@@ -367,6 +367,60 @@ async def test_from_decisions_filters_by_experiment(client: AsyncClient) -> None
     assert body["filters"]["experiment_id"] == created["id"]
 
 
+async def test_patch_experiment_notebook_fields(client: AsyncClient) -> None:
+    created = await _create_experiment(client)
+    response = await client.patch(
+        f"/api/v1/experiments/{created['id']}",
+        json={
+            "hypothesis": "LoRA 提升地主胜率",
+            "conclusion": "待验证",
+            "tags": ["lora", "baseline"],
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()["data"]
+    assert body["hypothesis"] == "LoRA 提升地主胜率"
+    assert body["conclusion"] == "待验证"
+    assert body["tags"] == ["lora", "baseline"]
+
+
+async def test_get_experiment_includes_timeline_and_next_step(client: AsyncClient) -> None:
+    created = await _create_experiment(client)
+    response = await client.get(f"/api/v1/experiments/{created['id']}")
+    assert response.status_code == 200
+    data = response.json()["data"]
+    assert isinstance(data["timeline"], list)
+    assert data["timeline"][0]["id"] == "created"
+    assert data["next_step"]["id"] == "collect"
+    assert "validation" in data
+    assert data["validation"]["control_experiment_ids"] == []
+
+
+async def test_clone_experiment(client: AsyncClient) -> None:
+    created = await _create_experiment(client, name="源实验")
+    response = await client.post(
+        f"/api/v1/experiments/{created['id']}/clone",
+        json={"name": "克隆实验", "copy_deal_seeds": True},
+    )
+    assert response.status_code == 201, response.text
+    cloned = response.json()["data"]
+    assert cloned["id"] != created["id"]
+    assert cloned["name"] == "克隆实验"
+    assert cloned["player_ids"] == created["player_ids"]
+
+
+async def test_create_benchmark_experiment(client: AsyncClient) -> None:
+    created = await _create_experiment(
+        client,
+        name="基准测验",
+        collect_mode="benchmark",
+        target_games=5,
+    )
+    protocol = created.get("protocol") or {}
+    assert protocol.get("collect_mode") == "benchmark"
+    assert len(protocol.get("deal_seeds") or []) == 5
+
+
 async def test_compare_experiments_returns_wilson_ci(client: AsyncClient) -> None:
     left = await _create_experiment(client, name="基线 A")
     right = await _create_experiment(client, name="对照 B")

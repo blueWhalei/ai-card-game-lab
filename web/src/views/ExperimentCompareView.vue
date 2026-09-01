@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
   experimentApi,
+  isBenchmarkExperiment,
   type Experiment,
   type ExperimentCompareRow,
 } from '@/api/experimentApi'
@@ -20,6 +21,7 @@ import {
 } from '@/utils/compareMatrix'
 import { cn } from '@/lib/cn'
 import UiButton from '@/components/ui/Button.vue'
+import UiBadge from '@/components/ui/Badge.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
 const { t } = useI18n()
@@ -323,13 +325,22 @@ watch(
                   :key="row.id"
                   class="px-3 py-2 font-medium"
                 >
-                  <button
-                    type="button"
-                    class="font-medium text-ink-primary hover:underline"
-                    @click="router.push(`/experiments/${row.id}`)"
-                  >
-                    {{ row.name }}
-                  </button>
+                  <div class="flex flex-wrap items-center justify-center gap-1">
+                    <button
+                      type="button"
+                      class="font-medium text-ink-primary hover:underline"
+                      @click="router.push(`/experiments/${row.id}`)"
+                    >
+                      {{ row.name }}
+                    </button>
+                    <UiBadge
+                      v-if="isBenchmarkExperiment(row)"
+                      variant="accent"
+                      class="text-xs"
+                    >
+                      {{ t('experiment.modeBenchmark') }}
+                    </UiBadge>
+                  </div>
                 </th>
               </tr>
             </thead>

@@ -2,7 +2,7 @@
 
 from datetime import datetime
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class DatasetFilters(BaseModel):
@@ -34,3 +34,4 @@ class CreateDatasetFromDecisionsRequest(BaseModel):
     train_usable: bool | None = None
     train_usable_only: bool = True
     include_thinking: bool = False
+    eval_ratio: float = Field(default=0.0, ge=0.0, le=0.5)

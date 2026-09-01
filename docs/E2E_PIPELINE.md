@@ -120,3 +120,9 @@ cd server && poetry install --with training
 默认基座 `Qwen/Qwen2.5-0.5B`、`max_steps=20`，样本截断，避免 OOM。
 
 **不建议**在无 GPU CI 中拉 HF 权重做全量 e2e。
+
+## 基准测验（固定发牌）
+
+创建实验时选择 **基准测验** 采集模式（`collect_mode: benchmark`）。系统从 `GET /api/v1/system/benchmark-seeds` 返回的 50 个固定 seed 中按目标局数截取，采集时按局序使用同一 seed，不再随机发牌。
+
+适用场景：两个或多个模型在相同牌面条件下对比胜率 / 延迟，无需搭建排行榜平台。实验详情与对比页会显示「基准测验」徽章。

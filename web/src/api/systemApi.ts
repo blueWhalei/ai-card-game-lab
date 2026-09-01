@@ -48,12 +48,21 @@ export type EngineInfo = {
   max_players: number
 }
 
+export type BenchmarkSeedsInfo = {
+  count: number
+  description: string
+  seeds: number[]
+}
+
 export const systemApi = {
   listGameTypes: () =>
     apiClient.get<never, ApiResponse<string[]>>('/api/v1/system/game-types'),
 
   listEngines: () =>
     apiClient.get<never, ApiResponse<EngineInfo[]>>('/api/v1/system/engines'),
+
+  benchmarkSeeds: () =>
+    apiClient.get<never, ApiResponse<BenchmarkSeedsInfo>>('/api/v1/system/benchmark-seeds'),
 
   listProviders: () =>
     apiClient.get<never, ApiResponse<ProviderInfo[]>>('/api/v1/system/providers'),

@@ -18,6 +18,8 @@ import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 import UiInput from '@/components/ui/Input.vue'
+import UiInputNumber from '@/components/ui/InputNumber.vue'
+import UiDialog from '@/components/ui/Dialog.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize, type PageSizeOption } from '@/utils/pagination'
 
@@ -41,6 +43,8 @@ const listTotal = ref(0)
 const loading = ref(false)
 const exporting = ref(false)
 const registering = ref(false)
+const registerOpen = ref(false)
+const registerEvalRatio = ref(0.1)
 const selectedPoint = ref<DecisionPoint | null>(null)
 const stats = ref<DecisionStats | null>(null)
 const howToOpen = ref(false)
@@ -129,6 +133,15 @@ const pageSize = computed(() =>
   props.embedded ? localPageSize.value : routePageSize.value,
 )
 
+const registerPreview = computed(() => {
+  const usable = stats.value?.train_usable_count ?? 0
+  const notUsable = stats.value?.not_usable_count ?? 0
+  const totalGames = Math.max(1, stats.value?.total ?? 1)
+  const gameEstimate = Math.max(1, Math.ceil(totalGames * registerEvalRatio.value))
+  const evalCount = registerEvalRatio.value > 0 ? Math.max(0, Math.min(usable, gameEstimate)) : 0
+  return { usable, notUsable, train: Math.max(0, usable - evalCount), eval: evalCount }
+})
+
 const playerCandidates = computed(() =>
   [...new Set(decisionPoints.value.map((p) => p.player_id).filter(Boolean))],
 )
@@ -216,6 +229,16 @@ function onLocalFiltersUpdate(next: WorkbenchLocalFilters): void {
   localPage.value = 1
 }
 
+function setTrainUsableChip(value: 'true' | 'false' | 'all'): void {
+  if (!props.embedded) return
+  localFilters.value = {
+    ...localFilters.value,
+    train_usable: value === 'all' ? undefined : value,
+  }
+  localPage.value = 1
+  void fetchDecisionPoints()
+}
+
 async function fetchStats() {
   try {
     const res = await decisionApi.stats(
@@ -262,7 +285,16 @@ async function exportChatml() {
   }
 }
 
-async function registerAsDataset() {
+function openRegisterDialog(): void {
+  registerOpen.value = true
+}
+
+async function submitRegister(): Promise<void> {
+  registerOpen.value = false
+  await registerAsDataset(registerEvalRatio.value)
+}
+
+async function registerAsDataset(evalRatio = 0): Promise<void> {
   const name =
     datasetName.value.trim() ||
     `decisions-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
@@ -271,6 +303,7 @@ async function registerAsDataset() {
     const res = await dataApi.createDatasetFromDecisions({
       name,
       game_type: 'doudizhu',
+      eval_ratio: evalRatio,
       ...exportScopeParams(),
     })
     lastRegisteredName.value = res.data.name
@@ -380,7 +413,7 @@ onMounted(() => {
             variant="primary"
             size="sm"
             :loading="registering"
-            @click="registerAsDataset"
+            @click="openRegisterDialog"
           >
             {{ registering ? t('decision.saving') : t('decision.saveDataset') }}
           </UiButton>
@@ -431,8 +464,51 @@ onMounted(() => {
         :filters="localFilters"
         @update:filters="onLocalFiltersUpdate"
       />
+      <div v-if="embedded && stats" class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-ink-text-secondary">
+          {{ t('experiment.registerUsable', { n: stats.train_usable_count ?? 0 }) }} ·
+          {{ t('experiment.registerNotUsable', { n: stats.not_usable_count ?? 0 }) }}
+        </span>
+        <UiButton
+          size="sm"
+          :variant="trainUsableFilter === true ? 'primary' : 'secondary'"
+          type="button"
+          @click="setTrainUsableChip('true')"
+        >
+          {{ t('filter.trainable') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="trainUsableFilter === false ? 'primary' : 'secondary'"
+          type="button"
+          @click="setTrainUsableChip('false')"
+        >
+          {{ t('filter.notTrainable') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="trainUsableFilter === undefined ? 'primary' : 'secondary'"
+          type="button"
+          @click="setTrainUsableChip('all')"
+        >
+          {{ t('filter.allTrain') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          variant="ghost"
+          type="button"
+          @click="
+            router.push({
+              path: `/experiments/${experimentId}`,
+              query: { tab: 'traces' },
+            })
+          "
+        >
+          {{ t('decision.viewTraces') }}
+        </UiButton>
+      </div>
       <WorkbenchFilterBar
-        v-else
+        v-else-if="!embedded"
         mode="decision"
         :player-candidates="playerCandidates"
       />
@@ -625,5 +701,34 @@ onMounted(() => {
         </div>
       </div>
     </div>
+
+    <UiDialog
+      v-model:open="registerOpen"
+      :title="t('experiment.registerTitle')"
+      :description="t('experiment.registerDesc')"
+    >
+      <div class="space-y-3">
+        <p class="text-sm text-ink-text-secondary">
+          {{ t('experiment.registerUsable', { n: registerPreview.usable }) }} ·
+          {{ t('experiment.registerNotUsable', { n: registerPreview.notUsable }) }}
+        </p>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+            {{ t('experiment.registerEvalRatio') }}
+          </label>
+          <UiInputNumber v-model="registerEvalRatio" :min="0" :max="0.5" :step="0.05" />
+        </div>
+        <p class="text-sm text-ink-text-secondary">
+          {{ t('experiment.registerTrainCount', { n: registerPreview.train }) }} ·
+          {{ t('experiment.registerEvalCount', { n: registerPreview.eval }) }}
+        </p>
+      </div>
+      <template #footer>
+        <UiButton variant="secondary" @click="registerOpen = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton :loading="registering" @click="submitRegister">
+          {{ t('experiment.registerConfirm') }}
+        </UiButton>
+      </template>
+    </UiDialog>
   </div>
 </template>

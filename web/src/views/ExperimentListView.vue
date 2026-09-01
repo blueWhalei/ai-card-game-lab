@@ -6,7 +6,9 @@ import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   experimentStatusLabel,
+  isBenchmarkExperiment,
   EXPERIMENT_STATUS_VARIANT,
+  type CollectMode,
   type Experiment,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
@@ -42,6 +44,7 @@ const experimentColumns = computed((): TableColumn<ExperimentRow>[] => [
   { key: 'name', label: t('common.name') },
   { key: 'status', label: t('common.status'), class: 'w-28' },
   { key: 'progress', label: t('common.progress'), class: 'w-24' },
+  { key: 'tags', label: t('experiment.tags'), class: 'hidden w-32 md:table-cell' },
   { key: 'players', label: t('common.players') },
   { key: 'summary_extra', label: t('experiment.summary'), class: 'hidden w-40 md:table-cell' },
   { key: 'created_at', label: t('common.createdAt'), class: 'hidden w-44 md:table-cell' },
@@ -61,6 +64,9 @@ const formGameType = ref('doudizhu')
 
 const formName = ref('')
 const formNotes = ref('')
+const formHypothesis = ref('')
+const formTags = ref('')
+const formCollectMode = ref<CollectMode>('free')
 const formTarget = ref(10)
 const selectedConfigIds = ref<string[]>([])
 
@@ -109,6 +115,9 @@ async function load(): Promise<void> {
 function openCreate(): void {
   formName.value = ''
   formNotes.value = ''
+  formHypothesis.value = ''
+  formTags.value = ''
+  formCollectMode.value = 'free'
   formTarget.value = 10
   selectedConfigIds.value = configs.value.slice(0, maxPlayers.value).map((c) => c.id)
   createOpen.value = true
@@ -131,12 +140,20 @@ async function submitCreate(): Promise<void> {
   if (!canSubmit.value) return
   creating.value = true
   try {
+    const tags = formTags.value
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .slice(0, 20)
     const res = await experimentApi.create({
       name: formName.value.trim(),
       notes: formNotes.value.trim(),
+      hypothesis: formHypothesis.value.trim(),
+      tags,
       game_type: 'doudizhu',
       player_ids: selectedConfigIds.value,
       target_games: Number(formTarget.value) || 10,
+      collect_mode: formCollectMode.value,
     })
     createOpen.value = false
     toast.success(t('experiment.created'))
@@ -212,13 +229,24 @@ onMounted(() => {
       row-key="id"
     >
       <template #cell-name="{ row }">
-        <button
-          type="button"
-          class="text-left font-medium text-ink-primary hover:underline"
-          @click="goDetail(String(row.id))"
-        >
-          {{ row.name }}
-        </button>
+        <div class="flex flex-wrap items-center gap-1.5">
+          <button
+            type="button"
+            class="text-left font-medium text-ink-primary hover:underline"
+            @click="goDetail(String(row.id))"
+          >
+            {{ row.name }}
+          </button>
+          <UiBadge v-if="isBenchmarkExperiment(row as Experiment)" variant="accent" class="text-xs">
+            {{ t('experiment.modeBenchmark') }}
+          </UiBadge>
+        </div>
+      </template>
+      <template #cell-tags="{ row }">
+        <span v-if="!(row.tags as string[])?.length" class="text-ink-text-muted">{{ t('common.dash') }}</span>
+        <span v-else class="truncate text-xs text-ink-text-secondary" :title="(row.tags as string[]).join(', ')">
+          {{ (row.tags as string[]).join(', ') }}
+        </span>
       </template>
       <template #cell-status="{ row }">
         <UiBadge :variant="EXPERIMENT_STATUS_VARIANT[row.summary.status]">
@@ -261,6 +289,15 @@ onMounted(() => {
           />
         </div>
         <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
+          <UiTextarea
+            v-model="formHypothesis"
+            :rows="2"
+            :placeholder="t('experiment.hypothesisPlaceholder')"
+            class="w-full"
+          />
+        </div>
+        <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.notes') }}</label>
           <UiTextarea
             v-model="formNotes"
@@ -268,6 +305,34 @@ onMounted(() => {
             :placeholder="t('experiment.notesPlaceholder')"
             class="w-full"
           />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.tags') }}</label>
+          <UiInput v-model="formTags" :placeholder="t('experiment.tagsPlaceholder')" class="w-full" />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.collectMode') }}</label>
+          <div class="flex flex-wrap gap-2">
+            <UiButton
+              size="sm"
+              :variant="formCollectMode === 'free' ? 'primary' : 'secondary'"
+              type="button"
+              @click="formCollectMode = 'free'"
+            >
+              {{ t('experiment.collectModeFree') }}
+            </UiButton>
+            <UiButton
+              size="sm"
+              :variant="formCollectMode === 'benchmark' ? 'primary' : 'secondary'"
+              type="button"
+              @click="formCollectMode = 'benchmark'"
+            >
+              {{ t('experiment.collectModeBenchmark') }}
+            </UiButton>
+          </div>
+          <p v-if="formCollectMode === 'benchmark'" class="mt-1.5 text-xs text-ink-text-secondary">
+            {{ t('experiment.collectModeBenchmarkHint') }}
+          </p>
         </div>
         <div>
           <div class="mb-1.5 flex items-center justify-between">

@@ -64,6 +64,7 @@ export interface CreateDatasetFromDecisionsRequest {
   train_usable?: boolean | null
   train_usable_only?: boolean
   include_thinking?: boolean
+  eval_ratio?: number
 }
 
 export interface DatasetItem {

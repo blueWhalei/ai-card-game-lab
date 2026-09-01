@@ -215,6 +215,28 @@ class DecisionRepository:
         where, params = self._experiment_where(experiment_id)
         return await self._scalar(f"SELECT COUNT(*) FROM decision_points{where}", params)
 
+    async def count_usability(self, experiment_id: str | None = None) -> dict[str, int]:
+        where, params = self._experiment_where(experiment_id)
+        cursor = await self._db.execute(
+            f"""
+            SELECT
+                SUM(CASE WHEN train_usable = 1 THEN 1 ELSE 0 END) AS usable,
+                SUM(CASE WHEN train_usable = 0 THEN 1 ELSE 0 END) AS not_usable,
+                COUNT(*) AS total
+            FROM decision_points
+            {where}
+            """,
+            params,
+        )
+        row = await cursor.fetchone()
+        if row is None:
+            return {"usable": 0, "not_usable": 0, "total": 0}
+        return {
+            "usable": int(row["usable"] or 0),
+            "not_usable": int(row["not_usable"] or 0),
+            "total": int(row["total"] or 0),
+        }
+
     async def get_quality_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Return avg/min/max quality scores."""
         where, params = self._experiment_where(

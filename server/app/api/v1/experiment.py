@@ -9,7 +9,12 @@ from fastapi import APIRouter, Depends
 
 from app.dependencies import get_db, get_experiment_service
 from app.schemas.common import ApiResponse
-from app.schemas.experiment import CollectExperimentRequest, CreateExperimentRequest
+from app.schemas.experiment import (
+    CloneExperimentRequest,
+    CollectExperimentRequest,
+    CreateExperimentRequest,
+    UpdateExperimentRequest,
+)
 from app.services.experiment_service import ExperimentNotFoundError, ExperimentService
 
 router = APIRouter()
@@ -30,11 +35,14 @@ async def create_experiment(
     experiment = await service.create_experiment(
         name=body.name,
         notes=body.notes,
+        hypothesis=body.hypothesis,
+        tags=body.tags,
         game_type=body.game_type,
         player_ids=body.player_ids,
         target_games=body.target_games,
         source_experiment_id=body.source_experiment_id,
         pair_deals=body.pair_deals,
+        collect_mode=body.collect_mode,
     )
     return ApiResponse(data=experiment)
 
@@ -55,6 +63,44 @@ async def get_experiment(
 ) -> ApiResponse[dict[str, Any]]:
     try:
         experiment = await service.get_experiment(experiment_id)
+    except ExperimentNotFoundError:
+        raise
+    return ApiResponse(data=experiment)
+
+
+@router.patch("/{experiment_id}")
+async def update_experiment(
+    experiment_id: str,
+    body: UpdateExperimentRequest,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        experiment = await service.update_experiment(
+            experiment_id,
+            name=body.name,
+            notes=body.notes,
+            hypothesis=body.hypothesis,
+            conclusion=body.conclusion,
+            tags=body.tags,
+        )
+    except ExperimentNotFoundError:
+        raise
+    return ApiResponse(data=experiment)
+
+
+@router.post("/{experiment_id}/clone", status_code=201)
+async def clone_experiment(
+    experiment_id: str,
+    body: CloneExperimentRequest,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        experiment = await service.clone_experiment(
+            experiment_id,
+            name=body.name,
+            copy_deal_seeds=body.copy_deal_seeds,
+            copy_hypothesis=body.copy_hypothesis,
+        )
     except ExperimentNotFoundError:
         raise
     return ApiResponse(data=experiment)

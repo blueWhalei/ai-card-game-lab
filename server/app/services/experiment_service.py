@@ -10,6 +10,7 @@ from typing import Any
 import aiosqlite
 import structlog
 
+from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
 from app.core.stats.proportion import wilson_interval
 from app.database import open_db_connection
 from app.repositories.experiment_repo import ExperimentRepository
@@ -99,6 +100,7 @@ class ExperimentService:
         pair_deals: bool,
         deal_seeds: list[int],
         frozen_at: str,
+        collect_mode: str = "free",
     ) -> dict[str, Any]:
         return {
             "schema_version": _PROTOCOL_SCHEMA_VERSION,
@@ -108,6 +110,7 @@ class ExperimentService:
             "source_experiment_id": source_experiment_id,
             "pair_deals": pair_deals,
             "deal_seeds": list(deal_seeds),
+            "collect_mode": collect_mode,
         }
 
     async def create_experiment(
@@ -120,6 +123,10 @@ class ExperimentService:
         target_games: int,
         source_experiment_id: str | None = None,
         pair_deals: bool = False,
+        hypothesis: str = "",
+        tags: list[str] | None = None,
+        collect_mode: str = "free",
+        preset_deal_seeds: list[int] | None = None,
     ) -> dict[str, Any]:
         min_players, max_players = self._game_service.player_slots(game_type)
         n_players = len(player_ids)
@@ -159,14 +166,21 @@ class ExperimentService:
             raw_seeds = source_protocol.get("deal_seeds") or []
             deal_seeds = [int(s) for s in raw_seeds]
 
+        if preset_deal_seeds is not None:
+            deal_seeds = list(preset_deal_seeds)
+        elif collect_mode == "benchmark" and not pair_deals:
+            deal_seeds = BENCHMARK_DEAL_SEEDS[:target_games]
+
         experiment_id = generate_id("exp")
         now = datetime.now(tz=UTC).isoformat()
+        effective_mode = "benchmark" if collect_mode == "benchmark" and not pair_deals else "free"
         protocol = self._build_protocol(
             player_ids=player_ids,
             source_experiment_id=source_id,
             pair_deals=bool(pair_deals and source_id),
             deal_seeds=deal_seeds,
             frozen_at=now,
+            collect_mode=effective_mode,
         )
 
         conn = await self._conn()
@@ -176,6 +190,8 @@ class ExperimentService:
                 experiment_id=experiment_id,
                 name=name.strip(),
                 notes=notes.strip(),
+                hypothesis=hypothesis.strip(),
+                tags=tags or [],
                 game_type=game_type,
                 player_ids=player_ids,
                 target_games=target_games,
@@ -192,6 +208,67 @@ class ExperimentService:
             deal_seed_count=len(deal_seeds),
         )
         return await self.get_experiment(experiment_id, include_games=False)
+
+    async def update_experiment(
+        self,
+        experiment_id: str,
+        *,
+        name: str | None = None,
+        notes: str | None = None,
+        hypothesis: str | None = None,
+        conclusion: str | None = None,
+        tags: list[str] | None = None,
+    ) -> dict[str, Any]:
+        conn = await self._conn()
+        try:
+            repo = ExperimentRepository(conn)
+            try:
+                await repo.get_by_id(experiment_id)
+            except KeyError as exc:
+                raise ExperimentNotFoundError(experiment_id) from exc
+            fields: dict[str, Any] = {}
+            if name is not None:
+                fields["name"] = name.strip()
+            if notes is not None:
+                fields["notes"] = notes.strip()
+            if hypothesis is not None:
+                fields["hypothesis"] = hypothesis.strip()
+            if conclusion is not None:
+                fields["conclusion"] = conclusion.strip()
+            if tags is not None:
+                cleaned = [t.strip() for t in tags if t.strip()][:20]
+                fields["tags"] = cleaned
+            now = datetime.now(tz=UTC).isoformat()
+            await repo.update_fields(experiment_id, updated_at=now, fields=fields)
+        finally:
+            await conn.close()
+        return await self.get_experiment(experiment_id, include_games=False)
+
+    async def clone_experiment(
+        self,
+        experiment_id: str,
+        *,
+        name: str | None = None,
+        copy_deal_seeds: bool = True,
+        copy_hypothesis: bool = True,
+    ) -> dict[str, Any]:
+        source = await self.get_experiment(experiment_id, include_games=False)
+        protocol = source.get("protocol") or {}
+        deal_seeds: list[int] | None = None
+        if copy_deal_seeds:
+            deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
+        clone_name = (name or f"{source['name']} (copy)").strip()
+        return await self.create_experiment(
+            name=clone_name,
+            notes=str(source.get("notes") or ""),
+            hypothesis=str(source.get("hypothesis") or "") if copy_hypothesis else "",
+            tags=list(source.get("tags") or []),
+            game_type=str(source["game_type"]),
+            player_ids=list(source["player_ids"]),
+            target_games=int(source["target_games"]),
+            collect_mode=str(protocol.get("collect_mode") or "free"),
+            preset_deal_seeds=deal_seeds,
+        )
 
     async def compare_experiments(self, experiment_ids: list[str]) -> dict[str, Any]:
         """Side-by-side metrics for 2–5 experiments, including Wilson CIs."""
@@ -251,6 +328,9 @@ class ExperimentService:
             if include_games:
                 games = await repo.list_games(experiment_id)
                 payload["games"] = [_normalize_game_row(g) for g in games]
+            payload["timeline"] = await self._build_timeline(repo, row)
+            payload["validation"] = await self._build_validation(repo, row, summary)
+            payload["next_step"] = self._build_next_step(row, summary, payload["validation"])
             return payload
         finally:
             await conn.close()
@@ -288,6 +368,7 @@ class ExperimentService:
 
         deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
         pair_deals = bool(protocol.get("pair_deals"))
+        collect_mode = str(protocol.get("collect_mode") or "free")
         frozen_players = list(protocol.get("players") or [])
 
         game_ids: list[str] = []
@@ -297,11 +378,11 @@ class ExperimentService:
             if pair_deals and index < len(deal_seeds):
                 seed = deal_seeds[index]
                 paired = True
+            elif collect_mode == "benchmark" and index < len(deal_seeds):
+                seed = deal_seeds[index]
             else:
                 seed = secrets.randbits(31)
                 if index < len(deal_seeds):
-                    # Shouldn't happen for pair_deals false with pre-filled seeds,
-                    # but keep list length aligned with game order.
                     deal_seeds[index] = seed
                 else:
                     deal_seeds.append(seed)
@@ -394,6 +475,7 @@ class ExperimentService:
                 paired_games += 1
 
         train_usable = int(eval_metrics.get("train_usable_n") or 0)
+        usability = await repo.count_decisions_by_usability(experiment_id)
         train_by_player = await repo.count_train_usable_by_player(experiment_id)
         response_by_player = await repo.avg_response_ms_by_player(experiment_id)
         avg_rounds = (rounds_sum / rounds_n) if rounds_n else 0.0
@@ -444,6 +526,8 @@ class ExperimentService:
             "finished_games": finished,
             "games_with_winner": with_winner,
             "train_usable_decisions": train_usable,
+            "not_usable_decisions": usability.get("not_usable", 0),
+            "decision_total": usability.get("total", 0),
             "train_usable_rate": eval_metrics.get("train_usable_rate", 0.0),
             "decision_count": eval_metrics.get("decision_count", 0),
             "avg_rounds": round(avg_rounds, 1),
@@ -465,6 +549,109 @@ class ExperimentService:
             "latest_game_id": latest_game_id,
             "paired_games": paired_games,
         }
+
+    async def _build_timeline(
+        self,
+        repo: ExperimentRepository,
+        experiment: dict[str, Any],
+    ) -> list[dict[str, Any]]:
+        experiment_id = str(experiment["id"])
+        events: list[dict[str, Any]] = [
+            {
+                "id": "created",
+                "at": experiment["created_at"],
+                "ref_id": experiment_id,
+            }
+        ]
+        stamps = await repo.first_game_timestamps(experiment_id)
+        if stamps.get("first_collect"):
+            events.append(
+                {
+                    "id": "first_collect",
+                    "at": stamps["first_collect"],
+                    "ref_id": None,
+                }
+            )
+        if stamps.get("first_finished"):
+            events.append(
+                {
+                    "id": "first_finished",
+                    "at": stamps["first_finished"],
+                    "ref_id": None,
+                }
+            )
+        dataset_at = await repo.first_dataset_at(experiment_id)
+        if dataset_at:
+            events.append({"id": "dataset_registered", "at": dataset_at, "ref_id": None})
+        training_at = await repo.first_training_completed_at(experiment_id)
+        if training_at:
+            events.append({"id": "training_completed", "at": training_at, "ref_id": None})
+        controls = await repo.list_control_experiments(experiment_id)
+        for ctrl in controls:
+            events.append(
+                {
+                    "id": "control_created",
+                    "at": ctrl["created_at"],
+                    "ref_id": ctrl["id"],
+                }
+            )
+        events.sort(key=lambda e: str(e["at"]))
+        return events
+
+    async def _build_validation(
+        self,
+        repo: ExperimentRepository,
+        experiment: dict[str, Any],
+        summary: dict[str, Any],
+    ) -> dict[str, Any]:
+        experiment_id = str(experiment["id"])
+        controls = await repo.list_control_experiments(experiment_id)
+        control_ids = [c["id"] for c in controls]
+        paired_n = int(summary.get("paired_games") or 0)
+        finished = int(summary.get("finished_games") or 0)
+        target = int(summary.get("target_games") or 0)
+        validation_ready = bool(control_ids) and (
+            paired_n >= 5 or finished >= target
+        )
+        suggested = [experiment_id]
+        if control_ids:
+            suggested.append(control_ids[0])
+        return {
+            "control_experiment_ids": control_ids,
+            "validation_ready": validation_ready,
+            "suggested_compare_ids": suggested,
+            "paired_n": paired_n,
+        }
+
+    @staticmethod
+    def _build_next_step(
+        experiment: dict[str, Any],
+        summary: dict[str, Any],
+        validation: dict[str, Any],
+    ) -> dict[str, Any]:
+        status = str(summary.get("status") or "pending_collect")
+        usable = int(summary.get("train_usable_decisions") or 0)
+        decision_count = int(summary.get("decision_count") or 0)
+        not_usable = decision_count - usable
+        control_ids = list(validation.get("control_experiment_ids") or [])
+
+        if status == "pending_collect":
+            return {"id": "collect", "action": "collect"}
+        if status == "collecting":
+            return {"id": "watch", "action": "games"}
+        if usable > 0 and decision_count > 0 and not_usable / decision_count > 0.2:
+            return {"id": "review_decisions", "action": "decisions"}
+        if usable > 0 and not control_ids:
+            return {"id": "register_train", "action": "train"}
+        if usable > 0 and control_ids and validation.get("validation_ready"):
+            return {"id": "compare", "action": "compare"}
+        if usable > 0 and control_ids:
+            return {"id": "open_control", "action": "control"}
+        if status in ("ready_review", "ready_more") and usable == 0:
+            return {"id": "decisions", "action": "decisions"}
+        if status == "ready_more":
+            return {"id": "collect_more", "action": "collect"}
+        return {"id": "review", "action": "games"}
 
     @staticmethod
     def _attach_compare_metrics(

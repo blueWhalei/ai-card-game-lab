@@ -36,6 +36,9 @@ export interface DecisionStats {
   max_quality: number
   outcome_counts: Record<string, number>
   phase_counts: Record<string, number>
+  train_usable_count?: number
+  not_usable_count?: number
+  usable_rate?: number
 }
 
 export interface ExportResult {
