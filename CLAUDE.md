@@ -224,7 +224,7 @@ Routing is by `game_type`; no API/Service/Repository changes for a well-behaved 
 - Frontend: shared API errors via `src/api/client.ts` and `src/utils/error.ts`.
 - Frontend: `@` → `web/src/`.
 - Tests: pytest `asyncio_mode = auto`; `httpx.AsyncClient` + `ASGITransport`. Frontend: Vitest (`src/**/*.spec.ts`).
-- Git: conventional commits `<type>(<scope>): <subject>`. Integration branch is **`develop`**. `origin/HEAD` is `master`. Do not create a feature branch unless the user asks.
+- Git: conventional commits `<type>(<scope>): <subject>`. Default branch is **`main`**. Do not create a feature branch unless the user asks.
 - No cross-layer calls. No global mutable state.
 
 ## Documentation map

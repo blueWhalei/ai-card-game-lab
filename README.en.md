@@ -1,197 +1,89 @@
+<p align="center">
+  <img src="web/public/logo.png" alt="AI Card Game Lab" width="88">
+</p>
+
 # AI Card Game Lab
 
 [中文](README.md) | English
 
-A local lab for AI-vs-AI card games: watch model decisions, collect play data, and distill a smaller specialist model.
-
-## What it does
-
-- **Experiment detail**: an experiment is first-class — player count comes from the engine min/max. Start games, watch, register training, start a control run, and compare experiments from the detail page.
-- **Shared game engine**: common card-game pieces so new titles plug in quickly (first game: Dou Dizhu).
-- **Live chain-of-thought**: WebSocket streams AI reasoning, including streamed tokens and usage.
-- **Collect loop**: full JSONL archive plus SQLite indexes; decision points export to ChatML, filterable by experiment.
-- **Data dashboard**: tokens, game quality, AI performance, latency, and more.
-- **Distillation**: PEFT LoRA (CPU smoke when there is no GPU). A finished model can be registered as an Ollama player and used in a control experiment.
+Local AI card-game lab: experiments as the unit—watch decisions, collect games, LoRA fine-tune, and validate with controls.
 
 ## Stack
 
 | Layer | Choice |
 |-------|--------|
-| Frontend | Vue 3 + TypeScript + Vite + Tailwind CSS v4 + Reka UI (Ink Lab dual shell) |
-| Backend | Python 3.11+ / FastAPI + WebSocket |
-| LLM | OpenAI / Ollama / DashScope / DeepSeek / Kimi / ZhipuAI / Yi / Baichuan / MiniMax |
-| Metadata | SQLite (index / query / stats) |
-| Archive | Local JSONL files |
-| Training | `poetry install --with training` enables PEFT LoRA (Transformers); CPU smoke without a GPU |
+| Frontend | Vue 3 · TypeScript · Vite · Tailwind v4 · Reka UI |
+| Backend | Python 3.11+ · FastAPI · WebSocket |
+| LLM | OpenAI · Ollama · DashScope · DeepSeek · Kimi · Zhipu · Yi · Baichuan · MiniMax |
+| Storage | SQLite index + JSONL archive |
+| Training | PEFT LoRA (`poetry install --with training`; CPU smoke without GPU) |
 
 ## Quick start
 
-### Requirements
-
-- Python 3.11+
-- Node.js 20.19+ or 22.12+
-- Poetry
-- Optional: Ollama (local models, no cloud key)
-
-### Install and run
+**Requires**: Python 3.11+ · Node 20.19+ / 22.12+ · Poetry · (optional) Ollama
 
 ```bash
-# 1. Clone
 git clone https://github.com/blueWhalei/ai-card-game-lab.git
 cd ai-card-game-lab
+cp .env.example .env    # Windows: copy .env.example .env
 
-# 2. Copy env
-cp .env.example .env          # macOS / Linux
-# copy .env.example .env      # Windows cmd
-# Edit .env: add at least one cloud API key, or use local Ollama
-# Create player configs on the Player configs page; there is no YAML seed
-
-# 3. Python deps
-cd server
-poetry install
-
-# 4. Backend
+cd server && poetry install
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
-# 5. Frontend (new terminal)
-cd ../web
-npm install
-npm run dev
+cd ../web && npm install && npm run dev
 ```
 
-### First-run checklist
+Open http://localhost:5173 . Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo game** on the home page.
 
-1. `.env` is copied, and you have either a cloud API key or local Ollama.
-2. Open **Player configs** and create as many players as the engine needs (Dou Dizhu needs 3). The list starts empty — use the empty-state button.
-3. After the backend starts, see http://localhost:8000/api/v1/system/startup-check for warnings.
-4. Collecting games checks the selected config’s API key; a missing key is rejected up front, not after kickoff.
-5. Training needs `cd server && poetry install --with training`. Missing deps block task creation; no GPU uses CPU smoke.
-6. With no key, use **Load demo game** on the home page to try watch and replay (demo games are not tied to an experiment).
+## Main loop
 
-### Researcher path (recommended)
+1. **Player configs** — model and sampling  
+2. **New experiment** — pick players and target games (does not auto-start)  
+3. **Start games** — collect from experiment detail; watch and replay  
+4. **Register & train** — export ChatML when trainable decisions are ready  
+5. **Model repo** — push to Ollama or register as player  
+6. **Control / compare** — control run and compare win rates and latency  
 
-Open http://localhost:5173 — the home page is the **experiment list**.
+Benchmark mode uses fixed deal seeds (up to 50 games). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Data & training** (`?experiment_id=`). Usage guide: header book icon → `/guide`.
 
-1. **Create player configs** on the Player configs page (model / temperature / …) for each engine slot
-2. **Create an experiment**: pick configs + target game count → open detail (**does not** start games, so you do not burn a key by accident)
-3. **Collect / start n more**: batch-start from the detail page; watch live games, replay finished ones
-4. **Register and train**: when trainable decisions > 0, register ChatML and create a training task (register-only if training deps are missing)
-5. **Training · model repo**: export a deploy bundle → (local GGUF + `ollama create`) → **Register as player**
-6. **Control experiment**: pick the new player plus the same number of baselines as engine slots → collect again; **Compare experiments** for win-rate CI / latency / tokens
+Script loop: `.\scripts\e2e_pipeline.ps1 all -Count 1` — see [E2E guide](docs/E2E_PIPELINE.md).
 
-The **Trial games** sidebar creates games not tied to an experiment. Experiment detail has **Games / Players** tabs only; decisions, traces, data, and training live under **Data & training** with `?experiment_id=` deep links and a context bar back to the experiment. See **Usage guide** at `/guide` (book icon in the header).
+## Config
 
-You can also run the script loop (not via an experiment object):
-
-```powershell
-.\scripts\e2e_pipeline.ps1 guide
-.\scripts\e2e_pipeline.ps1 check
-.\scripts\e2e_pipeline.ps1 all -Count 1   # collect → export → real train (needs training extras)
-```
-
-Full notes: [end-to-end pipeline](docs/E2E_PIPELINE.md).
-
-### URLs
-
-- UI: http://localhost:5173 (dev)
-  - **Ink Lab dual shell**: experiment list by default; `/experiments/:id` is experiment detail; `/game/:id` is fullscreen watch (`GenericBoard`); `/guide` is the usage guide
-- API docs: http://localhost:8000/docs (Swagger)
-- Alternate docs: http://localhost:8000/redoc (ReDoc)
-
-### Player configs
-
-Configs live only in **SQLite** and are created or edited on the Player configs page. There is no YAML seed: the table is empty on first boot. Create enough configs for the engine slots before you create an experiment.
-
-### API keys
-
-Edit `.env` at the repo root:
+`.env` at repo root:
 
 ```bash
-DEEPSEEK_API_KEY=sk-your-deepseek-key
+DEEPSEEK_API_KEY=sk-...
 DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
-
-# or OpenAI / local Ollama
-OPENAI_API_KEY=sk-your-openai-key
-OLLAMA_BASE_URL=http://localhost:11434
+# or OPENAI_API_KEY / OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-### Trial games (optional)
-
-The Trial games page can still create 1–50 games that are not tied to an experiment. They still feed decisions and the dashboard. Prefer starting games from experiment detail when you want filtering and controls.
-
-### Watching
-
-- **Live**: WebSocket pushes decisions and reasoning
-- **Table**: `GenericBoard` list view; step replay after the game ends
-
-### Provider field examples
-
-Fill these on the Player configs page:
-
-| provider | example model_name |
-|----------|--------------------|
+| provider | example model |
+|----------|----------------|
 | `openai` | `gpt-4o-mini` |
 | `deepseek` | `deepseek-v4-flash` |
 | `ollama` | `qwen2.5:7b` |
 | `dashscope` | `qwen-plus` |
 
-Sampling uses `temperature`, `top_p`, and `max_tokens`. Put intent in `notes` (e.g. high-temperature control).
+## Links
+
+| URL | |
+|-----|---|
+| http://localhost:5173 | UI |
+| http://localhost:8000/docs | API docs |
+| http://localhost:8000/api/v1/system/startup-check | Startup check |
 
 ## Docs
 
-| Doc | Role |
-|-----|------|
-| [CLAUDE.md](CLAUDE.md) | Agent / developer entry (English, kept with the code) |
-| [End-to-end pipeline](docs/E2E_PIPELINE.md) | ~1 hour collect → train → deploy + scripts |
-| Usage guide | Frontend `/guide` (header book icon): modules and flow diagrams |
-| [Architecture](docs/ARCHITECTURE.md) | Layers and core flows |
-| [Project structure](docs/PROJECT_STRUCTURE.md) | Directory map |
-| [Coding standards](docs/CODING_STANDARDS.md) | Python / TypeScript / Vue + i18n copy rules |
+| Doc | |
+|-----|---|
+| [E2E pipeline](docs/E2E_PIPELINE.md) | Collect → train → deploy |
+| [Architecture](docs/ARCHITECTURE.md) | Layers and flows |
 | [API design](docs/API_DESIGN.md) | REST + WebSocket |
-| [Examples](docs/EXAMPLES.md) | New engine / provider / event handler |
-
-## Roadmap
-
-### Phase 1 — core loop
-- [x] FastAPI + Vue 3 skeleton
-- [x] Dou Dizhu engine
-- [x] Unified LLM client (OpenAI + Ollama + 8 domestic providers)
-- [x] Collector (JSONL + SQLite)
-- [x] Observer (WebSocket + replay)
-
-### Phase 2 — data and training
-- [x] Stats dashboard
-- [x] Dataset filter / export
-- [x] Decision `train_usable` filter + ChatML export (thinking off by default)
-- [x] Training task UI (PEFT LoRA / CPU smoke)
-- [x] Model repo
-- [x] Real SFT (`training` extra: Transformers + PEFT)
-- [x] Deploy bundle (merge + Modelfile + llama.cpp GGUF scripts) + Ollama verify / smoke game
-- [x] One-shot scripts (`scripts/e2e_pipeline.*`)
-
-### Phase 3 — experiments
-- [x] List / detail page (primary CTA, results strip, Games & Players tabs; pipeline deep links)
-- [x] Per-experiment decision export + register-and-train
-- [x] Register a trained model as an Ollama player + control experiment
-- [x] UI density (KPI strip, compact lists, compare matrix) + prompts / trial games / configs aligned; centralized `/guide`
-
-> **Note**: `quality_score` on a decision is an **outcome** score (win 0.8 / loss 0.3 / draw 0.5), not a move-quality score. SFT filtering uses `train_usable`. Register-and-train lives on the experiment detail page (and on Decisions). Export defaults to `include_thinking=false`.
->
-> **Real training**: `cd server && poetry install --with training`. Output is `models/<task_id>/adapter/` LoRA weights. No GPU clamps steps and samples (CPU smoke).
->
-> **Local deploy**:
-> 1. Export deploy bundle from the training page → `models/<id>/deploy/`
-> 2. Set `LLAMA_CPP_DIR` and run the convert script for `model.gguf`
-> 3. `ollama create <tag> -f Modelfile` (tag matches “register as player”, e.g. `acgl-…`)
-> 4. Register as player → control experiment on the detail page
->
-> **Script loop**: [docs/E2E_PIPELINE.md](docs/E2E_PIPELINE.md)
-
-### Phase 4 — more (ongoing)
-- [x] Compare experiments (`/experiments/compare` + `GET /api/v1/experiments/compare`)
-- [x] One-click merge → GGUF → `ollama create` (needs `LLAMA_CPP_DIR`)
-- [ ] More engines (e.g. Sanguosha)
-- [ ] Stronger training (e.g. PPO)
+| [Project structure](docs/PROJECT_STRUCTURE.md) | Directory map |
+| [Coding standards](docs/CODING_STANDARDS.md) | Python / Vue / i18n |
+| [Examples](docs/EXAMPLES.md) | New engine / provider |
+| [CLAUDE.md](CLAUDE.md) | Agent entry |
 
 ## License
 
