@@ -94,7 +94,7 @@ function formatRate(rate: number): string {
         </UiButton>
       </div>
       <div v-if="loading" class="flex justify-center py-3">
-        <UiSpinner />
+        <UiSpinner :label="t('common.loading')" />
       </div>
       <div v-else-if="result" class="overflow-x-auto rounded-ink border border-ink-border">
         <table class="w-full text-left text-sm">

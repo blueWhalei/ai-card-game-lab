@@ -9,7 +9,8 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.engine.base import GameAction, GameEngine, GameState
+from app.core.engine.base import EngineCapability, GameAction, GameEngine, GameState
+from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
 from app.core.engine.doudizhu.cards import (
     FULL_DECK,
     ActionType,
@@ -62,6 +63,29 @@ class DoudizhuState(GameState):
     current_highest_bidder: str = ""
 
 
+# Action type priority for prompt listing (higher = shown first)
+_ACTION_PRIORITY: dict[str, int] = {
+    ActionType.ROCKET: 14,
+    ActionType.BOMB: 13,
+    ActionType.AIRPLANE_PAIR: 12,
+    ActionType.AIRPLANE_SOLO: 11,
+    ActionType.AIRPLANE: 10,
+    ActionType.FOUR_TWO: 9,
+    ActionType.CHAIN_PAIR: 8,
+    ActionType.CHAIN: 7,
+    ActionType.TRIPLE_TWO: 6,
+    ActionType.TRIPLE_ONE: 5,
+    ActionType.TRIPLE: 4,
+    ActionType.PAIR: 3,
+    ActionType.SINGLE: 2,
+    ActionType.PASS: 1,
+    ActionType.BID_PASS: 0,
+    ActionType.BID: 13,
+}
+
+_DOUDIZHU_RULES_REF = "docs/欢乐斗地主经典玩法规则.md"
+
+
 class DoudizhuEngine(GameEngine):
     """Doudizhu game engine supporting 3 players."""
 
@@ -76,6 +100,72 @@ class DoudizhuEngine(GameEngine):
     @property
     def max_players(self) -> int:
         return 3
+
+    @property
+    def capability(self) -> EngineCapability:
+        return EngineCapability(
+            game_type="doudizhu",
+            min_players=3,
+            max_players=3,
+            engine_version="1",
+            phases=("bidding", "playing"),
+            prompt_keys={
+                "playing": "doudizhu_playing",
+                "bidding": "doudizhu_bidding",
+            },
+            supports_deal_seed=True,
+            benchmark_seeds=tuple(BENCHMARK_DEAL_SEEDS),
+            roles=("landlord", "peasant"),
+            eval_metric_ids=(
+                "role:landlord",
+                "parser_success",
+                "train_usable",
+                "latency_p50_p95",
+            ),
+            decision_schema_version=1,
+            rules_ref=_DOUDIZHU_RULES_REF,
+        )
+
+    def format_legal_actions_for_prompt(
+        self, state: GameState, actions: list[GameAction]
+    ) -> str:
+        del state
+        if not actions:
+            return "无可选动作"
+
+        def sort_key(a: GameAction) -> tuple[int, int]:
+            priority = _ACTION_PRIORITY.get(str(a.action_type), 0)
+            if a.action_type == ActionType.BID and a.target:
+                return (priority, int(a.target))
+            card_power = max((ord(c[0]) for c in a.cards), default=0) if a.cards else 0
+            return (priority, card_power)
+
+        sorted_actions = sorted(actions, key=sort_key, reverse=True)
+        lines: list[str] = []
+        seen: set[str] = set()
+        for a in sorted_actions:
+            cards_str = " ".join(sort_cards(a.cards)) if a.cards else ""
+            key = f"{a.action_type}:{cards_str}:{getattr(a, 'target', '')}"
+            if key in seen:
+                continue
+            seen.add(key)
+
+            if a.action_type == ActionType.PASS:
+                lines.append(f"{len(lines) + 1}. PASS（不出）")
+            elif a.action_type == ActionType.BID_PASS:
+                lines.append(f"{len(lines) + 1}. BID_PASS（不叫）")
+            elif a.action_type == ActionType.BID:
+                lines.append(f"{len(lines) + 1}. BID {a.target}分（叫{a.target}分）")
+            else:
+                lines.append(f"{len(lines) + 1}. {a.action_type}: [{cards_str}]")
+
+            if len(lines) >= 80:
+                remaining = len(sorted_actions) - len(seen)
+                if remaining > 0:
+                    lines.append(f"...还有 {remaining} 个可选动作未列出")
+                break
+
+        return "\n".join(lines)
 
     def initialize(self, player_ids: list[str], **params: Any) -> DoudizhuState:
         if not (self.min_players <= len(player_ids) <= self.max_players):

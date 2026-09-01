@@ -25,6 +25,11 @@ async def test_engines_include_doudizhu_player_slots(client: AsyncClient) -> Non
     engines = {item["id"]: item for item in body["data"]}
     assert engines["doudizhu"]["min_players"] == 3
     assert engines["doudizhu"]["max_players"] == 3
+    assert engines["doudizhu"]["phases"] == ["bidding", "playing"]
+    assert engines["doudizhu"]["prompt_keys"]["playing"] == "doudizhu_playing"
+    assert engines["doudizhu"]["benchmark_seed_count"] > 0
+    assert "benchmark_seeds" not in engines["doudizhu"]
+    assert "role:landlord" in engines["doudizhu"]["eval_metric_ids"]
 
 
 async def test_seed_demo_is_idempotent(client: AsyncClient) -> None:
@@ -52,3 +57,40 @@ async def test_startup_check(client: AsyncClient) -> None:
     assert "can_collect" in data
     assert "warnings" in data
     assert isinstance(data["providers"], list)
+    assert "checks" in data
+    assert "ok" in data
+
+
+async def test_preflight_all_scope(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/system/preflight", params={"scope": "all"})
+    assert response.status_code == 200
+    data = response.json()["data"]
+    ids = {c["id"] for c in data["checks"]}
+    assert "providers_any" in ids
+    assert "training_deps" in ids
+    assert "memory_smoke" in ids
+    assert isinstance(data["can_collect"], bool)
+    assert isinstance(data["can_train"], bool)
+
+
+async def test_preflight_collect_with_experiment(client: AsyncClient) -> None:
+    create = await client.post(
+        "/api/v1/experiments",
+        json={
+            "name": "preflight-exp",
+            "player_ids": ["cfg_temp_09", "cfg_temp_06", "cfg_temp_12"],
+            "target_games": 2,
+        },
+    )
+    assert create.status_code == 201, create.text
+    exp_id = create.json()["data"]["id"]
+    response = await client.get(
+        "/api/v1/system/preflight",
+        params={"scope": "collect", "experiment_id": exp_id},
+    )
+    assert response.status_code == 200
+    data = response.json()["data"]
+    ids = {c["id"] for c in data["checks"]}
+    assert "protocol" in ids
+    assert "providers_seats" in ids
+    assert "providers_any" not in ids

@@ -39,51 +39,65 @@ const primaryIsWatch = computed(() => props.nextStep?.action === 'games')
 const showWatchSecondary = computed(
   () => !primaryIsWatch.value && Boolean(props.latestGameId),
 )
+
+const metaChipClass =
+  'inline-flex h-5 shrink-0 items-center rounded-[6px] bg-ink-surface-muted px-1.5 text-xs font-medium tabular-nums leading-none text-ink-text-secondary'
 </script>
 
 <template>
   <div
     class="rounded-ink-md border border-ink-border bg-ink-surface-muted/50 px-3 py-2.5"
   >
-    <div class="flex flex-wrap items-center gap-x-3 gap-y-2">
-      <button
-        type="button"
-        class="inline-flex shrink-0 items-center gap-1 text-sm text-ink-text-secondary hover:text-ink-text"
-        @click="emit('back')"
-      >
-        <Icon icon="lucide:arrow-left" class="h-4 w-4" />
-        <span class="hidden sm:inline">{{ t('experiment.backToList') }}</span>
-      </button>
-
+    <div class="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+      <!-- Left: identity + meta -->
       <div class="min-w-0 flex-1">
-        <div class="flex flex-wrap items-center gap-2">
-          <h1 class="truncate text-base font-semibold text-ink-text">{{ name }}</h1>
-          <UiBadge :variant="statusVariant" class="shrink-0">{{ statusLabel }}</UiBadge>
-          <UiBadge v-if="benchmark" variant="accent" class="shrink-0">
+        <button
+          type="button"
+          class="mb-1.5 inline-flex h-6 items-center gap-1 text-xs text-ink-text-secondary hover:text-ink-text"
+          @click="emit('back')"
+        >
+          <Icon icon="lucide:arrow-left" class="h-3.5 w-3.5" />
+          <span>{{ t('experiment.backToList') }}</span>
+        </button>
+
+        <h1 class="truncate text-base font-semibold leading-tight text-ink-text">
+          {{ name }}
+        </h1>
+
+        <div class="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <UiBadge :variant="statusVariant" size="xs">{{ statusLabel }}</UiBadge>
+          <UiBadge v-if="benchmark" variant="accent" size="xs">
             {{ t('experiment.modeBenchmark') }}
           </UiBadge>
-          <span class="shrink-0 text-xs tabular-nums text-ink-text-secondary sm:text-sm">
+          <span :class="metaChipClass">
             {{ finished }}/{{ target }}
           </span>
           <span
             v-if="usableDecisions > 0"
-            class="shrink-0 text-xs tabular-nums text-ink-primary"
+            :class="[metaChipClass, 'bg-ink-primary-muted text-ink-primary']"
           >
             {{ t('experiment.kpiUsable') }} {{ usableDecisions }}
           </span>
         </div>
-        <p v-if="subtitle?.trim()" class="mt-0.5 line-clamp-1 text-xs text-ink-text-secondary">
+
+        <p
+          v-if="subtitle?.trim()"
+          class="mt-1.5 line-clamp-1 text-xs leading-snug text-ink-text-secondary"
+        >
           {{ subtitle }}
         </p>
         <p
           v-else-if="nextStepHint"
-          class="mt-0.5 line-clamp-1 text-xs text-ink-text-secondary"
+          class="mt-1.5 line-clamp-1 text-xs leading-snug text-ink-text-secondary"
         >
           {{ nextStepHint }}
         </p>
       </div>
 
-      <div class="flex shrink-0 flex-wrap items-center gap-1.5">
+      <!-- Right: primary CTA + secondary + overflow, one tight cluster -->
+      <div
+        class="flex shrink-0 flex-wrap items-center gap-1.5 border-t border-ink-border pt-2 sm:border-t-0 sm:pt-0"
+      >
         <UiButton size="sm" :disabled="primaryDisabled" @click="emit('primary')">
           <Icon v-if="primaryIsWatch" icon="lucide:eye" class="mr-1 h-3.5 w-3.5" />
           <Icon
@@ -100,10 +114,11 @@ const showWatchSecondary = computed(
           type="button"
           @click="emit('openLatest')"
         >
+          <Icon icon="lucide:eye" class="mr-1 h-3.5 w-3.5" />
           {{ t('experiment.openLatest') }}
         </UiButton>
         <UiDropdownMenu :items="openMenuItems" @select="emit('menuSelect', $event)">
-          <UiButton size="sm" variant="secondary" type="button">
+          <UiButton size="sm" variant="secondary" type="button" :aria-label="t('common.more')">
             <Icon icon="lucide:more-horizontal" class="h-4 w-4" />
           </UiButton>
         </UiDropdownMenu>

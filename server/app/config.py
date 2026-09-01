@@ -18,7 +18,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_name: str = "AI Card Game Lab"
+    app_name: str = "CardLab"
     app_debug: bool = False
     app_host: str = "0.0.0.0"
     app_port: int = 8000

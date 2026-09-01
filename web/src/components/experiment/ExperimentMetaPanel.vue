@@ -49,6 +49,27 @@ const metaSummaryBits = computed((): string[] => {
   if (bits.length === 0) bits.push(t('experiment.metaPanelEmpty'))
   return bits
 })
+
+const fingerprintBits = computed((): string[] => {
+  const p = props.protocol
+  if (!p) return []
+  const bits: string[] = []
+  if (p.game_type) bits.push(`${t('experiment.fingerprintGame')}: ${p.game_type}`)
+  if (p.engine_version) bits.push(`${t('experiment.fingerprintEngine')}: ${p.engine_version}`)
+  if (p.decision_schema_version != null) {
+    bits.push(`${t('experiment.fingerprintDecision')}: v${p.decision_schema_version}`)
+  }
+  if (p.phases?.length) bits.push(`${t('experiment.fingerprintPhases')}: ${p.phases.join(', ')}`)
+  if (p.prompt_keys && Object.keys(p.prompt_keys).length) {
+    bits.push(
+      `${t('experiment.fingerprintPrompts')}: ${Object.entries(p.prompt_keys)
+        .map(([k, v]) => `${k}→${v}`)
+        .join(', ')}`,
+    )
+  }
+  if (p.rules_ref) bits.push(`${t('experiment.fingerprintRules')}: ${p.rules_ref}`)
+  return bits
+})
 </script>
 
 <template>
@@ -98,6 +119,15 @@ const metaSummaryBits = computed((): string[] => {
 
       <div v-if="protocol" class="space-y-2 text-sm text-ink-text-secondary">
         <p class="text-xs font-medium text-ink-text">{{ t('experiment.protocolTitle') }}</p>
+        <ul v-if="fingerprintBits.length" class="flex flex-wrap gap-1.5 text-xs">
+          <li
+            v-for="(bit, i) in fingerprintBits"
+            :key="i"
+            class="rounded-[6px] bg-ink-surface-muted px-1.5 py-0.5 text-ink-text-secondary"
+          >
+            {{ bit }}
+          </li>
+        </ul>
         <ul class="flex flex-wrap gap-1.5">
           <li
             v-for="p in protocolPlayers"
@@ -175,6 +205,15 @@ const metaSummaryBits = computed((): string[] => {
     >
       <div class="space-y-3 text-sm text-ink-text-secondary">
         <p class="text-sm font-medium text-ink-text">{{ t('experiment.protocolTitle') }}</p>
+        <ul v-if="fingerprintBits.length" class="flex flex-wrap gap-1.5 text-xs">
+          <li
+            v-for="(bit, i) in fingerprintBits"
+            :key="i"
+            class="rounded-[6px] bg-ink-surface px-1.5 py-0.5 text-ink-text-secondary"
+          >
+            {{ bit }}
+          </li>
+        </ul>
         <ul class="flex flex-wrap gap-2">
           <li
             v-for="p in protocolPlayers"

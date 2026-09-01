@@ -85,7 +85,9 @@ export const TEMPLATE_KEY_LABELS: Record<string, string> = {
   },
 }
 
-/** Prompt template key options for select dropdowns */
+/** Prompt template key options for select dropdowns.
+ * Keep aligned with engine capability.prompt_keys (currently doudizhu only).
+ */
 export function templateKeyOptions(): { value: string; label: string }[] {
   return [
     { value: 'doudizhu_playing', label: tt('prompt.keyPlayingOpt') },

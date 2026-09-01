@@ -154,7 +154,7 @@ def test_push_lora_reuses_gguf_skips_convert(tmp_path: Path) -> None:
         patch("app.core.training.deploy.convert_merged_to_gguf") as convert_mock,
         patch(
             "app.core.training.deploy.try_ollama_create",
-            return_value={"created": True, "tag": "acgl-task3abcde", "returncode": 0},
+            return_value={"created": True, "tag": "cardlab-task3abcde", "returncode": 0},
         ),
     ):
         result = push_lora_to_ollama(

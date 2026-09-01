@@ -4,7 +4,7 @@
 新游戏只需注册到注册表，无需修改现有代码。
 """
 
-from app.core.engine.base import GameEngine
+from app.core.engine.base import EngineCapability, GameEngine
 from app.utils.exceptions import UnsupportedGameTypeError
 
 
@@ -19,14 +19,6 @@ class GameEngineRegistry:
 
     Attributes:
         _engines: 内部存储引擎的字典，键为游戏类型，值为引擎实例。
-
-    Example:
-        >>> registry = GameEngineRegistry()
-        >>> registry.register(DoudizhuEngine())
-        >>> registry.register(SanguoshaEngine())
-        >>> engine = registry.get("doudizhu")
-        >>> registry.list_game_types()
-        ['doudizhu', 'sanguosha']
     """
 
     def __init__(self) -> None:
@@ -34,74 +26,31 @@ class GameEngineRegistry:
         self._engines: dict[str, GameEngine] = {}
 
     def register(self, engine: GameEngine) -> None:
-        """注册一个游戏引擎实例。
-
-        将引擎实例注册到注册表中，使用引擎的 game_type 属性作为键。
-        如果已存在相同游戏类型的引擎，将被覆盖。
-
-        Args:
-            engine: 要注册的游戏引擎实例。必须实现 GameEngine 接口。
-
-        Example:
-            >>> registry = GameEngineRegistry()
-            >>> engine = DoudizhuEngine()
-            >>> registry.register(engine)
-            >>> "doudizhu" in registry.list_game_types()
-            True
-        """
+        """注册一个游戏引擎实例。"""
         self._engines[engine.game_type] = engine
 
     def get(self, game_type: str) -> GameEngine:
-        """根据游戏类型获取引擎实例。
-
-        从注册表中查找并返回指定游戏类型的引擎实例。
-
-        Args:
-            game_type: 游戏类型标识符，如 'doudizhu'、'sanguosha'。
-
-        Returns:
-            对应游戏类型的引擎实例。
-
-        Raises:
-            UnsupportedGameTypeError: 如果请求的游戏类型未注册。
-
-        Example:
-            >>> registry = GameEngineRegistry()
-            >>> registry.register(DoudizhuEngine())
-            >>> engine = registry.get("doudizhu")
-            >>> engine.game_type
-            'doudizhu'
-            >>> registry.get("unknown")  # raises UnsupportedGameTypeError
-        """
+        """根据游戏类型获取引擎实例。"""
         engine = self._engines.get(game_type)
         if engine is None:
             raise UnsupportedGameTypeError(game_type)
         return engine
 
-    def describe_engines(self) -> list[dict[str, str | int]]:
-        """Return registered engines with player-count constraints."""
+    def describe_engines(self) -> list[dict[str, object]]:
+        """Return registered engines with full capability (seeds as count only)."""
         return [
-            {
-                "id": engine.game_type,
-                "min_players": engine.min_players,
-                "max_players": engine.max_players,
-            }
+            engine.capability.to_public_dict(include_seeds=False)
             for engine in self._engines.values()
         ]
 
+    def default_game_type(self) -> str | None:
+        """First registered engine id, or None if empty."""
+        types = self.list_game_types()
+        return types[0] if types else None
+
+    def get_capability(self, game_type: str) -> EngineCapability:
+        return self.get(game_type).capability
+
     def list_game_types(self) -> list[str]:
-        """获取所有已注册的游戏类型标识符。
-
-        返回注册表中所有游戏类型的列表，用于展示可用游戏或验证。
-
-        Returns:
-            已注册游戏类型的字符串列表，顺序不保证。
-
-        Example:
-            >>> registry = GameEngineRegistry()
-            >>> registry.register(DoudizhuEngine())
-            >>> registry.register(SanguoshaEngine())
-            >>> sorted(registry.list_game_types())
-            ['doudizhu', 'sanguosha']
-        """
+        """获取所有已注册的游戏类型标识符。"""
         return list(self._engines.keys())

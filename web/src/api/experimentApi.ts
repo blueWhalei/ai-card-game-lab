@@ -83,6 +83,22 @@ export interface ExperimentProtocol {
   pair_deals: boolean
   deal_seeds: number[]
   collect_mode?: CollectMode
+  game_type: string
+  engine_version: string
+  decision_schema_version: number
+  rules_ref: string | null
+  phases: string[]
+  prompt_keys: Record<string, string>
+  roles: string[]
+  eval_metric_ids: string[]
+  supports_deal_seed: boolean
+  benchmark_seed_count: number
+}
+
+export interface ExperimentCredibility {
+  decisive_n: number
+  landlord_ci_width: number | null
+  low_power: boolean
 }
 
 export interface ExperimentSummary {
@@ -115,6 +131,7 @@ export interface ExperimentSummary {
   player_stats: ExperimentPlayerStat[]
   latest_game_id: string | null
   paired_games?: number
+  credibility?: ExperimentCredibility
 }
 
 export interface Experiment {
@@ -212,6 +229,7 @@ export interface ExperimentCompareRow {
   decisive_games?: number
   landlord_win_rate?: number
   landlord_win_rate_ci?: [number, number]
+  credibility?: ExperimentCredibility
   status_counts?: Record<string, number>
   player_stats: ExperimentComparePlayerStat[]
   paired_n?: number

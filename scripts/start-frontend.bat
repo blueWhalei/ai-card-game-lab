@@ -1,11 +1,11 @@
 @echo off
 chcp 65001 >nul
 echo ========================================
-echo   AI Card Game Lab - Frontend Server
+echo   CardLab - Frontend Server
 echo ========================================
 echo.
 
-cd /d "%~dp0web"
+cd /d "%~dp0..\web"
 
 echo Checking Node.js installation...
 where node >nul 2>&1

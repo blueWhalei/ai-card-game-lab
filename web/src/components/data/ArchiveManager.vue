@@ -114,7 +114,7 @@ async function handleDeleteFile(filename: string) {
 
 <template>
   <div class="relative space-y-6">
-    <UiSpinner v-if="loading" overlay />
+    <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
 
     <div class="ink-card">
       <h3 class="mb-4 text-base font-semibold text-ink-text">{{ t('data.archiveStats') }}</h3>

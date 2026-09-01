@@ -23,6 +23,9 @@ async def db_path(tmp_path: Path) -> str:
 
 
 def _fake_game_service() -> MagicMock:
+    from app.core.engine.doudizhu.engine import DoudizhuEngine
+    from app.core.engine.registry import GameEngineRegistry
+
     cfg_svc = MagicMock()
     configs = {
         "cfg_a": {
@@ -75,9 +78,12 @@ def _fake_game_service() -> MagicMock:
         },
     }
     cfg_svc.get_config.side_effect = lambda pid: configs.get(pid)
+    registry = GameEngineRegistry()
+    registry.register(DoudizhuEngine())
     gs = MagicMock()
     gs.player_slots.return_value = (3, 3)
     gs._experiment_config_service = cfg_svc
+    gs._engine_registry = registry
     gs.create_game = AsyncMock()
     gs.start_game = AsyncMock()
     return gs
@@ -100,6 +106,14 @@ async def test_create_freezes_player_protocol(db_path: str) -> None:
     assert protocol["deal_seeds"] == []
     assert [p["id"] for p in protocol["players"]] == ["cfg_a", "cfg_b", "cfg_c"]
     assert protocol["players"][0]["model_config"]["temperature"] == 0.7
+    assert protocol["game_type"] == "doudizhu"
+    assert protocol["engine_version"] == "1"
+    assert protocol["decision_schema_version"] == 1
+    assert protocol["phases"] == ["bidding", "playing"]
+    assert protocol["prompt_keys"]["playing"] == "doudizhu_playing"
+    assert "landlord" in protocol["roles"]
+    assert "role:landlord" in protocol["eval_metric_ids"]
+    assert protocol["supports_deal_seed"] is True
 
 
 async def test_collect_assigns_seeds_and_frozen_players(db_path: str) -> None:

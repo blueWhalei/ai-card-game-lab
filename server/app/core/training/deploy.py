@@ -342,7 +342,7 @@ def push_lora_to_ollama(
 
     root = Path(models_dir) / task_id
     deploy_dir = _ensure_deploy_dir(root)
-    tag = ollama_tag or f"acgl-{task_id[:12]}"
+    tag = ollama_tag or f"cardlab-{task_id[:12]}"
     stages: dict[str, Any] = {}
 
     merged_dir = deploy_dir / "merged"
@@ -465,7 +465,7 @@ def export_deploy_bundle(
         "gguf_ready": (deploy_dir / "model.gguf").is_file(),
     }
 
-    tag = ollama_tag or f"acgl-{task_id[:12]}"
+    tag = ollama_tag or f"cardlab-{task_id[:12]}"
     if try_create:
         create_result = try_ollama_create(deploy_dir=deploy_dir, tag=tag)
         meta["ollama_create"] = create_result

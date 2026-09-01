@@ -1,12 +1,14 @@
 <p align="center">
-  <img src="web/public/logo.png" alt="AI Card Game Lab" width="88">
+  <img src="web/public/logo.png" alt="CardLab" width="88">
 </p>
 
-# AI Card Game Lab
+# CardLab
 
 [中文](README.md) | English
 
-Local AI card-game lab: experiments as the unit—watch decisions, collect games, LoRA fine-tune, and validate with controls.
+Local AI card-game research tool: experiments as the unit—watch decisions, collect games, LoRA fine-tune, and validate with controls.
+
+Repo: [`ai-card-game-lab`](https://github.com/blueWhalei/ai-card-game-lab) (GitHub repository name unchanged).
 
 ## Stack
 
@@ -26,12 +28,16 @@ Local AI card-game lab: experiments as the unit—watch decisions, collect games
 git clone https://github.com/blueWhalei/ai-card-game-lab.git
 cd ai-card-game-lab
 cp .env.example .env    # Windows: copy .env.example .env
-
-cd server && poetry install
-poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-cd ../web && npm install && npm run dev
 ```
+
+Start in two terminals:
+
+| Platform | Backend (:8000) | Frontend (:5173) |
+|----------|-----------------|------------------|
+| Windows | `scripts\start-backend.bat` | `scripts\start-frontend.bat` |
+| macOS / Linux | `chmod +x scripts/*.sh` then `./scripts/start-backend.sh` | `./scripts/start-frontend.sh` |
+
+Or manually: `cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`.
 
 Open http://localhost:5173 . Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo game** on the home page.
 
@@ -71,7 +77,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 |-----|---|
 | http://localhost:5173 | UI |
 | http://localhost:8000/docs | API docs |
-| http://localhost:8000/api/v1/system/startup-check | Startup check |
+| http://localhost:8000/api/v1/system/preflight | Preflight (run-ready) |
+| http://localhost:8000/api/v1/system/startup-check | Startup check (compat) |
 
 ## Docs
 

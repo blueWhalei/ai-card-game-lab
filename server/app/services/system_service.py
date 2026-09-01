@@ -38,8 +38,28 @@ class SystemService:
         return self._registry.list_game_types()
 
     def list_engines(self) -> list[dict[str, Any]]:
-        """Return registered engines with player-count constraints."""
+        """Return registered engines with full capability metadata."""
         return self._registry.describe_engines()
+
+    def get_benchmark_seeds(self, game_type: str | None = None) -> dict[str, Any]:
+        """Return fixed deal seeds for benchmark mode from engine capability."""
+        resolved = game_type or self._registry.default_game_type()
+        if not resolved:
+            return {
+                "game_type": None,
+                "count": 0,
+                "seeds": [],
+                "description": "No engines registered",
+            }
+        cap = self._registry.get_capability(resolved)
+        seeds = list(cap.benchmark_seeds)
+        return {
+            "game_type": resolved,
+            "count": len(seeds),
+            "seeds": seeds,
+            "supports_deal_seed": cap.supports_deal_seed,
+            "description": "Fixed deal seeds for benchmark-mode experiments",
+        }
 
     def list_providers(self) -> list[dict[str, Any]]:
         """Return available LLM providers with configuration status."""
@@ -140,30 +160,192 @@ class SystemService:
         )
 
     def get_startup_check(self) -> dict[str, Any]:
-        """Return first-run readiness: dirs, providers, and collectability."""
+        """Return first-run readiness (maps from preflight for existing clients)."""
+        # Sync wrapper: no experiment scope — use asyncio-free path
+        return self._preflight_sync(scope="all", experiment_id=None)
+
+    async def get_preflight(
+        self,
+        *,
+        scope: str = "all",
+        experiment_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Run collect/train readiness checks (optionally seat-scoped to an experiment)."""
+        return await self._preflight_async(scope=scope, experiment_id=experiment_id)
+
+    def _preflight_sync(
+        self,
+        *,
+        scope: str,
+        experiment_id: str | None,
+        protocol: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         ensure_runtime_dirs(self._settings)
         providers = self.list_providers()
-        cloud_ready = any(
-            bool(item["configured"]) and item["id"] != "ollama" for item in providers
+        checks: list[dict[str, Any]] = []
+        resolved_scope = scope if scope in {"collect", "train", "all"} else "all"
+        need_collect = resolved_scope in {"collect", "all"}
+        need_train = resolved_scope in {"train", "all"}
+
+        any_ready = any(bool(item["configured"]) for item in providers)
+        if need_collect and experiment_id is None:
+            checks.append(
+                {
+                    "id": "providers_any",
+                    "severity": "block",
+                    "ok": any_ready,
+                    "message": (
+                        "未配置可用模型供应商。请在项目根目录 .env 填写云厂商 API 密钥，"
+                        "或安装 Ollama 并拉取至少一个本地模型（如 ollama pull qwen2.5:7b）。"
+                        if not any_ready
+                        else "至少有一个模型供应商可用"
+                    ),
+                }
+            )
+
+        protocol_ok = True
+        seats_ok = True
+        if need_collect and experiment_id is not None:
+            proto = protocol if isinstance(protocol, dict) else None
+            players = list((proto or {}).get("players") or []) if proto else []
+            protocol_ok = bool(proto) and bool(players)
+            checks.append(
+                {
+                    "id": "protocol",
+                    "severity": "block",
+                    "ok": protocol_ok,
+                    "message": (
+                        "实验协议完整"
+                        if protocol_ok
+                        else "实验协议缺失或不完整，请重新创建实验后再采集"
+                    ),
+                }
+            )
+            if protocol_ok:
+                from app.utils.providers import unconfigured_providers_from_players
+
+                missing = unconfigured_providers_from_players(self._settings, players)
+                seats_ok = len(missing) == 0
+                checks.append(
+                    {
+                        "id": "providers_seats",
+                        "severity": "block",
+                        "ok": seats_ok,
+                        "message": (
+                            "实验座位所用供应商均已配置"
+                            if seats_ok
+                            else (
+                                "实验座位供应商未配置："
+                                + ", ".join(missing)
+                                + "。请在 .env 配置密钥，或改选手配置。"
+                            )
+                        ),
+                    }
+                )
+            else:
+                seats_ok = False
+                checks.append(
+                    {
+                        "id": "providers_seats",
+                        "severity": "block",
+                        "ok": False,
+                        "message": "无法校验座位供应商（协议不完整）",
+                    }
+                )
+
+        train_deps = _cached_training_deps_available()
+        if need_train:
+            checks.append(
+                {
+                    "id": "training_deps",
+                    "severity": "block",
+                    "ok": train_deps,
+                    "message": (
+                        "训练依赖已安装"
+                        if train_deps
+                        else "未安装训练依赖，无法创建训练任务。"
+                        "请执行：cd server && poetry install --with training"
+                    ),
+                }
+            )
+            mem_ok = True
+            mem_msg = "可用内存足以做 CPU smoke 训练"
+            try:
+                from app.core.training.cpu_smoke import MIN_AVAILABLE_MEMORY_MB
+                from app.core.training.runtime_stats import get_runtime_stats as _snap
+
+                available = float(_snap().get("memory_available_mb") or 0)
+                if available < MIN_AVAILABLE_MEMORY_MB:
+                    mem_ok = False
+                    mem_msg = (
+                        f"可用内存约 {available:.0f}MB，低于 CPU smoke 建议阈值 "
+                        f"{MIN_AVAILABLE_MEMORY_MB}MB；创建任务时可能被拒绝。"
+                    )
+            except Exception:
+                mem_ok = True
+                mem_msg = "未能探测内存，跳过警告"
+            checks.append(
+                {
+                    "id": "memory_smoke",
+                    "severity": "warn",
+                    "ok": mem_ok,
+                    "message": mem_msg,
+                }
+            )
+
+        can_collect = True
+        if need_collect:
+            if experiment_id is None:
+                can_collect = any_ready
+            else:
+                can_collect = protocol_ok and seats_ok
+        can_train = train_deps if need_train else True
+        # For scope=collect, can_train stays True (not in scope); ok only cares about scoped blocks
+        block_failed = any(
+            (not c["ok"]) and c["severity"] == "block" for c in checks
         )
-        warnings: list[str] = []
-        if not cloud_ready:
-            warnings.append(
-                "未配置云端 API 密钥。请在「实验配置」页创建选手，"
-                "并填写对应供应商的 Key，或使用 ollama。"
-            )
-        if not _cached_training_deps_available():
-            warnings.append(
-                "未安装训练依赖，无法创建训练任务。"
-                "请执行：cd server && poetry install --with training"
-            )
+        warnings = [str(c["message"]) for c in checks if not c["ok"]]
         return {
-            "data_dirs_ready": True,
-            "can_collect": cloud_ready,
-            "seed_provider": "deepseek",
+            "ok": not block_failed,
+            "can_collect": can_collect,
+            "can_train": can_train if need_train else train_deps,
+            "checks": checks,
             "providers": providers,
             "warnings": warnings,
+            # legacy startup-check fields
+            "data_dirs_ready": True,
+            "seed_provider": "deepseek",
         }
+
+    async def _preflight_async(
+        self,
+        *,
+        scope: str,
+        experiment_id: str | None,
+    ) -> dict[str, Any]:
+        protocol: dict[str, Any] | None = None
+        if experiment_id:
+            from app.database import open_db_connection
+            from app.repositories.experiment_repo import ExperimentRepository
+
+            conn = await open_db_connection(self._settings.sqlite_path)
+            try:
+                repo = ExperimentRepository(conn)
+                try:
+                    row = await repo.get_by_id(experiment_id)
+                except KeyError:
+                    return self._preflight_sync(
+                        scope=scope,
+                        experiment_id=experiment_id,
+                        protocol=None,
+                    )
+                proto = row.get("protocol")
+                protocol = proto if isinstance(proto, dict) else None
+            finally:
+                await conn.close()
+        return self._preflight_sync(
+            scope=scope, experiment_id=experiment_id, protocol=protocol
+        )
 
     def get_runtime_stats(self) -> dict[str, object]:
         from app.core.training.runtime_stats import get_runtime_stats as _snap

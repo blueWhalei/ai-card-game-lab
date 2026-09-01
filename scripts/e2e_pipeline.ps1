@@ -1,4 +1,4 @@
-# AI Card Game Lab — E2E pipeline wrapper (Windows)
+# CardLab — E2E pipeline wrapper (Windows)
 # Usage:
 #   .\scripts\e2e_pipeline.ps1 guide
 #   .\scripts\e2e_pipeline.ps1 check

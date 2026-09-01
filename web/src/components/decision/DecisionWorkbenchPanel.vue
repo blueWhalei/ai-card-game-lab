@@ -7,7 +7,9 @@ import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decision'
 import { dataApi } from '@/api/dataApi'
+import { systemApi } from '@/api/systemApi'
 import { formatDateTime } from '@/utils/format'
+import { defaultEngineId } from '@/utils/engineSlots'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
 import type { WorkbenchLocalFilters } from '@/components/common/WorkbenchFilterBar.vue'
 import CompactRecordList from '@/components/common/CompactRecordList.vue'
@@ -37,6 +39,7 @@ const props = withDefaults(
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const defaultGameType = ref('')
 const lastRegisteredName = ref('')
 const decisionPoints = ref<DecisionPoint[]>([])
 const listTotal = ref(0)
@@ -302,7 +305,7 @@ async function registerAsDataset(evalRatio = 0): Promise<void> {
   try {
     const res = await dataApi.createDatasetFromDecisions({
       name,
-      game_type: 'doudizhu',
+      game_type: defaultGameType.value,
       eval_ratio: evalRatio,
       ...exportScopeParams(),
     })
@@ -392,7 +395,13 @@ watch(effectiveExperimentId, () => {
   void fetchStats()
 })
 
-onMounted(() => {
+onMounted(async () => {
+  try {
+    const engineRes = await systemApi.listEngines().catch(() => null)
+    defaultGameType.value = defaultEngineId(engineRes?.data ?? [])
+  } catch {
+    /* keep default */
+  }
   void fetchDecisionPoints()
   void fetchStats()
 })

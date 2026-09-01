@@ -16,7 +16,7 @@ import UiInput from '@/components/ui/Input.vue'
 import UiSelect from '@/components/ui/Select.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
-import { systemApi } from '@/api/systemApi'
+import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { experimentConfigApi } from '@/api/experimentConfigApi'
 import type { ModelItem } from '@/api/trainingApi'
 import {
@@ -28,6 +28,7 @@ import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
 import TrainingModelsPanel from '@/components/training/TrainingModelsPanel.vue'
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
 import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
+import PreflightBanner from '@/components/common/PreflightBanner.vue'
 
 const { t } = useI18n()
 const store = useTrainingStore()
@@ -37,6 +38,7 @@ const datasets = ref<DatasetItem[]>([])
 const showCreateDialog = ref(false)
 const activeTab = ref<'tasks' | 'models'>('tasks')
 const trainingDepsAvailable = ref(false)
+const preflight = ref<PreflightResult | null>(null)
 const cancelling = ref(false)
 const pushingModelId = ref<string | null>(null)
 const registerAfterPush = ref(false)
@@ -379,7 +381,10 @@ function startPolling() {
 
 onMounted(async () => {
   try {
-    const cfg = await systemApi.getConfig()
+    const [cfg, pf] = await Promise.all([
+      systemApi.getConfig(),
+      systemApi.preflight({ scope: 'train' }).catch(() => null),
+    ])
     const models = cfg.data.default_base_models
     if (models?.length) {
       baseModelOptions.value = models.map((m) => ({
@@ -390,6 +395,10 @@ onMounted(async () => {
     }
     createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
     trainingDepsAvailable.value = cfg.data.training_deps_available === true
+    preflight.value = pf?.data ?? null
+    if (preflight.value) {
+      trainingDepsAvailable.value = preflight.value.can_train
+    }
   } catch (e: unknown) {
     showApiError(e, t('training.configFallback'))
   }
@@ -434,8 +443,13 @@ onUnmounted(() => {
       </UiButton>
     </div>
 
+    <PreflightBanner
+      v-if="preflight?.checks?.length"
+      class="mb-5"
+      :checks="preflight.checks"
+    />
     <div
-      v-if="!trainingDepsAvailable"
+      v-else-if="!trainingDepsAvailable"
       class="mb-5 rounded-ink-md border border-ink-accent/40 bg-ink-surface px-4 py-3 text-sm text-ink-text-secondary"
     >
       {{ t('training.noDeps') }}

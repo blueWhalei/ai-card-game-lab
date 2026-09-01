@@ -212,7 +212,7 @@ class AIService:
                 raw_response = response.content
 
                 thinking, action, used_langchain_parser = self._parse_with_metrics(
-                    raw_response, legal_actions, phase
+                    raw_response, legal_actions, phase, engine=engine
                 )
                 response_time_ms = (time.perf_counter() - start_time) * 1000
 
@@ -380,7 +380,7 @@ class AIService:
                 raise AIProviderError(provider, "Empty streaming response")
 
             thinking, action, used_langchain_parser = self._parse_with_metrics(
-                raw_response, legal_actions, phase
+                raw_response, legal_actions, phase, engine=engine
             )
             response_time_ms = (time.perf_counter() - start_time) * 1000
 
@@ -620,10 +620,17 @@ class AIService:
         raw_response: str,
         legal_actions: list[GameAction],
         phase: str,
+        *,
+        engine: GameEngine | None = None,
     ) -> tuple[str, GameAction, bool]:
         """Parse response and return whether LangChain parser was used."""
+        bidding_phases = (
+            set(engine.capability.phases) & {"bidding"}
+            if engine is not None
+            else {"bidding"}
+        )
         try:
-            if phase == "bidding":
+            if phase in bidding_phases or phase == "bidding":
                 thinking, action = self._bid_parser.parse(raw_response, legal_actions)
             else:
                 thinking, action = self._action_parser.parse(raw_response, legal_actions)

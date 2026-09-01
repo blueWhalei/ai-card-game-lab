@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""End-to-end pipeline CLI for AI Card Game Lab (M4).
+"""End-to-end pipeline CLI for CardLab (M4).
 
 Orchestrates: health check → collect games → export decisions →
 create dataset → start training → print deploy hints.
@@ -49,16 +49,16 @@ def _api(base: str, method: str, path: str, **kwargs: Any) -> Any:
 def cmd_guide(_: argparse.Namespace) -> int:
     print(
         """
-AI Card Game Lab — 1 小时闭环指南（斗地主）
+CardLab — 1 小时闭环指南（斗地主）
 ==========================================
 
 目标：配置 Key → 采一局 → 导出可训数据 → PEFT LoRA → 本地部署验证
 
 [0] 准备
   - 复制 .env.example → .env，填入至少一个 LLM API Key（或配 Ollama）
-  - 在前端「实验配置」页创建至少 3 份选手（斗地主需要 3 个槽位）
-  - 启动后端：start-backend.bat  或  cd server && poetry run uvicorn ...
-  - 启动前端（可选观战）：start-frontend.bat
+  - 在前端「选手配置」页创建至少 3 份选手（斗地主需要 3 个槽位）
+  - 启动后端：scripts/start-backend.bat|.sh  或  cd server && poetry run uvicorn ...
+  - 启动前端（可选观战）：scripts/start-frontend.bat|.sh
 
 [1] 健康检查
   poetry run python scripts/e2e_pipeline.py check
@@ -69,10 +69,10 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
 [3] 导出决策点（默认仅 train_usable，不含思考）
   poetry run python scripts/e2e_pipeline.py export
 
-[4] 创建数据集 + 训练任务（PEFT LoRA / 无 GPU 走 CPU 冒烟）
+[4] 创建数据集 + 训练任务（PEFT LoRA / 无 GPU 走 CPU 快速验证）
   poetry run python scripts/e2e_pipeline.py train
   # 先：cd server && poetry install --with training
-  # 详见 docs/E2E_PIPELINE.md「CPU Smoke（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
+  # 详见 docs/E2E_PIPELINE.md「CPU 快速验证（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
 
 [5] 部署（真实 LoRA 产物）
   - 前端「模型仓库」→ 导出部署包
@@ -102,7 +102,7 @@ def cmd_check(args: argparse.Namespace) -> int:
         print(f"[check] API health: {health}")
     except Exception as exc:
         print(f"[check] API unreachable at {args.base_url}: {exc}", file=sys.stderr)
-        print("  → start backend first (start-backend.bat)")
+        print("  → start backend first (scripts/start-backend.bat|.sh)")
         return 1
     try:
         resolved = _resolve_players(args.base_url, args.players, stage="check")
@@ -284,7 +284,7 @@ def cmd_deploy_hints(args: argparse.Namespace) -> int:
 Next:
   1. POST /api/v1/models/{mid}/export   or UI「导出部署包」
   2. Set LLAMA_CPP_DIR → run models/{mid}/deploy/convert_gguf.ps1
-  3. ollama create acgl-{str(mid)[:12]} -f models/{mid}/deploy/Modelfile
+  3. ollama create cardlab-{str(mid)[:12]} -f models/{mid}/deploy/Modelfile
   4. POST /api/v1/models/{mid}/verify   or UI「验证决策」/「测一局」
 """.strip()
     )
@@ -301,7 +301,7 @@ def cmd_all(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    p = argparse.ArgumentParser(description="AI Card Game Lab E2E pipeline (M4)")
+    p = argparse.ArgumentParser(description="CardLab E2E pipeline (M4)")
     p.add_argument(
         "command",
         choices=["guide", "check", "collect", "export", "train", "deploy-hints", "all"],

@@ -12,7 +12,7 @@ import {
   type ExperimentStatus,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
-import { systemApi, type StartupCheck } from '@/api/systemApi'
+import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { dataApi } from '@/api/dataApi'
 import { trainingApi } from '@/api/trainingApi'
 import { toast } from '@/components/ui/toast'
@@ -29,6 +29,7 @@ import ExperimentMetaPanel from '@/components/experiment/ExperimentMetaPanel.vue
 import ExperimentResultsStrip from '@/components/experiment/ExperimentResultsStrip.vue'
 import ExperimentGamesTab from '@/components/experiment/ExperimentGamesTab.vue'
 import ExperimentPlayersTab from '@/components/experiment/ExperimentPlayersTab.vue'
+import PreflightBanner from '@/components/common/PreflightBanner.vue'
 import type { GameItem } from '@/api/gameApi'
 import { gameApi } from '@/api/gameApi'
 import UiButton from '@/components/ui/Button.vue'
@@ -91,7 +92,7 @@ const controlTarget = ref(5)
 const controlPairDeals = ref(true)
 const experiment = ref<Experiment | null>(null)
 const configs = ref<ExperimentConfig[]>([])
-const startup = ref<StartupCheck | null>(null)
+const preflight = ref<PreflightResult | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const experimentId = computed(() => String(route.params.id ?? ''))
@@ -151,6 +152,12 @@ const protocolSummaryBits = computed(() => {
   if (protocol.value?.prompt_version) {
     bits.push(t('experiment.protocolPromptShort', { v: protocol.value.prompt_version }))
   }
+  if (protocol.value?.engine_version) {
+    bits.push(t('experiment.protocolEngineShort', { v: protocol.value.engine_version }))
+  }
+  if (protocol.value?.phases?.length) {
+    bits.push(t('experiment.protocolPhasesShort', { v: protocol.value.phases.join('/') }))
+  }
   return bits
 })
 
@@ -159,15 +166,17 @@ function shortExperimentId(id: string): string {
   return `${id.slice(0, 8)}…${id.slice(-4)}`
 }
 
+const collectBlocked = computed(() => {
+  const checks = preflight.value?.checks ?? []
+  return checks.some((c) => c.severity === 'block' && !c.ok)
+})
+
 const noticeText = computed(() => {
-  if (!startup.value) return ''
-  if (!startup.value.can_collect) {
-    return t('experiment.apiKeyWarning')
-  }
-  if (startup.value.warnings.length > 0) {
-    return startup.value.warnings[0] ?? ''
-  }
-  return ''
+  const checks = preflight.value?.checks ?? []
+  const block = checks.find((c) => c.severity === 'block' && !c.ok)
+  if (block) return block.message
+  const warn = checks.find((c) => c.severity === 'warn' && !c.ok)
+  return warn?.message ?? ''
 })
 
 const canRegisterTrain = computed(
@@ -270,14 +279,20 @@ const runningGames = computed(() =>
 const primaryActionDisabled = computed(() => {
   const step = nextStep.value
   if (step?.action === 'games') return !summary.value?.latest_game_id
-  if (!step || step.action === 'collect') return remaining.value <= 0
+  if (!step || step.action === 'collect') {
+    return remaining.value <= 0 || collectBlocked.value
+  }
   if (step.action === 'train') return !canRegisterTrain.value || registeringTrain.value
   return false
 })
 
 const openMenuItems = computed((): DropdownMenuItemDef[] => [
   { id: 'archive', label: t('experiment.metaPanelTitle') },
-  { id: 'collect', label: collectCta.value, disabled: remaining.value <= 0 },
+  {
+    id: 'collect',
+    label: collectCta.value,
+    disabled: remaining.value <= 0 || collectBlocked.value,
+  },
   {
     id: 'train',
     label: t('experiment.saveAndTrain'),
@@ -377,16 +392,18 @@ async function load(): Promise<void> {
   if (!experimentId.value) return
   loading.value = true
   try {
-    const [expRes, cfgRes, startupRes, configRes, modelsRes] = await Promise.all([
+    const [expRes, cfgRes, preflightRes, configRes, modelsRes] = await Promise.all([
       experimentApi.get(experimentId.value),
       experimentConfigApi.list(),
-      systemApi.getStartupCheck().catch(() => null),
+      systemApi
+        .preflight({ scope: 'collect', experiment_id: experimentId.value })
+        .catch(() => null),
       systemApi.getConfig().catch(() => null),
       trainingApi.listModels().catch(() => null),
     ])
     experiment.value = expRes.data
     configs.value = cfgRes.data ?? []
-    startup.value = startupRes?.data ?? null
+    preflight.value = preflightRes?.data ?? null
     trainingDepsAvailable.value = configRes?.data.training_deps_available ?? false
     completedModelCount.value = (modelsRes?.data ?? []).filter(
       (m) => m.model_path && !m.model_path.endsWith('model.bin'),
@@ -411,6 +428,10 @@ async function refreshQuiet(): Promise<void> {
 }
 
 function openCollect(): void {
+  if (collectBlocked.value) {
+    toast.warning(noticeText.value || t('experiment.apiKeyWarning'))
+    return
+  }
   collectCount.value = Math.min(remaining.value, 5)
   collectOpen.value = true
 }
@@ -585,7 +606,7 @@ async function registerAndTrain(evalRatio = 0): Promise<void> {
     const dsName = `${base}-chatml-${stamp}`
     const dsRes = await dataApi.createDatasetFromDecisions({
       name: dsName,
-      game_type: experiment.value.game_type || 'doudizhu',
+      game_type: experiment.value.game_type,
       experiment_id: experiment.value.id,
       train_usable_only: true,
       include_thinking: false,
@@ -645,7 +666,7 @@ async function submitControl(): Promise<void> {
         id: experimentId.value,
         challenger: controlPlayerIds.value[0] ?? '',
       }),
-      game_type: experiment.value?.game_type || 'doudizhu',
+      game_type: experiment.value?.game_type ?? '',
       player_ids: controlPlayerIds.value,
       target_games: Number(controlTarget.value) || 5,
       source_experiment_id: experimentId.value,
@@ -768,8 +789,12 @@ onUnmounted(() => {
           @menu-select="onOpenMenuSelect"
         />
 
+        <PreflightBanner
+          v-if="preflight?.checks?.length"
+          :checks="preflight.checks"
+        />
         <button
-          v-if="noticeText"
+          v-else-if="noticeText"
           type="button"
           class="w-full rounded-ink border border-ink-warning/40 bg-ink-warning/10 px-3 py-2 text-left text-sm text-ink-text-secondary hover:bg-ink-warning/15"
           @click="router.push('/settings')"

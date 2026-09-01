@@ -5,9 +5,11 @@ import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { useDataStore } from '@/stores/useDataStore'
 import type { CreateDatasetRequest, DatasetItem } from '@/api/dataApi'
+import { systemApi } from '@/api/systemApi'
 import { showApiError } from '@/utils/error'
 import { formatDateTime } from '@/utils/format'
 import { gameTypeLabel } from '@/utils/constants'
+import { defaultEngineId, type EngineInfo } from '@/utils/engineSlots'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
@@ -19,9 +21,10 @@ import type { TableColumn } from '@/components/ui/Table.vue'
 const { t } = useI18n()
 const store = useDataStore()
 const showCreate = ref(false)
+const engines = ref<EngineInfo[]>([])
 const form = ref<CreateDatasetRequest>({
   name: '',
-  game_type: 'doudizhu',
+  game_type: '',
   filters: {},
 })
 
@@ -34,11 +37,21 @@ const columns = computed(
   ],
 )
 
-const gameTypeOptions = computed(() => [{ label: gameTypeLabel('doudizhu'), value: 'doudizhu' }])
+const gameTypeOptions = computed(() =>
+  engines.value.map((e) => ({
+    label: gameTypeLabel(e.id),
+    value: e.id,
+  })),
+)
 
 onMounted(async () => {
   try {
-    await store.fetchDatasetsOnce()
+    const [, engineRes] = await Promise.all([
+      store.fetchDatasetsOnce(),
+      systemApi.listEngines().catch(() => null),
+    ])
+    engines.value = engineRes?.data ?? []
+    form.value.game_type = defaultEngineId(engines.value)
   } catch (e: unknown) {
     showApiError(e, t('data.loadDatasetsFailed'))
   }
@@ -56,7 +69,11 @@ async function handleCreate() {
     })
     toast.success(t('data.datasetCreated'))
     showCreate.value = false
-    form.value = { name: '', game_type: 'doudizhu', filters: {} }
+    form.value = {
+      name: '',
+      game_type: defaultEngineId(engines.value),
+      filters: {},
+    }
   } catch (e: unknown) {
     showApiError(e, t('error.createFailed'))
   }
@@ -80,7 +97,7 @@ async function handleDelete(id: string) {
 
 <template>
   <div class="relative ink-card">
-    <UiSpinner v-if="store.datasetsLoading" overlay />
+    <UiSpinner v-if="store.datasetsLoading" overlay :label="t('common.loading')" />
     <div class="mb-4 flex items-center justify-between">
       <h3 class="text-base font-semibold text-ink-text">{{ t('data.datasets') }}</h3>
       <UiButton @click="showCreate = true">{{ t('data.createDataset') }}</UiButton>

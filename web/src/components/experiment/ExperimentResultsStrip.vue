@@ -42,8 +42,16 @@ const kpiItems = computed((): KpiItem[] => {
     {
       id: 'landlord',
       label: t('experiment.kpiLandlord'),
-      value: (s.decisive_games ?? 0) > 0 ? formatWinRate(s.landlord_win_rate ?? 0) : dash,
+      value:
+        (s.decisive_games ?? 0) > 0
+          ? `${formatWinRate(s.landlord_win_rate ?? 0)} · n=${s.decisive_games}${
+              formatWinRateCi(s.landlord_win_rate_ci) !== '—'
+                ? ` · ${formatWinRateCi(s.landlord_win_rate_ci)}`
+                : ''
+            }${s.credibility?.low_power ? ` · ${t('experiment.lowPowerShort')}` : ''}`
+          : dash,
       title: formatWinRateCi(s.landlord_win_rate_ci),
+      tone: s.credibility?.low_power ? 'muted' : 'default',
     },
     {
       id: 'parser',

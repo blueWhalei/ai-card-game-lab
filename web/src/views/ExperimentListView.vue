@@ -13,10 +13,12 @@ import {
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import {
+  defaultEngineId,
   engineById,
   isValidPlayerSelection,
   maxSelectable,
   playerCountLabel,
+  supportsBenchmark,
   type EngineInfo,
 } from '@/utils/engineSlots'
 import { systemApi } from '@/api/systemApi'
@@ -60,7 +62,7 @@ const createOpen = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
 const engines = ref<EngineInfo[]>([])
-const formGameType = ref('doudizhu')
+const formGameType = ref('')
 
 const formName = ref('')
 const formNotes = ref('')
@@ -73,6 +75,7 @@ const selectedConfigIds = ref<string[]>([])
 const currentEngine = computed(() => engineById(engines.value, formGameType.value))
 const slotsLabel = computed(() => playerCountLabel(currentEngine.value))
 const maxPlayers = computed(() => maxSelectable(currentEngine.value))
+const canUseBenchmark = computed(() => supportsBenchmark(currentEngine.value))
 
 const canSubmit = computed(() => {
   const target = Number(formTarget.value)
@@ -105,6 +108,9 @@ async function load(): Promise<void> {
     experiments.value = expRes.data ?? []
     configs.value = cfgRes.data ?? []
     engines.value = engineRes?.data ?? []
+    if (!engines.value.some((e) => e.id === formGameType.value)) {
+      formGameType.value = defaultEngineId(engines.value)
+    }
   } catch (e: unknown) {
     showApiError(e, t('experiment.loadFailed'))
   } finally {
@@ -119,6 +125,7 @@ function openCreate(): void {
   formTags.value = ''
   formCollectMode.value = 'free'
   formTarget.value = 10
+  formGameType.value = defaultEngineId(engines.value)
   selectedConfigIds.value = configs.value.slice(0, maxPlayers.value).map((c) => c.id)
   createOpen.value = true
 }
@@ -150,10 +157,10 @@ async function submitCreate(): Promise<void> {
       notes: formNotes.value.trim(),
       hypothesis: formHypothesis.value.trim(),
       tags,
-      game_type: 'doudizhu',
+      game_type: formGameType.value,
       player_ids: selectedConfigIds.value,
       target_games: Number(formTarget.value) || 10,
-      collect_mode: formCollectMode.value,
+      collect_mode: canUseBenchmark.value ? formCollectMode.value : 'free',
     })
     createOpen.value = false
     toast.success(t('experiment.created'))
@@ -323,6 +330,7 @@ onMounted(() => {
               size="sm"
               :variant="formCollectMode === 'benchmark' ? 'primary' : 'secondary'"
               type="button"
+              :disabled="!canUseBenchmark"
               @click="formCollectMode = 'benchmark'"
             >
               {{ t('experiment.collectModeBenchmark') }}

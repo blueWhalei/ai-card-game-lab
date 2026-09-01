@@ -26,6 +26,7 @@ import type { TableColumn } from '@/components/ui/Table.vue'
 import UiTable from '@/components/ui/Table.vue'
 import { systemApi, gameTypeLabel, type ProviderInfo } from '@/api/systemApi'
 import {
+  defaultEngineId,
   engineById,
   isValidPlayerSelection,
   maxSelectable,
@@ -48,14 +49,14 @@ const providers = ref<ProviderInfo[]>([])
 const createDialogVisible = ref(false)
 
 const createForm = ref({
-  game_type: 'doudizhu',
+  game_type: '',
   player_ids: [] as string[],
   mode: 'realtime',
   isBatch: false,
   batchCount: 5,
 })
 
-const gameTypeIds = ref<string[]>(['doudizhu'])
+const gameTypeIds = ref<string[]>([])
 const gameTypeOptions = computed(() =>
   gameTypeIds.value.map((id) => ({ label: gameTypeLabel(id), value: id })),
 )
@@ -164,7 +165,7 @@ async function applyPlayersFromQuery(): Promise<void> {
   if (ids.length === 0) return
   await fetchConfigs()
   createForm.value = {
-    game_type: 'doudizhu',
+    game_type: defaultEngineId(engines.value),
     player_ids: ids.slice(0, maxPlayers.value),
     mode: 'realtime',
     isBatch: false,
@@ -175,7 +176,7 @@ async function applyPlayersFromQuery(): Promise<void> {
 
 function openCreateDialog() {
   createForm.value = {
-    game_type: 'doudizhu',
+    game_type: defaultEngineId(engines.value),
     player_ids: [],
     mode: 'realtime',
     isBatch: false,
@@ -255,13 +256,14 @@ onMounted(async () => {
     ])
     if (typesRes.data.length > 0) {
       gameTypeIds.value = typesRes.data
-      if (!typesRes.data.includes(createForm.value.game_type)) {
-        createForm.value.game_type = typesRes.data[0] ?? 'doudizhu'
-      }
     }
     engines.value = enginesRes?.data ?? []
+    if (engines.value.length > 0) {
+      createForm.value.game_type = defaultEngineId(engines.value)
+    } else if (gameTypeIds.value.length > 0) {
+      createForm.value.game_type = gameTypeIds.value[0] ?? ''
+    }
   } catch (e: unknown) {
-    // Non-blocking: keep doudizhu fallback option
     showApiError(e, t('game.typesFallback'))
   }
   await Promise.all([fetchGames(), fetchConfigs()])

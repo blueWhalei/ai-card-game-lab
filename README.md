@@ -1,12 +1,14 @@
 <p align="center">
-  <img src="web/public/logo.png" alt="AI Card Game Lab" width="88">
+  <img src="web/public/logo.png" alt="CardLab" width="88">
 </p>
 
-# AI Card Game Lab
+# CardLab
 
 [English](README.en.md) | 中文
 
 本地 AI 卡牌研究工具：以「实验」为主线，观战模型决策、采集对局数据、LoRA 微调与对照验证。
+
+仓库：[`ai-card-game-lab`](https://github.com/blueWhalei/ai-card-game-lab)（GitHub 仓库名保持不变）
 
 ## 技术栈
 
@@ -26,12 +28,16 @@
 git clone https://github.com/blueWhalei/ai-card-game-lab.git
 cd ai-card-game-lab
 cp .env.example .env    # Windows: copy .env.example .env
-
-cd server && poetry install
-poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-
-cd ../web && npm install && npm run dev
 ```
+
+两个终端分别启动：
+
+| 平台 | 后端（:8000） | 前端（:5173） |
+|------|---------------|---------------|
+| Windows | `scripts\start-backend.bat` | `scripts\start-frontend.bat` |
+| macOS / Linux | `chmod +x scripts/*.sh` 后 `./scripts/start-backend.sh` | `./scripts/start-frontend.sh` |
+
+也可手动：`cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`。
 
 打开 http://localhost:5173 。首次请在「选手配置」页创建选手（斗地主需 3 个），`.env` 至少配置一个 API 密钥或本机 Ollama。无密钥可首页「加载演示对局」体验观战。
 
@@ -71,7 +77,8 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 |------|------|
 | http://localhost:5173 | 前端 |
 | http://localhost:8000/docs | API 文档 |
-| http://localhost:8000/api/v1/system/startup-check | 启动检查 |
+| http://localhost:8000/api/v1/system/preflight | 开跑前检查 |
+| http://localhost:8000/api/v1/system/startup-check | 启动检查（兼容） |
 
 ## 文档
 

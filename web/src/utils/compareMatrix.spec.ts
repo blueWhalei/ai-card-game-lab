@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { bestIndex, formatDelta, metricUnit } from './compareMatrix'
+import {
+  bestIndex,
+  compareMetricsForEngine,
+  formatDelta,
+  metricUnit,
+} from './compareMatrix'
 
 describe('bestIndex', () => {
   it('picks highest for higher kind', () => {
@@ -38,9 +43,29 @@ describe('formatDelta', () => {
 })
 
 describe('metricUnit', () => {
-  it('maps known ids', () => {
+  it('maps known metrics', () => {
     expect(metricUnit('p50')).toBe('ms')
     expect(metricUnit('finished')).toBe('count')
     expect(metricUnit('landlord')).toBe('rate')
+  })
+})
+
+describe('compareMetricsForEngine', () => {
+  it('hides landlord when role metric is undeclared', () => {
+    const ids = compareMetricsForEngine([
+      'parser_success',
+      'train_usable',
+      'latency_p50_p95',
+    ]).map((m) => m.id)
+    expect(ids).not.toContain('landlord')
+    expect(ids).not.toContain('pairedLandlord')
+    expect(ids).toContain('finished')
+    expect(ids).toContain('parser')
+  })
+
+  it('shows landlord when role metric is declared', () => {
+    const ids = compareMetricsForEngine(['role:landlord', 'parser_success']).map((m) => m.id)
+    expect(ids).toContain('landlord')
+    expect(ids).toContain('parser')
   })
 })

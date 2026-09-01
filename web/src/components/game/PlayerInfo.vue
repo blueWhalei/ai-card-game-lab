@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { PlayerInfoProps } from '@/types/game'
+import UiSpinner from '@/components/ui/Spinner.vue'
 
 const props = withDefaults(defineProps<PlayerInfoProps>(), {
   showRole: true,
@@ -73,11 +74,8 @@ const formattedResponseTime = computed(() => {
       </div>
     </div>
     <div v-if="isThinking" class="mt-2 text-sm text-blue-600">
-      <span class="inline-flex items-center gap-1">
-        <svg class="h-4 w-4 animate-spin" viewBox="0 0 24 24">
-          <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4" fill="none" />
-          <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-        </svg>
+      <span class="inline-flex items-center gap-1.5">
+        <UiSpinner size="sm" class="!gap-0 text-current" />
         {{ t('game.thinkingDots') }}
       </span>
     </div>

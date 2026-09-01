@@ -2,8 +2,8 @@ import type zhCN from './zh-CN'
 
 const en: typeof zhCN = {
   app: {
-    name: 'AI Card Game Lab',
-    lab: 'Lab',
+    name: 'CardLab',
+    lab: 'CardLab',
   },
   locale: {
     zh: '中文',
@@ -22,7 +22,7 @@ const en: typeof zhCN = {
     title: 'Usage guide',
     tocTitle: 'Contents',
     intro:
-      'AI Card Game Lab is a local research tool: experiments are first-class—watch decisions, collect games, distill a small model, and validate with control runs.',
+      'CardLab is a local research tool: experiments are first-class—watch decisions, collect games, distill a small model, and validate with control runs.',
     diagrams: {
       loop: {
         caption: 'Recommended research loop',
@@ -161,7 +161,7 @@ const en: typeof zhCN = {
           'Collect checks keys up front—missing keys are rejected before games start.',
           'Training needs cd server && poetry install --with training.',
           'Push to Ollama requires LLAMA_CPP_DIR in .env.',
-          'After startup, visit /api/v1/system/startup-check for warnings.',
+          'After startup, visit /api/v1/system/preflight (or startup-check) for run-ready checks; Settings shows them too.',
         ],
       },
     },
@@ -369,7 +369,16 @@ const en: typeof zhCN = {
     protocolPairedShort: 'Paired {paired}/{total}',
     protocolPrompt: 'Prompt version {v}',
     protocolPromptShort: 'Prompt {v}',
+    protocolEngineShort: 'Engine {v}',
+    protocolPhasesShort: 'Phases {v}',
     protocolSource: 'Source {id}',
+    lowPowerShort: 'Low sample',
+    fingerprintGame: 'Game',
+    fingerprintEngine: 'Engine',
+    fingerprintDecision: 'Decision schema',
+    fingerprintPhases: 'Phases',
+    fingerprintPrompts: 'Prompt keys',
+    fingerprintRules: 'Rules',
     hypothesis: 'Hypothesis',
     hypothesisPlaceholder: 'e.g. LoRA player wins more as landlord',
     conclusion: 'Conclusion',
@@ -484,6 +493,10 @@ const en: typeof zhCN = {
     colTrainable: 'Trainable',
     failed: 'Compare failed',
     pairedHint: 'Paired games share the same deal_seed; see “Paired wins” by seat.',
+    lowPowerHint:
+      'Some runs have few decisive games or a wide CI — treat point estimates cautiously.',
+    protocolMismatch:
+      'Selected experiments differ in protocol fingerprint (game type / engine / prompt keys / decision schema). Compare for orientation only.',
   },
   config: {
     add: 'Add player',

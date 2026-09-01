@@ -8,17 +8,20 @@ import {
   isBenchmarkExperiment,
   type Experiment,
   type ExperimentCompareRow,
+  type ExperimentProtocol,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
-import { formatWinRate } from '@/utils/experimentWorkbench'
+import { formatWinRate, formatWinRateCi } from '@/utils/experimentWorkbench'
 import {
-  COMPARE_METRICS,
   bestIndex,
+  compareMetricsForEngine,
   formatDelta,
   metricUnit,
   type CompareMetricDef,
 } from '@/utils/compareMatrix'
+import { systemApi } from '@/api/systemApi'
+import { defaultEngineId, engineById, type EngineInfo } from '@/utils/engineSlots'
 import { cn } from '@/lib/cn'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
@@ -31,8 +34,19 @@ const loading = ref(true)
 const comparing = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
+const engines = ref<EngineInfo[]>([])
 const selectedIds = ref<string[]>([])
 const rows = ref<ExperimentCompareRow[]>([])
+
+const activeEngine = computed(() => {
+  const gt = rows.value[0]?.game_type ?? experiments.value[0]?.game_type
+  if (gt) return engineById(engines.value, gt)
+  return engineById(engines.value, defaultEngineId(engines.value))
+})
+
+const visibleMetrics = computed(() =>
+  compareMetricsForEngine(activeEngine.value?.eval_metric_ids ?? []),
+)
 
 function configName(id: string): string {
   return configs.value.find((c) => c.id === id)?.name ?? id
@@ -102,13 +116,19 @@ function cellFor(row: ExperimentCompareRow, metric: CompareMetricDef): {
   switch (metric.id) {
     case 'finished':
       return { value: row.finished_games, display: String(row.finished_games) }
-    case 'landlord':
-      return (row.decisive_games ?? 0) > 0
-        ? {
-            value: row.landlord_win_rate ?? 0,
-            display: formatWinRate(row.landlord_win_rate ?? 0),
-          }
-        : { value: null, display: dash }
+    case 'landlord': {
+      if ((row.decisive_games ?? 0) <= 0) return { value: null, display: dash }
+      const rate = formatWinRate(row.landlord_win_rate ?? 0)
+      const ci = formatWinRateCi(row.landlord_win_rate_ci)
+      const n = row.decisive_games ?? row.credibility?.decisive_n
+      const parts = [rate]
+      if (ci !== '—') parts.push(ci)
+      if (n != null) parts.push(`n=${n}`)
+      return {
+        value: row.landlord_win_rate ?? 0,
+        display: parts.join(' · '),
+      }
+    }
     case 'pairedLandlord':
       return (row.paired_n ?? 0) > 0
         ? {
@@ -164,7 +184,7 @@ type MatrixRow = {
 
 const matrixRows = computed((): MatrixRow[] => {
   if (rows.value.length === 0) return []
-  return COMPARE_METRICS.map((metric) => {
+  return visibleMetrics.value.map((metric) => {
     const raw = rows.value.map((row) => cellFor(row, metric))
     const best = bestIndex(
       raw.map((c) => c.value),
@@ -219,15 +239,44 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
   })
 })
 
+const showLowPowerHint = computed(() =>
+  rows.value.some((r) => r.credibility?.low_power === true),
+)
+
+function protocolFingerprintKey(p: ExperimentProtocol | null | undefined): string {
+  if (!p) return ''
+  const promptKeys = p.prompt_keys
+    ? Object.keys(p.prompt_keys)
+        .sort()
+        .map((k) => `${k}=${p.prompt_keys[k]}`)
+        .join(',')
+    : ''
+  return [
+    p.game_type ?? '',
+    p.engine_version ?? '',
+    promptKeys,
+    String(p.decision_schema_version ?? ''),
+  ].join('|')
+}
+
+const showProtocolMismatch = computed(() => {
+  if (rows.value.length < 2) return false
+  const keys = rows.value.map((r) => protocolFingerprintKey(r.protocol))
+  const first = keys[0]
+  return keys.some((k) => k !== first)
+})
+
 onMounted(async () => {
   loading.value = true
   try {
-    const [expRes, cfgRes] = await Promise.all([
+    const [expRes, cfgRes, engineRes] = await Promise.all([
       experimentApi.list(),
       experimentConfigApi.list(),
+      systemApi.listEngines().catch(() => null),
     ])
     experiments.value = expRes.data ?? []
     configs.value = cfgRes.data ?? []
+    engines.value = engineRes?.data ?? []
     const fromQuery = idsFromQuery()
     selectedIds.value =
       fromQuery.length >= 2 ? fromQuery : experiments.value.slice(0, 2).map((e) => e.id)
@@ -267,7 +316,7 @@ watch(
     </div>
 
     <div v-if="loading" class="flex justify-center py-16">
-      <UiSpinner />
+      <UiSpinner :label="t('common.loading')" />
     </div>
 
     <template v-else>
@@ -309,10 +358,22 @@ watch(
       </section>
 
       <div v-if="comparing" class="flex justify-center py-8">
-        <UiSpinner />
+        <UiSpinner :label="t('common.loading')" />
       </div>
 
       <section v-else-if="rows.length > 0" class="space-y-4">
+        <div
+          v-if="showProtocolMismatch"
+          class="rounded-ink-md border border-ink-accent/30 bg-ink-accent-muted/40 px-3 py-2.5 text-sm text-ink-text-secondary"
+        >
+          {{ t('compare.protocolMismatch') }}
+        </div>
+        <div
+          v-if="showLowPowerHint"
+          class="rounded-ink-md border border-ink-border bg-ink-surface-muted/50 px-3 py-2.5 text-sm text-ink-text-secondary"
+        >
+          {{ t('compare.lowPowerHint') }}
+        </div>
         <div class="overflow-x-auto rounded-ink-md border border-ink-border">
           <table class="w-full text-left text-sm">
             <thead class="bg-ink-surface-muted text-ink-text">

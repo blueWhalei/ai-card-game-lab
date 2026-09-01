@@ -269,14 +269,14 @@ function replayStepTo(index: number) {
   applySnapshot(
     coerceObserverSnapshot(
       {
-        game_type: game.value?.game_type || 'doudizhu',
+        game_type: game.value?.game_type ?? '',
         phase: 'playing',
         round: rounds[index]?.round_num ?? 0,
         current_player_id: currentPlayer.value,
         players: playerList,
         table: { slots: [] },
       },
-      game.value?.game_type || 'doudizhu',
+      game.value?.game_type ?? '',
     ),
   )
   replayIndex.value = index

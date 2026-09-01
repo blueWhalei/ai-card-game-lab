@@ -6,8 +6,61 @@ are **stateless** -- game state is carried by ``GameState`` objects.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any
+
+
+@dataclass(frozen=True)
+class EngineCapability:
+    """Declarative engine identity and product-facing abilities.
+
+    Frozen into experiment protocol fingerprints and exposed via
+    ``GET /system/engines``. Concrete engines override via ``capability``.
+    """
+
+    game_type: str
+    min_players: int
+    max_players: int
+    engine_version: str = "1"
+    phases: tuple[str, ...] = ("playing",)
+    prompt_keys: dict[str, str] = field(default_factory=dict)
+    supports_deal_seed: bool = False
+    benchmark_seeds: tuple[int, ...] = ()
+    roles: tuple[str, ...] = ()
+    eval_metric_ids: tuple[str, ...] = ()
+    decision_schema_version: int = 1
+    rules_ref: str | None = None
+
+    def to_public_dict(self, *, include_seeds: bool = False) -> dict[str, Any]:
+        """JSON-safe view for ``GET /system/engines``. Seeds omitted unless requested."""
+        data = asdict(self)
+        seeds = list(self.benchmark_seeds)
+        data["id"] = self.game_type
+        data["benchmark_seed_count"] = len(seeds)
+        if include_seeds:
+            data["benchmark_seeds"] = seeds
+        else:
+            data.pop("benchmark_seeds", None)
+        data["phases"] = list(self.phases)
+        data["roles"] = list(self.roles)
+        data["eval_metric_ids"] = list(self.eval_metric_ids)
+        data["prompt_keys"] = dict(self.prompt_keys)
+        return data
+
+    def protocol_fingerprint(self) -> dict[str, Any]:
+        """Subset frozen into experiment.protocol (no full seed list)."""
+        return {
+            "game_type": self.game_type,
+            "engine_version": self.engine_version,
+            "decision_schema_version": self.decision_schema_version,
+            "rules_ref": self.rules_ref,
+            "phases": list(self.phases),
+            "prompt_keys": dict(self.prompt_keys),
+            "roles": list(self.roles),
+            "eval_metric_ids": list(self.eval_metric_ids),
+            "supports_deal_seed": self.supports_deal_seed,
+            "benchmark_seed_count": len(self.benchmark_seeds),
+        }
 
 
 @dataclass
@@ -110,6 +163,39 @@ class GameEngine(ABC):
     def max_players(self) -> int:
         """Maximum number of players this engine accepts."""
         return 8
+
+    @property
+    def capability(self) -> EngineCapability:
+        """Engine ability declaration. Subclasses should override with full fields."""
+        return EngineCapability(
+            game_type=self.game_type,
+            min_players=self.min_players,
+            max_players=self.max_players,
+            prompt_keys={"playing": f"{self.game_type}_playing"},
+        )
+
+    def format_legal_actions_for_prompt(
+        self, state: GameState, actions: list[GameAction]
+    ) -> str:
+        """Format legal actions for LLM prompts. Override for game-specific ordering."""
+        del state  # unused in generic formatter
+        if not actions:
+            return "无可选动作"
+        lines: list[str] = []
+        for i, action in enumerate(actions, start=1):
+            cards_str = " ".join(action.cards) if action.cards else ""
+            if cards_str:
+                lines.append(f"{i}. {action.action_type}: [{cards_str}]")
+            elif action.target:
+                lines.append(f"{i}. {action.action_type} {action.target}")
+            else:
+                lines.append(f"{i}. {action.action_type}")
+            if i >= 80:
+                remaining = len(actions) - i
+                if remaining > 0:
+                    lines.append(f"...还有 {remaining} 个可选动作未列出")
+                break
+        return "\n".join(lines)
 
     @property
     @abstractmethod

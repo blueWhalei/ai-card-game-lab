@@ -10,18 +10,40 @@ from typing import Any
 import aiosqlite
 import structlog
 
-from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
+from app.core.engine.base import EngineCapability
 from app.core.stats.proportion import wilson_interval
 from app.database import open_db_connection
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.game_service import GameService
-from app.utils.exceptions import AppError
+from app.utils.exceptions import AppError, ProviderNotConfiguredError
 from app.utils.id_generator import generate_id
+from app.utils.providers import unconfigured_providers_from_players
 
 logger = structlog.get_logger()
 
 _ACTIVE_STATUSES = frozenset({"created", "running", "paused", "pending"})
 _PROTOCOL_SCHEMA_VERSION = 1
+_CREDIBILITY_MIN_DECISIVE_N = 20
+_CREDIBILITY_MAX_CI_WIDTH = 0.3
+
+
+def build_credibility(
+    *,
+    decisive_n: int,
+    landlord_win_rate_ci: list[float] | tuple[float, float] | None,
+) -> dict[str, Any]:
+    """Eval-power hint for UI (point estimates alone are easy to over-read)."""
+    width: float | None = None
+    if landlord_win_rate_ci is not None and len(landlord_win_rate_ci) >= 2:
+        width = round(float(landlord_win_rate_ci[1]) - float(landlord_win_rate_ci[0]), 4)
+    low_power = decisive_n < _CREDIBILITY_MIN_DECISIVE_N or (
+        width is not None and width > _CREDIBILITY_MAX_CI_WIDTH
+    )
+    return {
+        "decisive_n": decisive_n,
+        "landlord_ci_width": width,
+        "low_power": low_power,
+    }
 
 
 class ExperimentNotFoundError(AppError):
@@ -92,6 +114,12 @@ class ExperimentService:
             )
         return players
 
+    def _engine_capability(self, game_type: str) -> EngineCapability:
+        return self._game_service._engine_registry.get_capability(game_type)
+
+    def _benchmark_seeds(self, game_type: str) -> list[int]:
+        return list(self._engine_capability(game_type).benchmark_seeds)
+
     def _build_protocol(
         self,
         *,
@@ -100,9 +128,10 @@ class ExperimentService:
         pair_deals: bool,
         deal_seeds: list[int],
         frozen_at: str,
+        game_type: str,
         collect_mode: str = "free",
     ) -> dict[str, Any]:
-        return {
+        protocol: dict[str, Any] = {
             "schema_version": _PROTOCOL_SCHEMA_VERSION,
             "frozen_at": frozen_at,
             "prompt_version": self._prompt_version(),
@@ -112,6 +141,8 @@ class ExperimentService:
             "deal_seeds": list(deal_seeds),
             "collect_mode": collect_mode,
         }
+        protocol.update(self._engine_capability(game_type).protocol_fingerprint())
+        return protocol
 
     async def create_experiment(
         self,
@@ -169,7 +200,12 @@ class ExperimentService:
         if preset_deal_seeds is not None:
             deal_seeds = list(preset_deal_seeds)
         elif collect_mode == "benchmark" and not pair_deals:
-            deal_seeds = BENCHMARK_DEAL_SEEDS[:target_games]
+            seeds = self._benchmark_seeds(game_type)
+            if not seeds:
+                raise ExperimentValidationError(
+                    f"{game_type} 不支持基准测验（引擎未声明 benchmark_seeds）"
+                )
+            deal_seeds = seeds[:target_games]
 
         experiment_id = generate_id("exp")
         now = datetime.now(tz=UTC).isoformat()
@@ -181,6 +217,7 @@ class ExperimentService:
             deal_seeds=deal_seeds,
             frozen_at=now,
             collect_mode=effective_mode,
+            game_type=game_type,
         )
 
         conn = await self._conn()
@@ -350,21 +387,21 @@ class ExperimentService:
 
         now = datetime.now(tz=UTC).isoformat()
         protocol = experiment.get("protocol")
-        if not isinstance(protocol, dict):
-            protocol = self._build_protocol(
-                player_ids=player_ids,
-                source_experiment_id=None,
-                pair_deals=False,
-                deal_seeds=[],
-                frozen_at=now,
+        if not isinstance(protocol, dict) or not protocol.get("players"):
+            raise ExperimentValidationError(
+                "实验协议缺失或不完整，请重新创建实验后再采集"
             )
-        else:
-            protocol = deepcopy(protocol)
-            if not protocol.get("players"):
-                protocol["players"] = self._snapshot_players(player_ids)
-                protocol.setdefault("frozen_at", now)
-                protocol.setdefault("schema_version", _PROTOCOL_SCHEMA_VERSION)
-                protocol.setdefault("prompt_version", self._prompt_version())
+        protocol = deepcopy(protocol)
+
+        from app.config import Settings
+
+        settings = getattr(self._game_service, "_settings", None)
+        if isinstance(settings, Settings):
+            missing = unconfigured_providers_from_players(
+                settings, list(protocol.get("players") or [])
+            )
+            if missing:
+                raise ProviderNotConfiguredError(missing)
 
         deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
         pair_deals = bool(protocol.get("pair_deals"))
@@ -517,6 +554,7 @@ class ExperimentService:
         decisive = int(eval_metrics.get("decisive_games") or 0)
         landlord_wins = int((eval_metrics.get("wins_by_role") or {}).get("landlord") or 0)
         l_low, l_high = wilson_interval(landlord_wins, decisive)
+        landlord_ci = [round(l_low, 4), round(l_high, 4)]
 
         return {
             "status": status,
@@ -535,7 +573,7 @@ class ExperimentService:
             "wins_by_role": eval_metrics.get("wins_by_role") or {"landlord": 0, "peasant": 0},
             "decisive_games": decisive,
             "landlord_win_rate": eval_metrics.get("landlord_win_rate", 0.0),
-            "landlord_win_rate_ci": [round(l_low, 4), round(l_high, 4)],
+            "landlord_win_rate_ci": landlord_ci,
             "parser_success_rate": eval_metrics.get("parser_success_rate", 0.0),
             "parser_n": eval_metrics.get("parser_n", 0),
             "avg_response_time_ms": eval_metrics.get("avg_response_time_ms", 0.0),
@@ -548,6 +586,9 @@ class ExperimentService:
             "player_stats": player_stats,
             "latest_game_id": latest_game_id,
             "paired_games": paired_games,
+            "credibility": build_credibility(
+                decisive_n=decisive, landlord_win_rate_ci=landlord_ci
+            ),
         }
 
     async def _build_timeline(
@@ -679,6 +720,7 @@ class ExperimentService:
         decisive = int(extras.get("decisive_games") or 0)
         landlord_wins = int((extras.get("wins_by_role") or {}).get("landlord") or 0)
         l_low, l_high = wilson_interval(landlord_wins, decisive)
+        landlord_ci = [round(l_low, 4), round(l_high, 4)]
         return {
             "id": row["id"],
             "name": row["name"],
@@ -703,7 +745,10 @@ class ExperimentService:
             "wins_by_role": extras.get("wins_by_role") or {"landlord": 0, "peasant": 0},
             "decisive_games": decisive,
             "landlord_win_rate": extras.get("landlord_win_rate", 0.0),
-            "landlord_win_rate_ci": [round(l_low, 4), round(l_high, 4)],
+            "landlord_win_rate_ci": landlord_ci,
+            "credibility": build_credibility(
+                decisive_n=decisive, landlord_win_rate_ci=landlord_ci
+            ),
             "status_counts": extras.get("status_counts") or {},
             "player_stats": player_stats,
             "paired_n": 0,

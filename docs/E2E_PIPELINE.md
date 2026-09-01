@@ -10,7 +10,7 @@
 | Python 3.11+ / Poetry / Node 20.19+ 或 22.12+ | 必选 |
 | `.env` | 从 `.env.example` 复制并填 API Key，或配 Ollama |
 | 选手配置 | 在前端「选手配置」页创建至少 3 份选手（斗地主需要 3 个槽位）；无仓库级 YAML seed |
-| 后端 | `start-backend.bat` 或 `cd server && poetry run uvicorn ...` |
+| 后端 | `scripts/start-backend.bat` / `./scripts/start-backend.sh`，或 `cd server && poetry run uvicorn ...` |
 
 可选：
 
@@ -24,14 +24,18 @@ cd server && poetry install --with training   # PEFT LoRA（必选才能训练�
 
 ```powershell
 # Windows
+.\scripts\start-backend.bat       # 另开终端
+.\scripts\start-frontend.bat      # 可选观战
 .\scripts\e2e_pipeline.ps1 guide
 .\scripts\e2e_pipeline.ps1 check
 .\scripts\e2e_pipeline.ps1 all -Count 1          # 采集→导出→真训（需 training 依赖）
 ```
 
 ```bash
-# macOS / Linux
-chmod +x scripts/e2e_pipeline.sh
+# macOS / Linux（首次需 chmod）
+chmod +x scripts/*.sh
+./scripts/start-backend.sh      # 另开终端
+./scripts/start-frontend.sh     # 可选观战
 ./scripts/e2e_pipeline.sh guide
 ./scripts/e2e_pipeline.sh check
 ./scripts/e2e_pipeline.sh all --count 1
@@ -74,7 +78,7 @@ poetry run python scripts/e2e_pipeline.py all --count 1
 
 ## 人工观战（可选）
 
-1. `start-frontend.bat` → http://localhost:5173  
+1. `scripts/start-frontend.bat` 或 `./scripts/start-frontend.sh` → http://localhost:5173  
 2. 首页「加载演示对局」或从实验详情进入观战看思考链  
 3. 侧栏「决策点」或详情「登记并开训」→ **登记为训练数据集**  
 4. 「训练」模型仓库：**推送到 Ollama**（或导出部署包手转）→ 登记为选手 → 实验详情开对照  

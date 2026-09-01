@@ -157,9 +157,9 @@ GET    /api/v1/experiments                   # 实验列表
 POST   /api/v1/experiments                   # 创建实验（选手人数由引擎 min/max 校验；可选 hypothesis/tags/collect_mode）
 PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/conclusion/tags
 POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
-GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率）
+GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率 / credibility）
 GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step
-POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（benchmark 用固定发牌种子 deal_seed）
+POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座位级 provider 门闩；benchmark 用固定 deal_seed）
 ```
 
 `GET /api/v1/experiments/{id}` 附加字段：
@@ -167,14 +167,15 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（ben
 - `timeline[]` — `created` / `first_collect` / `first_finished` / `dataset_registered` / `training_completed` / `control_created`
 - `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`
 - `next_step` — `{ id, label_key, action? }` 下一步引导
+- `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
 
-创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。
+创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒采集（无懒升级）。
 
 #### GET /api/v1/experiments/compare
 
 **Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
 
-**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`。
+**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`。
 
 数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 
@@ -310,15 +311,18 @@ POST   /api/v1/models/{model_id}/verify      # Ollama 快速验证
 ```
 GET    /api/v1/system/health                 # 健康检查
 GET    /api/v1/system/config                 # 系统配置（脱敏，只读；设置页不提供 PATCH）
-GET    /api/v1/system/startup-check          # 首次运行就绪检查
+GET    /api/v1/system/preflight              # 开跑前检查（scope=collect|train|all；可选 experiment_id）
+GET    /api/v1/system/startup-check          # 同上（兼容；内部复用 preflight scope=all）
 POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
-GET    /api/v1/system/engines                # 引擎元数据（min/max players）
+GET    /api/v1/system/engines                # 引擎 capability（slots / phases / fingerprint / eval metrics）
 GET    /api/v1/system/benchmark-seeds        # 基准测验固定发牌种子列表（50 个）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
 GET    /api/v1/system/runtime-stats          # 运行时资源快照
 ```
+
+`GET /preflight` 返回 `ok` / `can_collect` / `can_train` / `checks[]`（`block`|`warn`）/ `providers` / `warnings`。有 `experiment_id` 时按协议座位校验 provider；设置页与实验详情采集 CTA 共用此接口。
 
 设置页为只读展示。归档天数等通过归档/清理接口传入，不经 `PATCH /system/config`。
 

@@ -110,7 +110,7 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
     },
   )
 
-  function applySnapshot(raw: unknown, gameTypeHint = 'doudizhu'): void {
+  function applySnapshot(raw: unknown, gameTypeHint = ''): void {
     const next = coerceObserverSnapshot(raw, gameTypeHint)
     if (!next) return
     snapshot.value = next

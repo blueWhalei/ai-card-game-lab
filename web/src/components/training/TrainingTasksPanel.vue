@@ -21,6 +21,13 @@ const { t } = useI18n()
 const emit = defineEmits<{
   delete: [id: string]
 }>()
+
+function taskError(row: Record<string, unknown>): string {
+  const result = row.result
+  if (!result || typeof result !== 'object') return ''
+  const err = (result as { error?: unknown }).error
+  return typeof err === 'string' ? err : ''
+}
 </script>
 
 <template>
@@ -52,6 +59,16 @@ const emit = defineEmits<{
         <span v-else-if="row.status === 'completed'" class="text-sm text-ink-success">
           {{ formatProgress(Number(row.progress)) }}
         </span>
+        <div v-else-if="row.status === 'failed'" class="max-w-xs space-y-0.5">
+          <span class="text-sm text-ink-danger">{{ t('training.status.failed') }}</span>
+          <p
+            v-if="taskError(row)"
+            class="line-clamp-2 text-xs text-ink-text-muted"
+            :title="taskError(row)"
+          >
+            {{ taskError(row) }}
+          </p>
+        </div>
         <span v-else class="text-sm text-ink-text-muted">-</span>
       </template>
       <template #cell-created_at="{ row }">

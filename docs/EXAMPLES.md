@@ -62,7 +62,7 @@ import random
 import re
 from typing import Any
 
-from app.core.engine.base import GameAction, GameEngine, GameState
+from app.core.engine.base import EngineCapability, GameAction, GameEngine, GameState
 from app.core.engine.guess_number.state import GuessNumberState
 from app.utils.exceptions import InvalidActionError
 
@@ -73,6 +73,30 @@ class GuessNumberEngine(GameEngine):
     @property
     def game_type(self) -> str:
         return "guess_number"
+
+    @property
+    def min_players(self) -> int:
+        return 2
+
+    @property
+    def max_players(self) -> int:
+        return 4
+
+    @property
+    def capability(self) -> EngineCapability:
+        return EngineCapability(
+            game_type="guess_number",
+            min_players=2,
+            max_players=4,
+            engine_version="1",
+            phases=("playing",),
+            prompt_keys={"playing": "guess_number_playing"},
+            supports_deal_seed=False,
+            roles=(),
+            eval_metric_ids=("parser_success", "train_usable", "latency_p50_p95"),
+            decision_schema_version=1,
+            rules_ref=None,
+        )
 
     def initialize(self, player_ids: list[str], **params: Any) -> GameState:
         target = random.randint(1, 100)
@@ -206,7 +230,18 @@ def get_engine_registry() -> GameEngineRegistry:
     return registry
 ```
 
-### 1.5 观战协议（不要新建 Board 组件）
+新建实验时会把 `capability.protocol_fingerprint()` 写入 `experiments.protocol`
+（当前 `schema_version: 1`）。采集要求协议完整，不做旧数据懒升级。
+`GET /system/engines` 返回完整 capability（benchmark 种子仅 count；完整列表走
+`GET /system/benchmark-seeds?game_type=`）。
+
+### 1.5 Decision schema v1（不迁表）
+
+决策点共用 SQLite 列：`hand_cards` / `opponent_hands` / `last_action` / `game_phase` /
+`legal_actions` / `chosen_action` / `thinking` / `outcome` / `train_usable*` 等。
+游戏特有结构放进这些 JSON 字段；用 `capability.decision_schema_version` 标记约定版本。
+
+### 1.6 观战协议（不要新建 Board 组件）
 
 实现 `get_public_info(..., is_observer=True)`，输出 `ObserverSnapshot`
 （见 `server/app/core/engine/observer_types.py`）：`game_type` / `phase` / `round` /

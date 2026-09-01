@@ -15,7 +15,6 @@ from typing import TYPE_CHECKING
 from app.core.ai.parsers.action_parser import ActionOutputParser
 from app.core.ai.parsers.bid_parser import BidOutputParser
 from app.core.ai.prompts.registry import PromptTemplateRegistry
-from app.core.engine.doudizhu.cards import ActionType, sort_cards
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -52,26 +51,6 @@ def is_reasoning_model(model_name: str | None) -> bool:
         return False
     model_lower = model_name.lower()
     return any(re.search(pattern, model_lower) for pattern in REASONING_MODEL_PATTERNS)
-
-# ── Action type priority for sorting (higher = shown first) ─────────────────
-ACTION_PRIORITY: dict[str, int] = {
-    ActionType.ROCKET: 14,
-    ActionType.BOMB: 13,
-    ActionType.AIRPLANE_PAIR: 12,
-    ActionType.AIRPLANE_SOLO: 11,
-    ActionType.AIRPLANE: 10,
-    ActionType.FOUR_TWO: 9,
-    ActionType.CHAIN_PAIR: 8,
-    ActionType.CHAIN: 7,
-    ActionType.TRIPLE_TWO: 6,
-    ActionType.TRIPLE_ONE: 5,
-    ActionType.TRIPLE: 4,
-    ActionType.PAIR: 3,
-    ActionType.SINGLE: 2,
-    ActionType.PASS: 1,
-    ActionType.BID_PASS: 0,
-    ActionType.BID: 13,  # bids shown prominently
-}
 
 # Legacy templates (used as fallback)
 SYSTEM_TEMPLATE = """\
@@ -120,11 +99,19 @@ BIDDING_SYSTEM_TEMPLATE = """\
 """
 
 
-def _load_rules(game_type: str) -> str:
-    """Load game rules from docs markdown file, fallback to inline."""
-    rules_path = Path(__file__).parents[4] / "docs" / "欢乐斗地主经典玩法规则.md"
-    if rules_path.exists():
-        return rules_path.read_text(encoding="utf-8")
+def _load_rules(game_type: str, rules_ref: str | None = None) -> str:
+    """Load game rules from capability.rules_ref or docs fallback."""
+    candidates: list[Path] = []
+    repo_root = Path(__file__).parents[4]
+    if rules_ref:
+        ref_path = Path(rules_ref)
+        candidates.append(ref_path if ref_path.is_absolute() else repo_root / rules_ref)
+    # Legacy default for doudizhu when rules_ref missing
+    if game_type == "doudizhu":
+        candidates.append(repo_root / "docs" / "欢乐斗地主经典玩法规则.md")
+    for path in candidates:
+        if path.exists():
+            return path.read_text(encoding="utf-8")
     return FALLBACK_RULES.get(game_type, "")
 
 
@@ -192,6 +179,28 @@ class PromptBuilder:
             return "reasoning"
         return self._default_version
 
+    @staticmethod
+    def _phase_of(state: GameState) -> str:
+        return str(getattr(state, "phase", None) or "playing")
+
+    @staticmethod
+    def _template_key_for(engine: GameEngine, phase: str) -> str:
+        keys = engine.capability.prompt_keys
+        if phase in keys:
+            return keys[phase]
+        if "playing" in keys:
+            return keys["playing"]
+        return f"{engine.game_type}_{phase}"
+
+    @staticmethod
+    def _rules_for(engine: GameEngine) -> str:
+        game_type = engine.game_type
+        if game_type not in _rules_cache:
+            _rules_cache[game_type] = _load_rules(
+                game_type, engine.capability.rules_ref
+            )
+        return _rules_cache[game_type]
+
     async def build_async(
         self,
         state: GameState,
@@ -219,21 +228,20 @@ class PromptBuilder:
         """
         game_type = state.game_type
         version = self._select_version_for_model(model_name)
+        phase = self._phase_of(state)
 
-        # Check if in bidding phase
-        phase = getattr(state, "phase", "playing")
-        if phase == "bidding":
-            return await self._build_bidding_async(
+        if phase != "playing" and phase in engine.capability.prompt_keys:
+            return await self._build_phase_async(
                 state=state,
                 legal_actions=legal_actions,
                 engine=engine,
                 player_id=player_id,
+                phase=phase,
                 db=db,
                 session_id=session_id,
                 version=version,
             )
 
-        # Playing phase
         return await self._build_playing_async(
             state=state,
             legal_actions=legal_actions,
@@ -259,17 +267,10 @@ class PromptBuilder:
         tool_analysis: str | None = None,
     ) -> list[dict[str, str]]:
         """Build playing phase prompt with template from registry."""
-        # Load rules
-        if game_type not in _rules_cache:
-            _rules_cache[game_type] = _load_rules(game_type)
-        rules = _rules_cache[game_type]
+        rules = self._rules_for(engine)
         game_type_cn = GAME_TYPE_CN.get(game_type, game_type)
-
-        # Get format instructions from LangChain parser
         format_instructions = _action_parser.get_format_instructions()
-
-        # Get template from registry (with DB support)
-        template_key = f"{game_type}_playing"
+        template_key = self._template_key_for(engine, "playing")
         try:
             template_content = await self._registry.get_template(
                 template_key=template_key,
@@ -278,10 +279,8 @@ class PromptBuilder:
                 session_id=session_id,
             )
         except ValueError:
-            # Fallback to legacy template
             template_content = SYSTEM_TEMPLATE
 
-        # Format system message
         system_msg = template_content.format(
             game_type_cn=game_type_cn,
             rules=rules,
@@ -289,7 +288,7 @@ class PromptBuilder:
         )
 
         state_desc = engine.format_for_prompt(state, player_id)
-        actions_str = self._format_legal_actions(legal_actions)
+        actions_str = engine.format_legal_actions_for_prompt(state, legal_actions)
 
         user_parts: list[str] = [
             state_desc,
@@ -303,6 +302,67 @@ class PromptBuilder:
             "",
             "请决策：",
         ])
+
+        return [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": "\n".join(user_parts)},
+        ]
+
+    async def _build_phase_async(
+        self,
+        state: GameState,
+        legal_actions: list[GameAction],
+        engine: GameEngine,
+        player_id: str,
+        phase: str,
+        db: aiosqlite.Connection | None,
+        session_id: str | None,
+        version: str = "v1",
+    ) -> list[dict[str, str]]:
+        """Build a non-playing phase prompt (e.g. bidding) from capability keys."""
+        format_instructions = (
+            _bid_parser.get_format_instructions()
+            if phase == "bidding"
+            else _action_parser.get_format_instructions()
+        )
+        template_key = self._template_key_for(engine, phase)
+        try:
+            template_content = await self._registry.get_template(
+                template_key=template_key,
+                db=db,
+                version=version,
+                session_id=session_id,
+            )
+        except ValueError:
+            template_content = BIDDING_SYSTEM_TEMPLATE if phase == "bidding" else SYSTEM_TEMPLATE
+
+        system_msg = template_content.format(
+            format_instructions=format_instructions,
+            game_type_cn=GAME_TYPE_CN.get(engine.game_type, engine.game_type),
+            rules=self._rules_for(engine),
+        )
+        state_desc = engine.format_for_prompt(state, player_id)
+        actions_str = engine.format_legal_actions_for_prompt(state, legal_actions)
+
+        if phase == "bidding":
+            user_parts = [
+                "## 当前叫地主情况",
+                state_desc,
+                "",
+                "## 可选动作",
+                actions_str,
+                "",
+                "请分析手牌强度并决定叫分：",
+            ]
+        else:
+            user_parts = [
+                state_desc,
+                "",
+                "## 可选动作",
+                actions_str,
+                "",
+                "请决策：",
+            ]
 
         return [
             {"role": "system", "content": system_msg},
@@ -320,42 +380,16 @@ class PromptBuilder:
         version: str = "v1",
     ) -> list[dict[str, str]]:
         """Build bidding phase prompt with template from registry."""
-        # Get format instructions from LangChain parser
-        format_instructions = _bid_parser.get_format_instructions()
-
-        # Get template from registry (with DB support)
-        template_key = "doudizhu_bidding"
-        try:
-            template_content = await self._registry.get_template(
-                template_key=template_key,
-                db=db,
-                version=version,
-                session_id=session_id,
-            )
-        except ValueError:
-            # Fallback to legacy template
-            template_content = BIDDING_SYSTEM_TEMPLATE
-
-        system_msg = template_content.format(
-            format_instructions=format_instructions,
+        return await self._build_phase_async(
+            state=state,
+            legal_actions=legal_actions,
+            engine=engine,
+            player_id=player_id,
+            phase="bidding",
+            db=db,
+            session_id=session_id,
+            version=version,
         )
-        state_desc = engine.format_for_prompt(state, player_id)
-        actions_str = self._format_legal_actions(legal_actions)
-
-        user_parts = [
-            "## 当前叫地主情况",
-            state_desc,
-            "",
-            "## 可选动作",
-            actions_str,
-            "",
-            "请分析手牌强度并决定叫分：",
-        ]
-
-        return [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": "\n".join(user_parts)},
-        ]
 
     def build(
         self,
@@ -369,36 +403,21 @@ class PromptBuilder:
         """Build prompt synchronously (without database/A/B testing support).
 
         For full features, use build_async() instead.
-
-        Args:
-            state: Current game state
-            legal_actions: List of legal actions
-            engine: Game engine instance
-            player_id: ID of the player making the decision
-            model_name: Optional model name to select appropriate template version
-            tool_analysis: Optional pre-formatted tool analysis text to inject
         """
         game_type = state.game_type
         version = self._select_version_for_model(model_name)
+        phase = self._phase_of(state)
 
-        # Check if in bidding phase
-        phase = getattr(state, "phase", "playing")
-        if phase == "bidding":
-            return self._build_bidding(state, legal_actions, engine, player_id, version)
+        if phase != "playing" and phase in engine.capability.prompt_keys:
+            return self._build_phase_sync(
+                state, legal_actions, engine, player_id, phase, version
+            )
 
-        # Playing phase
-        if game_type not in _rules_cache:
-            _rules_cache[game_type] = _load_rules(game_type)
-        rules = _rules_cache[game_type]
+        rules = self._rules_for(engine)
         game_type_cn = GAME_TYPE_CN.get(game_type, game_type)
-
-        # Get format instructions from LangChain parser
         format_instructions = _action_parser.get_format_instructions()
-
-        # Try to get template from registry (without DB)
-        template_key = f"{game_type}_playing"
+        template_key = self._template_key_for(engine, "playing")
         try:
-            # Use sync approach - get from defaults
             import asyncio
 
             template_content = asyncio.get_event_loop().run_until_complete(
@@ -416,7 +435,7 @@ class PromptBuilder:
         )
 
         state_desc = engine.format_for_prompt(state, player_id)
-        actions_str = self._format_legal_actions(legal_actions)
+        actions_str = engine.format_legal_actions_for_prompt(state, legal_actions)
 
         user_parts: list[str] = [
             state_desc,
@@ -436,6 +455,63 @@ class PromptBuilder:
             {"role": "user", "content": "\n".join(user_parts)},
         ]
 
+    def _build_phase_sync(
+        self,
+        state: GameState,
+        legal_actions: list[GameAction],
+        engine: GameEngine,
+        player_id: str,
+        phase: str,
+        version: str = "v1",
+    ) -> list[dict[str, str]]:
+        format_instructions = (
+            _bid_parser.get_format_instructions()
+            if phase == "bidding"
+            else _action_parser.get_format_instructions()
+        )
+        template_key = self._template_key_for(engine, phase)
+        try:
+            import asyncio
+
+            template_content = asyncio.get_event_loop().run_until_complete(
+                self._registry.get_template(template_key=template_key, db=None, version=version)
+            )
+        except Exception:
+            template_content = BIDDING_SYSTEM_TEMPLATE if phase == "bidding" else SYSTEM_TEMPLATE
+
+        system_msg = template_content.format(
+            format_instructions=format_instructions,
+            game_type_cn=GAME_TYPE_CN.get(engine.game_type, engine.game_type),
+            rules=self._rules_for(engine),
+        )
+        state_desc = engine.format_for_prompt(state, player_id)
+        actions_str = engine.format_legal_actions_for_prompt(state, legal_actions)
+
+        if phase == "bidding":
+            user_parts = [
+                "## 当前叫地主情况",
+                state_desc,
+                "",
+                "## 可选动作",
+                actions_str,
+                "",
+                "请分析手牌强度并决定叫分：",
+            ]
+        else:
+            user_parts = [
+                state_desc,
+                "",
+                "## 可选动作",
+                actions_str,
+                "",
+                "请决策：",
+            ]
+
+        return [
+            {"role": "system", "content": system_msg},
+            {"role": "user", "content": "\n".join(user_parts)},
+        ]
+
     def _build_bidding(
         self,
         state: GameState,
@@ -445,40 +521,9 @@ class PromptBuilder:
         version: str = "v1",
     ) -> list[dict[str, str]]:
         """Build bidding phase prompt (synchronous fallback)."""
-        # Get format instructions from LangChain parser
-        format_instructions = _bid_parser.get_format_instructions()
-
-        # Try to get template from registry
-        template_key = "doudizhu_bidding"
-        try:
-            import asyncio
-
-            template_content = asyncio.get_event_loop().run_until_complete(
-                self._registry.get_template(template_key=template_key, db=None, version=version)
-            )
-        except Exception:
-            template_content = BIDDING_SYSTEM_TEMPLATE
-
-        system_msg = template_content.format(
-            format_instructions=format_instructions,
+        return self._build_phase_sync(
+            state, legal_actions, engine, player_id, "bidding", version
         )
-        state_desc = engine.format_for_prompt(state, player_id)
-        actions_str = self._format_legal_actions(legal_actions)
-
-        user_parts = [
-            "## 当前叫地主情况",
-            state_desc,
-            "",
-            "## 可选动作",
-            actions_str,
-            "",
-            "请分析手牌强度并决定叫分：",
-        ]
-
-        return [
-            {"role": "system", "content": system_msg},
-            {"role": "user", "content": "\n".join(user_parts)},
-        ]
 
     @staticmethod
     def format_tool_results(
@@ -509,46 +554,3 @@ class PromptBuilder:
                 parts.append(f"**分析**: {win_probability.reasoning}")
 
         return "\n".join(parts) if parts else None
-
-    @staticmethod
-    def _format_legal_actions(actions: list[GameAction]) -> str:
-        if not actions:
-            return "无可选动作"
-
-        # Sort by action type priority (descending), then by card power
-        def sort_key(a: GameAction) -> tuple[int, int]:
-            priority = ACTION_PRIORITY.get(str(a.action_type), 0)
-            # For BID actions, sort by bid value descending
-            if a.action_type == ActionType.BID and a.target:
-                return (priority, int(a.target))
-            # For card actions, sort by first card power descending
-            card_power = max((ord(c[0]) for c in a.cards), default=0) if a.cards else 0
-            return (priority, card_power)
-
-        sorted_actions = sorted(actions, key=sort_key, reverse=True)
-
-        lines: list[str] = []
-        seen: set[str] = set()
-        for a in sorted_actions:
-            cards_str = " ".join(sort_cards(a.cards)) if a.cards else ""
-            key = f"{a.action_type}:{cards_str}:{getattr(a, 'target', '')}"
-            if key in seen:
-                continue
-            seen.add(key)
-
-            if a.action_type == ActionType.PASS:
-                lines.append(f"{len(lines) + 1}. PASS（不出）")
-            elif a.action_type == ActionType.BID_PASS:
-                lines.append(f"{len(lines) + 1}. BID_PASS（不叫）")
-            elif a.action_type == ActionType.BID:
-                lines.append(f"{len(lines) + 1}. BID {a.target}分（叫{a.target}分）")
-            else:
-                lines.append(f"{len(lines) + 1}. {a.action_type}: [{cards_str}]")
-
-            if len(lines) >= 80:
-                remaining = len(sorted_actions) - len(seen)
-                if remaining > 0:
-                    lines.append(f"...还有 {remaining} 个可选动作未列出")
-                break
-
-        return "\n".join(lines)

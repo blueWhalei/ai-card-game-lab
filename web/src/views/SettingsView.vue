@@ -2,7 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import { systemApi, type ProviderInfo, type StartupCheck, type SystemConfig } from '@/api/systemApi'
+import { systemApi, type PreflightResult, type ProviderInfo, type SystemConfig } from '@/api/systemApi'
 import { apiClient } from '@/api/client'
 import type { ApiResponse } from '@/api/types'
 import { showApiError } from '@/utils/error'
@@ -10,6 +10,7 @@ import { formatBytes } from '@/utils/format'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
+import PreflightBanner from '@/components/common/PreflightBanner.vue'
 
 type StorageInfo = {
   db_size_bytes: number
@@ -21,7 +22,7 @@ const { t } = useI18n()
 const providers = ref<ProviderInfo[]>([])
 const config = ref<SystemConfig | null>(null)
 const storage = ref<StorageInfo | null>(null)
-const startup = ref<StartupCheck | null>(null)
+const startup = ref<PreflightResult | null>(null)
 const loading = ref(true)
 const loadError = ref(false)
 const showPaths = ref(false)
@@ -47,7 +48,7 @@ async function fetchAll() {
       systemApi.listProviders(),
       systemApi.getConfig(),
       apiClient.get<never, ApiResponse<StorageInfo>>('/api/v1/system/storage'),
-      systemApi.getStartupCheck(),
+      systemApi.preflight({ scope: 'all' }),
     ])
     providers.value = provRes.data
     config.value = cfgRes.data
@@ -111,17 +112,11 @@ onMounted(fetchAll)
         </div>
       </div>
       <div
-        v-if="startup && startup.warnings.length > 0"
-        class="mt-4 space-y-1 border-t border-ink-border pt-3"
+        v-if="startup && startup.checks?.some((c) => !c.ok)"
+        class="mt-4 space-y-2 border-t border-ink-border pt-3"
       >
         <p class="text-xs text-ink-text-muted">{{ t('settings.startup') }}</p>
-        <p
-          v-for="(warning, i) in startup.warnings"
-          :key="i"
-          class="text-sm text-ink-text-secondary"
-        >
-          {{ warning }}
-        </p>
+        <PreflightBanner :checks="startup.checks" />
       </div>
     </section>
 

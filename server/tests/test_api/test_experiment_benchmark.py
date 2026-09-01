@@ -24,11 +24,20 @@ async def test_benchmark_collect_uses_fixed_seeds(client: AsyncClient) -> None:
     protocol = exp.get("protocol") or {}
     expected_seeds = protocol.get("deal_seeds") or []
     assert len(expected_seeds) == 3
+    assert protocol.get("schema_version") == 1
+    assert protocol.get("engine_version") == "1"
+    assert protocol.get("game_type") == "doudizhu"
 
-    with patch(
-        "app.services.game_service.GameService.start_game",
-        new_callable=AsyncMock,
-        side_effect=lambda game_id, db=None: {"id": game_id, "status": "running"},
+    with (
+        patch(
+            "app.services.game_service.is_provider_configured",
+            return_value=True,
+        ),
+        patch(
+            "app.services.game_service.GameService.start_game",
+            new_callable=AsyncMock,
+            side_effect=lambda game_id, db=None: {"id": game_id, "status": "running"},
+        ),
     ):
         first = await client.post(
             f"/api/v1/experiments/{exp['id']}/collect",
@@ -39,8 +48,8 @@ async def test_benchmark_collect_uses_fixed_seeds(client: AsyncClient) -> None:
             json={"count": 1},
         )
 
-    assert first.status_code == 201
-    assert second.status_code == 201
+    assert first.status_code == 201, first.text
+    assert second.status_code == 201, second.text
 
     detail = await client.get(f"/api/v1/experiments/{exp['id']}")
     games = detail.json()["data"]["games"]

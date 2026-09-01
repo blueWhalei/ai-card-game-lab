@@ -1,7 +1,7 @@
 export default {
   app: {
-    name: 'AI Card Game Lab',
-    lab: '实验室',
+    name: 'CardLab',
+    lab: 'CardLab',
   },
   locale: {
     zh: '中文',
@@ -20,7 +20,7 @@ export default {
     title: '使用说明',
     tocTitle: '目录',
     intro:
-      'AI Card Game Lab 是本地 AI 研究工具：以「实验」为主线，观察模型决策、采集对局数据、蒸馏小模型并在对照实验中验证。',
+      'CardLab 是本地 AI 研究工具：以「实验」为主线，观察模型决策、采集对局数据、蒸馏小模型并在对照实验中验证。',
     diagrams: {
       loop: {
         caption: '推荐研究闭环',
@@ -86,7 +86,6 @@ export default {
           '创建实验不会自动开局，避免误消耗 API 密钥。',
           '在「试玩对局」页创建的对局不计入实验，仅供试玩或演示。',
           '产品价值在于完整的研究体验闭环，而不是胜率排行榜。',
-          '使用说明在顶栏书本图标（/guide），不在侧栏。',
         ],
       },
       quickStart: {
@@ -159,7 +158,7 @@ export default {
           '开始对局前会校验密钥；未配置将被拒绝。',
           '训练功能需执行：cd server && poetry install --with training',
           '推送到 Ollama 需在 .env 中配置 LLAMA_CPP_DIR。',
-          '后端启动后可访问 /api/v1/system/startup-check 查看环境警告。',
+          '后端启动后可访问 /api/v1/system/preflight（或 startup-check）查看开跑前检查；设置页也会展示。',
         ],
       },
     },
@@ -364,7 +363,16 @@ export default {
     protocolPairedShort: '配对 {paired}/{total}',
     protocolPrompt: '提示词版本 {v}',
     protocolPromptShort: '提示词 {v}',
+    protocolEngineShort: '引擎 {v}',
+    protocolPhasesShort: '阶段 {v}',
     protocolSource: '对照源 {id}',
+    lowPowerShort: '样本偏少',
+    fingerprintGame: '游戏',
+    fingerprintEngine: '引擎',
+    fingerprintDecision: '决策 schema',
+    fingerprintPhases: '阶段',
+    fingerprintPrompts: '提示词键',
+    fingerprintRules: '规则',
     hypothesis: '假设',
     hypothesisPlaceholder: '例如：LoRA 选手在地主位胜率更高',
     conclusion: '结论',
@@ -478,6 +486,8 @@ export default {
     colTrainable: '可训练',
     failed: '对比失败',
     pairedHint: '配对局按相同发牌种子对齐；座位胜场见「配对胜」。',
+    lowPowerHint: '部分实验决胜局偏少或置信区间过宽，点估计请谨慎解读。',
+    protocolMismatch: '所选实验的协议指纹不一致（游戏类型 / 引擎版本 / 提示词键 / 决策 schema），对比仅供参考。',
   },
   config: {
     add: '新增选手',

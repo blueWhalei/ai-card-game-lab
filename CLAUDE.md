@@ -1,5 +1,5 @@
 ---
-description: Agent guide for AI Card Game Lab
+description: Agent guide for CardLab
 alwaysApply: true
 ---
 
@@ -9,7 +9,7 @@ Guidance for agents working in this repository.
 
 ## Project overview
 
-AI Card Game Lab is a local research tool for AI-vs-AI card games: run games, observe decisions, collect data, and fine-tune small models.
+CardLab (repo: `ai-card-game-lab`) is a local research tool for AI-vs-AI card games: run games, observe decisions, collect data, and fine-tune small models.
 
 The primary product object is an **experiment** (run): a fixed set of player configs plus a target game count. Collect, observe, register-and-train, open a control experiment, and compare runs from the experiment detail page. Trial games (no experiment; zh: 试玩对局) still exist on `/game`.
 
@@ -23,6 +23,15 @@ Monorepo:
 Default frontend port is `5173` (proxies `/api` and `/api/v1/games/ws` to `localhost:8000`).
 
 ## Commands
+
+### Dev servers (repo root `scripts/`)
+
+| Platform | Backend | Frontend |
+|----------|---------|----------|
+| Windows | `scripts\start-backend.bat` | `scripts\start-frontend.bat` |
+| macOS / Linux | `./scripts/start-backend.sh` | `./scripts/start-frontend.sh` |
+
+E2E wrapper: `scripts/e2e_pipeline.ps1` / `scripts/e2e_pipeline.sh` (calls `server/scripts/e2e_pipeline.py`).
 
 ### Backend (`server/`)
 
@@ -66,7 +75,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - **Service** — orchestration. Singletons do not hold DB connections; background work opens its own connection.
 - **Repository** — SQLite via aiosqlite.
 - **Core** — framework-independent domain logic:
-  - `engine/` — `GameEngine` ABC + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
+  - `engine/` — `GameEngine` ABC + `EngineCapability` + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
   - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`.
   - `collector/` — JSONL writer.
@@ -105,7 +114,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 | `/training` | `TrainingView` |
 | `/prompt` | `PromptView` |
 | `/traces` | `TraceView` |
-| `/settings` | `SettingsView` (read-only: providers, paths, storage) |
+| `/settings` | `SettingsView` (read-only: providers, paths, storage; preflight via `GET /api/v1/system/preflight`) |
 | `/guide` | `GuideView` (usage guide: modules, flow diagrams; TOC on the right on desktop) |
 
 Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experiment_id=`, `/training?experiment_id=`. Tool pages with `experiment_id` show a context bar back to the experiment detail.
@@ -119,7 +128,7 @@ Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experi
 - Detail page: `ExperimentDetailContextBar` (`next_step` primary action), games list, optional results strip + players tab after first finished game; **archive** dialog (notebook, protocol, validation, clone/manifest). Collect / pause, watch, register-and-train, control, compare via primary action or ⋯ menu.
 - `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
 - Detail tabs: **games** / **players** only (`?tab=players`); deep analysis uses Pipeline deep links above.
-- Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, and per-seat as-landlord win rate (needs `metadata.landlord_id`).
+- Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, per-seat as-landlord win rate (needs `metadata.landlord_id`), plus `credibility` (decisive_n / CI width / low_power). Collect CTA uses `GET /api/v1/system/preflight` (seat providers); Settings shows the same checks.
 - `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `validation_ready`), and `next_step`.
 - Completed training tasks for the experiment appear on `/training?experiment_id=`; model repo can register an Ollama tag as a player config.
 
@@ -133,6 +142,7 @@ GET      /api/v1/experiments/compare?ids=a,b
 GET      /api/v1/experiments/{id}
 POST     /api/v1/experiments/{id}/collect
 GET      /api/v1/system/benchmark-seeds
+GET      /api/v1/system/preflight
 ```
 
 Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`.
@@ -198,13 +208,21 @@ UI: `TraceView.vue`, `TraceDetail.vue`, `TraceMetrics.vue`.
 ## Adding a card game
 
 1. Add `server/app/core/engine/<game_name>/` implementing `GameEngine`.
-2. Register in `get_engine_registry()` (`dependencies.py` / engine package init).
-3. `get_public_info(..., is_observer=True)` must emit `ObserverSnapshot` (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`).
-4. Optional: prompts / parsers for that game.
+2. Override `capability` (`EngineCapability`): slots, phases, `prompt_keys`, deal-seed /
+   benchmark seeds, roles, `eval_metric_ids`, `decision_schema_version`, `rules_ref`.
+3. Register in `get_engine_registry()` (`dependencies.py` / engine package init).
+4. `get_public_info(..., is_observer=True)` must emit `ObserverSnapshot` (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`).
+5. Implement `format_legal_actions_for_prompt` when action listing is game-specific.
+6. Add prompt templates keyed by `capability.prompt_keys` (and optional parsers).
 
 Do **not** add a per-game Vue board or `game_type` branches in `GameObserverView`.
 
-Routing is by `game_type`; no API/Service/Repository changes for a well-behaved engine.
+`GET /system/engines` exposes capability; experiment `protocol` is written complete at
+create time (`schema_version` currently `1`). Incomplete protocol is rejected on collect
+(no silent migration). Decision points stay on the shared table (JSON fields);
+`decision_schema_version` documents the payload contract.
+
+Routing is by `game_type`; Service layers must not hardcode a game id beyond defaults.
 
 ## Adding an LLM provider
 

@@ -391,7 +391,7 @@ class TrainingService:
                 meta = json.loads(meta_path.read_text(encoding="utf-8"))
                 tag = str(meta.get("ollama_tag") or "")
             if not tag:
-                tag = f"acgl-{model_id[:12]}"
+                tag = f"cardlab-{model_id[:12]}"
 
         result: dict[str, Any] = {
             "model_id": model_id,
@@ -438,15 +438,24 @@ class TrainingService:
         *,
         ollama_tag: str,
         player_ids: list[str] | None,
+        game_type: str | None = None,
     ) -> dict[str, Any]:
-        """Create and start one doudizhu game using three Ollama-backed players."""
-        from app.dependencies import get_experiment_config_service, get_game_service
+        """Create and start one game using Ollama-backed players for the engine."""
+        from app.dependencies import get_engine_registry, get_experiment_config_service, get_game_service
 
         configs = get_experiment_config_service()
         game_service = get_game_service()
+        registry = get_engine_registry()
 
-        ids = player_ids or [f"verify_p{i}" for i in range(1, 4)]
+        resolved_type = game_type or registry.default_game_type() or "doudizhu"
+        cap = registry.get_capability(resolved_type)
+        seat_count = cap.min_players
+
+        ids = player_ids or [f"verify_p{i}" for i in range(1, seat_count + 1)]
         ids = [re.sub(r"[^a-zA-Z0-9_-]", "_", pid)[:40] for pid in ids]
+        if len(ids) < seat_count:
+            ids = ids + [f"verify_p{i}" for i in range(len(ids) + 1, seat_count + 1)]
+        ids = ids[: seat_count]
 
         for i, pid in enumerate(ids):
             model_config = {
@@ -470,7 +479,7 @@ class TrainingService:
                 await configs.update_config(pid, {"model_config": model_config})
 
         game = await game_service.create_game(
-            game_type="doudizhu",
+            game_type=resolved_type,
             player_ids=ids,
         )
         game_id = str(game["id"])
@@ -487,6 +496,7 @@ class TrainingService:
 
         return {
             "game_id": game_id,
+            "game_type": resolved_type,
             "player_ids": ids,
             "status": last.get("status"),
             "winner_id": last.get("winner_id"),

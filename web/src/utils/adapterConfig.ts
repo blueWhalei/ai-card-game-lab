@@ -2,7 +2,7 @@
 
 export function ollamaTagForModel(modelId: string): string {
   const short = modelId.replace(/[^a-zA-Z0-9]/g, '').slice(0, 12) || 'model'
-  return `acgl-${short}`
+  return `cardlab-${short}`
 }
 
 export function configIdForModel(modelId: string): string {

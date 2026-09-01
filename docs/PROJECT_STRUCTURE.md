@@ -32,7 +32,7 @@ ai-card-game-lab/
 │   │   │       ├── prompt.py           # 提示词模板管理
 │   │   │       ├── trace.py            # AI 决策追踪 API
 │   │   │       ├── decision.py         # 决策点数据 API (SFT 训练样本)
-│   │   │       └── system.py           # 健康检查 / startup-check / seed-demo / 归档
+│   │   │       └── system.py           # 健康检查 / preflight / startup-check / engines / seed-demo / 归档
 │   │   │
 │   │   ├── schemas/                     # ---------- Pydantic 模型 ----------
 │   │   │   ├── __init__.py
@@ -304,6 +304,12 @@ ai-card-game-lab/
 │   └── logs/                           # 运行日志
 │
 ├── models/                              # ===== 训练产出模型 (gitignore) =====
+│
+├── scripts/                             # ===== 仓库根脚本（跨平台） =====
+│   ├── start-backend.bat / .sh          # 启动后端 :8000
+│   ├── start-frontend.bat / .sh         # 启动前端 :5173
+│   ├── e2e_pipeline.ps1 / .sh           # E2E 闭环包装（调 server/scripts）
+│   └── …
 │
 ├── docs/                                # ===== 项目文档 =====
 │   ├── ARCHITECTURE.md

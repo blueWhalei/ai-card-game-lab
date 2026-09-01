@@ -58,6 +58,17 @@ async def startup_check(
     return ApiResponse(data=service.get_startup_check())
 
 
+@router.get("/preflight")
+async def preflight(
+    scope: str = "all",
+    experiment_id: str | None = None,
+    service: SystemService = Depends(get_system_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(
+        data=await service.get_preflight(scope=scope, experiment_id=experiment_id)
+    )
+
+
 @router.post("/seed-demo")
 async def seed_demo(
     service: DemoSeedService = Depends(get_demo_seed_service),
@@ -81,16 +92,11 @@ async def runtime_stats(
 
 
 @router.get("/benchmark-seeds")
-async def benchmark_seeds() -> ApiResponse[dict[str, Any]]:
-    from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
-
-    return ApiResponse(
-        data={
-            "game_type": "doudizhu",
-            "count": len(BENCHMARK_DEAL_SEEDS),
-            "description": "Fixed deal seeds for benchmark-mode experiments",
-        }
-    )
+async def benchmark_seeds(
+    game_type: str | None = None,
+    service: SystemService = Depends(get_system_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=service.get_benchmark_seeds(game_type))
 
 
 @router.get("/archive/stats")

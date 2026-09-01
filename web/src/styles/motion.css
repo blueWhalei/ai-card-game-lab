@@ -116,6 +116,70 @@
   animation: ink-shimmer 1.2s ease-in-out infinite;
 }
 
+/* CardLab C-Pac loader: opening C mouth + card-dots being “eaten”. */
+@keyframes ink-c-pac-open {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+@keyframes ink-c-pac-shut {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes ink-c-pac-dot-eat {
+  0%,
+  10% {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+  32%,
+  100% {
+    opacity: 0;
+    transform: translateX(-11px) scale(0.3);
+  }
+}
+
+.ink-c-pac-shape {
+  transform-origin: 12px 12px;
+}
+
+.ink-c-pac-open {
+  animation: ink-c-pac-open 0.5s ease-in-out infinite;
+}
+
+.ink-c-pac-shut {
+  animation: ink-c-pac-shut 0.5s ease-in-out infinite;
+}
+
+.ink-c-pac-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ink-c-pac-dot-eat 1.5s ease-in-out infinite;
+}
+
+.ink-c-pac-dot-1 {
+  animation-delay: 0s;
+}
+
+.ink-c-pac-dot-2 {
+  animation-delay: 0.5s;
+}
+
+.ink-c-pac-dot-3 {
+  animation-delay: 1s;
+}
+
 .ink-obs-glow {
   box-shadow: 0 0 0 1px var(--ink-obs-accent), 0 0 10px var(--ink-obs-pulse);
   animation: ink-obs-glow 1.6s var(--ink-ease-out) infinite;
@@ -127,8 +191,23 @@
   .ink-dialog-content[data-state='open'],
   .ink-dialog-content[data-state='closed'],
   .ink-obs-glow,
-  .ink-skeleton {
+  .ink-skeleton,
+  .ink-c-pac-open,
+  .ink-c-pac-shut,
+  .ink-c-pac-dot {
     animation: none;
+  }
+
+  .ink-c-pac-open {
+    opacity: 1;
+  }
+
+  .ink-c-pac-shut {
+    opacity: 0;
+  }
+
+  .ink-c-pac-dot {
+    opacity: 0.55;
   }
 
   .ink-toast-enter-active,

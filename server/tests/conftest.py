@@ -1,7 +1,8 @@
 """Shared pytest fixtures for the test suite."""
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, Iterator
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from httpx import ASGITransport, AsyncClient
@@ -9,6 +10,16 @@ from httpx import ASGITransport, AsyncClient
 from app.config import Settings
 from app.database import init_db
 from app.main import create_app
+
+
+@pytest.fixture(autouse=True)
+def _allow_fixture_providers() -> Iterator[None]:
+    """Fixture configs use ollama; unit tests must not require a live daemon."""
+    with (
+        patch("app.services.game_service.is_provider_configured", return_value=True),
+        patch("app.utils.providers.is_provider_configured", return_value=True),
+    ):
+        yield
 
 
 @pytest.fixture

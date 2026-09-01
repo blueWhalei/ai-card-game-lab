@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI Card Game Lab — E2E pipeline wrapper
+# CardLab — E2E pipeline wrapper
 # Usage:
 #   ./scripts/e2e_pipeline.sh guide
 #   ./scripts/e2e_pipeline.sh check

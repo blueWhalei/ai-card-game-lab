@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -67,7 +67,10 @@ class TestGameServicePlayerValidation:
             experiment_config_service=experiment_config_service,
             settings=Settings(deepseek_api_key=""),
         )
-        with pytest.raises(ProviderNotConfiguredError) as exc:
+        with (
+            patch("app.services.game_service.is_provider_configured", return_value=False),
+            pytest.raises(ProviderNotConfiguredError) as exc,
+        ):
             service._validate_player_ids(["cfg_temp_09"])
         assert "deepseek" in exc.value.message
 

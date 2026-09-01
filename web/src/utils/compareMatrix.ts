@@ -18,6 +18,25 @@ export const COMPARE_METRICS: CompareMetricDef[] = [
   { id: 'parser', kind: 'higher' },
 ]
 
+/** Map compare UI metric ids to engine capability eval_metric_ids. */
+const METRIC_CAPABILITY_REQUIREMENT: Partial<Record<string, string>> = {
+  landlord: 'role:landlord',
+  pairedLandlord: 'role:landlord',
+  parser: 'parser_success',
+  train: 'train_usable',
+  p50: 'latency_p50_p95',
+  p95: 'latency_p50_p95',
+}
+
+/** Filter compare columns by engine eval_metric_ids. Ungated metrics always show. */
+export function compareMetricsForEngine(evalMetricIds: string[]): CompareMetricDef[] {
+  const set = new Set(evalMetricIds)
+  return COMPARE_METRICS.filter((m) => {
+    const req = METRIC_CAPABILITY_REQUIREMENT[m.id]
+    return req == null || set.has(req)
+  })
+}
+
 export type NumericCell = {
   value: number | null
   display: string
