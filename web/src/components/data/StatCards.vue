@@ -9,6 +9,8 @@ import { TooltipComponent, LegendComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { useDataStore } from '@/stores/useDataStore'
 import { showApiError } from '@/utils/error'
+import KpiStrip from '@/components/common/KpiStrip.vue'
+import type { KpiItem } from '@/components/common/KpiStrip.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
 use([CanvasRenderer, PieChart, TooltipComponent, LegendComponent])
@@ -46,6 +48,25 @@ const roleLabels = computed((): Record<string, string> => ({
   no_bid: t('game.noBid'),
 }))
 
+const corpusKpis = computed((): KpiItem[] => {
+  const s = stats.value
+  if (!s) return []
+  return [
+    { id: 'games', label: t('data.totalGames'), value: String(s.total_games) },
+    { id: 'rounds', label: t('data.totalRounds'), value: String(s.total_rounds) },
+    {
+      id: 'tokens',
+      label: t('data.totalTokens'),
+      value: s.total_tokens.toLocaleString(),
+    },
+    {
+      id: 'avgMs',
+      label: t('data.avgResponseMs'),
+      value: String(Math.round(s.avg_response_time_ms)),
+    },
+  ]
+})
+
 const winsByRoleOption = computed(() => {
   const data = stats.value?.wins_by_role ?? {}
   const labels = roleLabels.value
@@ -79,79 +100,25 @@ const winsByRoleOption = computed(() => {
     </div>
 
     <template v-else-if="stats">
-      <section class="ink-card">
-        <h3 class="mb-4 text-sm font-semibold text-ink-text">{{ t('data.scale') }}</h3>
-        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div>
-            <div class="text-2xl font-semibold text-ink-text">{{ stats.total_games }}</div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.totalGames') }}</div>
-          </div>
-          <div>
-            <div class="text-2xl font-semibold text-ink-text">{{ stats.total_rounds }}</div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.totalRounds') }}</div>
-          </div>
-          <div>
-            <div class="text-2xl font-semibold text-ink-text">
-              {{ Math.round(stats.avg_response_time_ms) }}
-            </div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.avgResponseMs') }}</div>
-          </div>
-          <div>
-            <div class="text-2xl font-semibold text-ink-text">
-              {{ Object.keys(stats.games_by_type || {}).length }}
-            </div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.gameKinds') }}</div>
-          </div>
-        </div>
-      </section>
-
-      <section class="ink-card">
-        <h3 class="mb-4 text-sm font-semibold text-ink-text">{{ t('data.tokenUsage') }}</h3>
-        <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
-          <div>
-            <div class="text-xl font-semibold text-ink-text">
-              {{ stats.total_tokens.toLocaleString() }}
-            </div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.totalTokens') }}</div>
-          </div>
-          <div>
-            <div class="text-xl font-semibold text-ink-text">
-              {{ stats.total_prompt_tokens.toLocaleString() }}
-            </div>
-            <div class="text-xs text-ink-text-muted">Prompt</div>
-          </div>
-          <div>
-            <div class="text-xl font-semibold text-ink-text">
-              {{ stats.total_completion_tokens.toLocaleString() }}
-            </div>
-            <div class="text-xs text-ink-text-muted">Completion</div>
-          </div>
-          <div>
-            <div class="text-xl font-semibold text-ink-text">
-              {{
-                stats.total_rounds ? Math.round(stats.total_tokens / stats.total_rounds) : 0
-              }}
-            </div>
-            <div class="text-xs text-ink-text-muted">{{ t('data.avgTokensRound') }}</div>
-          </div>
-        </div>
-      </section>
+      <KpiStrip :items="corpusKpis" class="md:!grid-cols-4" />
 
       <section class="ink-card">
         <h3 class="mb-4 text-sm font-semibold text-ink-text">{{ t('data.completion') }}</h3>
         <div class="mb-4 grid grid-cols-2 gap-4 md:grid-cols-3">
           <div>
-            <div class="text-xl font-semibold text-ink-text">
+            <div class="text-xl font-semibold tabular-nums text-ink-text">
               {{ stats.avg_game_rounds.toFixed(1) }}
             </div>
             <div class="text-xs text-ink-text-muted">{{ t('data.avgRounds') }}</div>
           </div>
           <div>
-            <div class="text-xl font-semibold text-ink-text">{{ stats.games_with_winner }}</div>
+            <div class="text-xl font-semibold tabular-nums text-ink-text">
+              {{ stats.games_with_winner }}
+            </div>
             <div class="text-xs text-ink-text-muted">{{ t('data.decidedGames') }}</div>
           </div>
           <div>
-            <div class="text-xl font-semibold text-ink-text">
+            <div class="text-xl font-semibold tabular-nums text-ink-text">
               {{
                 stats.total_games
                   ? ((stats.games_with_winner / stats.total_games) * 100).toFixed(1)

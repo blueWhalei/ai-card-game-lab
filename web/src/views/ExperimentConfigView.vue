@@ -22,6 +22,7 @@ import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
 import { systemApi, type ProviderInfo } from '@/api/systemApi'
 
 const { t } = useI18n()
@@ -31,10 +32,10 @@ type ConfigRow = ExperimentConfig & Record<string, unknown>
 const configColumns = computed((): TableColumn<ConfigRow>[] => [
   { key: 'name', label: t('common.name') },
   { key: 'model', label: t('common.model'), class: 'w-48' },
-  { key: 'sampling', label: t('common.sampling'), class: 'w-44' },
+  { key: 'sampling', label: t('common.sampling'), class: 'w-40' },
   { key: 'games', label: t('common.games'), class: 'w-20' },
   { key: 'win_rate', label: t('common.winRate'), class: 'w-20' },
-  { key: 'recent', label: t('common.recent'), class: 'w-48' },
+  { key: 'recent', label: t('common.recent'), class: 'hidden w-44 md:table-cell' },
 ])
 
 const configRows = computed(() => configs.value as ConfigRow[])
@@ -180,20 +181,26 @@ onMounted(fetchConfigs)
 
 <template>
   <div class="page-container">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-base text-ink-text-secondary">
-        {{ t('config.subtitle') }}
-      </p>
+    <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
       <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
     </div>
 
     <div class="relative min-h-[200px]">
       <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
+      <EmptyState
+        v-else-if="configs.length === 0"
+        :title="t('config.emptyTitle')"
+        :description="t('config.emptyDesc')"
+      >
+        <template #action>
+          <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
+        </template>
+      </EmptyState>
       <UiTable
+        v-else
         :columns="configColumns"
         :rows="configRows"
         row-key="id"
-        :empty-text="t('config.empty')"
       >
         <template #cell-name="{ row }">
           <div class="min-w-0">
@@ -204,12 +211,18 @@ onMounted(fetchConfigs)
           </div>
         </template>
         <template #cell-model="{ row }">
-          <span class="text-sm text-ink-text">
+          <span
+            class="block max-w-[12rem] truncate text-sm text-ink-text"
+            :title="`${row.model_config.provider} / ${row.model_config.model_name}`"
+          >
             {{ row.model_config.provider }} / {{ row.model_config.model_name }}
           </span>
         </template>
         <template #cell-sampling="{ row }">
-          <span class="text-sm text-ink-text-secondary">
+          <span
+            class="block max-w-[10rem] truncate text-sm text-ink-text-secondary"
+            :title="`T=${row.model_config.temperature} · top_p=${row.model_config.top_p} · max=${row.model_config.max_tokens}`"
+          >
             T={{ row.model_config.temperature }} · top_p={{ row.model_config.top_p }} · max={{
               row.model_config.max_tokens
             }}
@@ -230,22 +243,27 @@ onMounted(fetchConfigs)
         </template>
         <template #cell-recent="{ row }">
           <template v-if="getConfigStats(String(row.id)).last_game_at">
-            <span class="text-sm text-ink-text-secondary">
-              {{ formatDateTime(getConfigStats(String(row.id)).last_game_at) }}
-            </span>
-            <button
-              v-if="getConfigStats(String(row.id)).last_game_id"
-              type="button"
-              class="ml-1 text-sm text-ink-primary hover:underline"
-              @click="router.push(`/game/${getConfigStats(String(row.id)).last_game_id}`)"
-            >
-              {{ t('config.replay') }}
-            </button>
+            <div class="flex max-w-[11rem] items-center gap-1 truncate">
+              <span
+                class="min-w-0 truncate text-sm text-ink-text-secondary"
+                :title="formatDateTime(getConfigStats(String(row.id)).last_game_at)"
+              >
+                {{ formatDateTime(getConfigStats(String(row.id)).last_game_at) }}
+              </span>
+              <button
+                v-if="getConfigStats(String(row.id)).last_game_id"
+                type="button"
+                class="shrink-0 text-sm text-ink-primary hover:underline"
+                @click="router.push(`/game/${getConfigStats(String(row.id)).last_game_id}`)"
+              >
+                {{ t('config.replay') }}
+              </button>
+            </div>
           </template>
           <span v-else class="text-ink-text-muted">{{ t('common.dash') }}</span>
         </template>
         <template #actions="{ row }">
-          <div class="flex flex-wrap gap-1">
+          <div class="flex flex-nowrap items-center gap-1">
             <UiButton size="sm" variant="ghost" @click="openEditDialog(row as ExperimentConfig)">
               {{ t('common.edit') }}
             </UiButton>

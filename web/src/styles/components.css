@@ -33,7 +33,7 @@
   }
 
   .ink-label {
-    @apply text-sm font-medium text-ink-text-secondary;
+    @apply text-sm font-medium text-ink-text;
   }
 
   .ink-value {
@@ -46,5 +46,17 @@
 
   .ink-divider {
     @apply border-t border-ink-border;
+  }
+
+  .ink-kpi {
+    @apply min-w-0;
+  }
+
+  .ink-kpi-value {
+    @apply text-lg font-semibold tracking-tight tabular-nums text-ink-text;
+  }
+
+  .ink-kpi-label {
+    @apply mt-0.5 text-xs text-ink-text-muted;
   }
 }

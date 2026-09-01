@@ -48,12 +48,12 @@ const { t } = useI18n()
             <DialogTitle v-if="title" class="text-lg font-semibold text-ink-text">
               {{ title }}
             </DialogTitle>
-            <DialogDescription v-if="description" class="mt-1 text-sm text-ink-text-muted">
+            <DialogDescription v-if="description" class="mt-1 text-sm text-ink-text-secondary">
               {{ description }}
             </DialogDescription>
           </div>
           <DialogClose
-            class="rounded-ink p-1 text-ink-text-muted hover:bg-ink-surface-muted hover:text-ink-text"
+            class="rounded-ink p-1 text-ink-text-secondary hover:bg-ink-surface-muted hover:text-ink-text"
             :aria-label="t('common.close')"
           >
             <Icon icon="lucide:x" class="h-4 w-4" />

@@ -1,4 +1,5 @@
 export { default as UiButton } from './Button.vue'
+export { default as UiDropdownMenu } from './DropdownMenu.vue'
 export { default as UiInput } from './Input.vue'
 export { default as UiTextarea } from './Textarea.vue'
 export { default as UiSelect } from './Select.vue'

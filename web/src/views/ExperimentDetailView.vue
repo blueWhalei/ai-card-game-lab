@@ -12,11 +12,13 @@ import {
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { systemApi, type StartupCheck } from '@/api/systemApi'
-import { dataApi, type DataStats } from '@/api/dataApi'
+import { dataApi } from '@/api/dataApi'
 import { trainingApi, type TrainingTask } from '@/api/trainingApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import {
+  formatWinRate,
+  formatWinRateCi,
   initialControlPlayerIds,
   remainingCollectCount,
   sanitizeNamePart,
@@ -26,11 +28,18 @@ import ExperimentControlDialog from '@/components/experiment/ExperimentControlDi
 import ExperimentGamesTab from '@/components/experiment/ExperimentGamesTab.vue'
 import ExperimentPlayersTab from '@/components/experiment/ExperimentPlayersTab.vue'
 import ExperimentTrainingTab from '@/components/experiment/ExperimentTrainingTab.vue'
+import DecisionWorkbenchPanel from '@/components/decision/DecisionWorkbenchPanel.vue'
+import TraceWorkbenchPanel from '@/components/trace/TraceWorkbenchPanel.vue'
+import KpiStrip from '@/components/common/KpiStrip.vue'
+import type { KpiItem } from '@/components/common/KpiStrip.vue'
+import NameChips from '@/components/common/NameChips.vue'
 import type { GameItem } from '@/api/gameApi'
 import { gameApi } from '@/api/gameApi'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
+import UiDropdownMenu from '@/components/ui/DropdownMenu.vue'
+import type { DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiProgress from '@/components/ui/Progress.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
@@ -60,7 +69,25 @@ const controlCreatedLocal = ref(false)
 const trainingDepsAvailable = ref(false)
 const completedModelCount = ref(0)
 const trainingTasks = ref<TrainingTask[]>([])
-const contentTab = ref<'games' | 'players' | 'training'>('games')
+type ContentTab = 'games' | 'players' | 'training' | 'decisions' | 'traces'
+const CONTENT_TABS: ContentTab[] = ['games', 'players', 'training', 'decisions', 'traces']
+const contentTab = ref<ContentTab>('games')
+
+function parseContentTab(raw: unknown): ContentTab {
+  return typeof raw === 'string' && CONTENT_TABS.includes(raw as ContentTab)
+    ? (raw as ContentTab)
+    : 'games'
+}
+
+function setContentTab(tab: ContentTab): void {
+  contentTab.value = tab
+  const q: Record<string, string> = {}
+  for (const [k, v] of Object.entries(route.query)) {
+    if (typeof v === 'string' && v && k !== 'tab') q[k] = v
+  }
+  if (tab !== 'games') q.tab = tab
+  void router.replace({ query: q })
+}
 const controlOpen = ref(false)
 const creatingControl = ref(false)
 const actionGameId = ref<string | null>(null)
@@ -68,10 +95,10 @@ const pausingAll = ref(false)
 const controlName = ref('')
 const controlPlayerIds = ref<string[]>([])
 const controlTarget = ref(5)
+const controlPairDeals = ref(true)
 const experiment = ref<Experiment | null>(null)
 const configs = ref<ExperimentConfig[]>([])
 const startup = ref<StartupCheck | null>(null)
-const scopedStats = ref<DataStats | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
 const experimentId = computed(() => String(route.params.id ?? ''))
@@ -87,17 +114,68 @@ function configLabel(id: string): string {
 }
 
 const summary = computed(() => experiment.value?.summary)
+const protocol = computed(() => experiment.value?.protocol ?? null)
+const protocolPlayers = computed(() => protocol.value?.players ?? [])
+const protocolDrift = computed(() => {
+  for (const frozen of protocolPlayers.value) {
+    const live = configMap.value.get(frozen.id)
+    if (!live) continue
+    const lm = live.model_config
+    const fm = frozen.model_config
+    if (
+      lm.provider !== fm.provider ||
+      lm.model_name !== fm.model_name ||
+      lm.temperature !== fm.temperature ||
+      lm.top_p !== fm.top_p ||
+      lm.max_tokens !== fm.max_tokens
+    ) {
+      return true
+    }
+  }
+  return false
+})
+const pairedGamesCount = computed(() => summary.value?.paired_games ?? 0)
+const dealSeedCount = computed(() => protocol.value?.deal_seeds?.length ?? 0)
 const finishedCount = computed(() => summary.value?.finished_games ?? 0)
 const targetCount = computed(() => summary.value?.target_games ?? 0)
 const usableCount = computed(() => summary.value?.train_usable_decisions ?? 0)
-const winnerCount = computed(() => summary.value?.games_with_winner ?? 0)
 const progressPct = computed(() => {
   if (targetCount.value <= 0) return 0
   return Math.min(100, (finishedCount.value / targetCount.value) * 100)
 })
-const finishedDisplay = useTweenNumber(finishedCount)
 const usableDisplay = useTweenNumber(usableCount)
-const winnerDisplay = useTweenNumber(winnerCount)
+
+const protocolSummaryBits = computed(() => {
+  const bits: string[] = []
+  if (dealSeedCount.value > 0) {
+    bits.push(t('experiment.protocolSeedsShort', { n: dealSeedCount.value }))
+  }
+  if (protocol.value?.pair_deals) {
+    bits.push(
+      t('experiment.protocolPairedShort', {
+        paired: pairedGamesCount.value,
+        total: summary.value?.total_games ?? 0,
+      }),
+    )
+  }
+  if (protocol.value?.prompt_version) {
+    bits.push(t('experiment.protocolPromptShort', { v: protocol.value.prompt_version }))
+  }
+  return bits
+})
+
+function formatLatencyMs(ms: number): string {
+  if (ms >= 1000) {
+    const sec = ms / 1000
+    return sec >= 10 ? `${Math.round(sec)}s` : `${sec.toFixed(1)}s`
+  }
+  return `${Math.round(ms)}ms`
+}
+
+function shortExperimentId(id: string): string {
+  if (id.length <= 18) return id
+  return `${id.slice(0, 8)}…${id.slice(-4)}`
+}
 
 const canRegisterTrain = computed(
   () => (summary.value?.train_usable_decisions ?? 0) > 0 && !registeringTrain.value,
@@ -108,6 +186,103 @@ const collectCta = computed(() => {
   if (status === 'pending_collect') return t('experiment.startGames')
   if (status === 'ready_more' || status === 'ready_review') return t('experiment.runMore')
   return t('experiment.runMore')
+})
+
+const playerChipNames = computed(() =>
+  (experiment.value?.player_ids ?? []).map((id) => {
+    const wins = summary.value?.wins_by_config[id]
+    const name = configLabel(id)
+    return wins ? `${name} ·${wins}` : name
+  }),
+)
+
+const openMenuItems = computed((): DropdownMenuItemDef[] => [
+  {
+    id: 'train',
+    label: t('experiment.saveAndTrain'),
+    disabled: !canRegisterTrain.value || registeringTrain.value,
+  },
+  { id: 'decisions', label: t('nav.decisions') },
+  { id: 'traces', label: t('nav.traces') },
+  { id: 'data', label: t('nav.data') },
+  { id: 'compare', label: t('experiment.compare') },
+  { id: 'control', label: t('experiment.newRound') },
+])
+
+function onOpenMenuSelect(id: string): void {
+  switch (id) {
+    case 'train':
+      void registerAndTrain()
+      break
+    case 'decisions':
+      goDecisions()
+      break
+    case 'traces':
+      goTraces()
+      break
+    case 'data':
+      goData()
+      break
+    case 'compare':
+      goCompare()
+      break
+    case 'control':
+      openControlDialog()
+      break
+    default:
+      break
+  }
+}
+
+const kpiItems = computed((): KpiItem[] => {
+  const s = summary.value
+  if (!s) return []
+  const dash = t('common.dash')
+  const failed = s.status_counts?.failed ?? 0
+  return [
+    {
+      id: 'finished',
+      label: t('experiment.kpiFinished'),
+      value: `${s.finished_games}/${s.target_games}`,
+    },
+    {
+      id: 'usable',
+      label: t('experiment.kpiUsable'),
+      value: String(Math.round(usableDisplay.value)),
+      tone: 'primary',
+      onClick: goDecisions,
+    },
+    {
+      id: 'landlord',
+      label: t('experiment.kpiLandlord'),
+      value: (s.decisive_games ?? 0) > 0 ? formatWinRate(s.landlord_win_rate ?? 0) : dash,
+      title: formatWinRateCi(s.landlord_win_rate_ci),
+    },
+    {
+      id: 'parser',
+      label: t('experiment.kpiParser'),
+      value: (s.parser_n ?? 0) > 0 ? formatWinRate(s.parser_success_rate ?? 0) : dash,
+    },
+    {
+      id: 'latency',
+      label: t('experiment.kpiLatency'),
+      value:
+        (s.p50_response_ms ?? 0) > 0 || (s.p95_response_ms ?? 0) > 0
+          ? `${formatLatencyMs(s.p50_response_ms ?? 0)} / ${formatLatencyMs(s.p95_response_ms ?? 0)}`
+          : dash,
+      title: t('experiment.latencyPercentiles', {
+        p50: Math.round(s.p50_response_ms ?? 0),
+        p95: Math.round(s.p95_response_ms ?? 0),
+      }),
+    },
+    {
+      id: 'tokens',
+      label: t('experiment.kpiTokens'),
+      value: (s.tokens_per_game ?? 0) > 0 ? String(Math.round(s.tokens_per_game ?? 0)) : dash,
+      tone: failed > 0 ? 'danger' : 'default',
+      title: failed > 0 ? t('experiment.failedCount', { n: failed }) : undefined,
+    },
+  ]
 })
 
 const noticeText = computed(() => {
@@ -348,25 +523,12 @@ async function load(): Promise<void> {
       (m) => m.model_path && !m.model_path.endsWith('model.bin'),
     ).length
     collectCount.value = Math.min(remaining.value, 5)
-    await Promise.all([loadTrainingTasks(), loadScopedStats()])
+    await loadTrainingTasks()
   } catch (e: unknown) {
     showApiError(e, t('experiment.loadDetailFailed'))
     experiment.value = null
   } finally {
     loading.value = false
-  }
-}
-
-async function loadScopedStats(): Promise<void> {
-  if (!experimentId.value) {
-    scopedStats.value = null
-    return
-  }
-  try {
-    const res = await dataApi.stats({ experiment_id: experimentId.value })
-    scopedStats.value = res.data
-  } catch {
-    scopedStats.value = null
   }
 }
 
@@ -376,7 +538,6 @@ async function refreshQuiet(): Promise<void> {
     const res = await experimentApi.get(experimentId.value)
     experiment.value = res.data
     await loadTrainingTasks()
-    await loadScopedStats()
   } catch {
     /* ignore poll errors */
   }
@@ -418,17 +579,11 @@ function openGame(game: GameItem): void {
 }
 
 function goDecisions(): void {
-  void router.push({
-    path: '/decisions',
-    query: { experiment_id: experimentId.value },
-  })
+  setContentTab('decisions')
 }
 
 function goTraces(): void {
-  void router.push({
-    path: '/traces',
-    query: { experiment_id: experimentId.value },
-  })
+  setContentTab('traces')
 }
 
 function goData(): void {
@@ -500,6 +655,7 @@ function openControlDialog(): void {
     experiment.value.player_ids,
   )
   controlTarget.value = experiment.value.target_games || 5
+  controlPairDeals.value = true
   controlOpen.value = true
 }
 
@@ -516,6 +672,8 @@ async function submitControl(): Promise<void> {
       game_type: experiment.value?.game_type || 'doudizhu',
       player_ids: controlPlayerIds.value,
       target_games: Number(controlTarget.value) || 5,
+      source_experiment_id: experimentId.value,
+      pair_deals: controlPairDeals.value,
     })
     controlOpen.value = false
     controlCreatedLocal.value = true
@@ -554,6 +712,15 @@ function gameStatusLabel(status: string): string {
       return status
   }
 }
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const next = parseContentTab(tab)
+    if (contentTab.value !== next) contentTab.value = next
+  },
+  { immediate: true },
+)
 
 watch(experimentId, () => {
   trainStartedLocal.value = false
@@ -596,7 +763,7 @@ onUnmounted(() => {
       <div class="space-y-3">
         <button
           type="button"
-          class="inline-flex items-center gap-1 text-sm text-ink-text-muted hover:text-ink-text"
+          class="inline-flex items-center gap-1 text-sm text-ink-text-secondary hover:text-ink-text"
           @click="router.push('/')"
         >
           <Icon icon="lucide:arrow-left" class="h-4 w-4" />
@@ -619,36 +786,26 @@ onUnmounted(() => {
                 }}
               </span>
             </div>
-            <p v-if="experiment.notes" class="text-sm text-ink-text-muted">
+            <p v-if="experiment.notes" class="text-sm text-ink-text-secondary">
               {{ experiment.notes }}
             </p>
-            <div class="flex flex-wrap gap-1.5">
-              <UiBadge
-                v-for="pid in experiment.player_ids"
-                :key="pid"
-                variant="muted"
-              >
-                {{ configLabel(pid) }}
-                <span v-if="summary.wins_by_config[pid]" class="ml-1 opacity-70">
-                  ·{{ t('experiment.winsSuffix', { n: summary.wins_by_config[pid] }) }}
-                </span>
-              </UiBadge>
-            </div>
+            <NameChips :names="playerChipNames" :max="4" />
           </div>
 
           <div class="flex flex-wrap gap-2">
-            <UiButton variant="secondary" :disabled="!summary.latest_game_id" @click="openLatest">
-              {{ t('experiment.openLatest') }}
-            </UiButton>
             <UiButton
               variant="secondary"
-              :disabled="!canRegisterTrain"
-              :loading="registeringTrain"
-              @click="registerAndTrain"
+              :disabled="!summary.latest_game_id"
+              @click="openLatest"
             >
-              <Icon icon="lucide:brain" class="mr-1.5 h-4 w-4" />
-              {{ t('experiment.saveAndTrain') }}
+              {{ t('experiment.openLatest') }}
             </UiButton>
+            <UiDropdownMenu :items="openMenuItems" @select="onOpenMenuSelect">
+              <UiButton variant="secondary" type="button">
+                {{ t('common.open') }}
+                <Icon icon="lucide:chevron-down" class="ml-1.5 h-3.5 w-3.5" />
+              </UiButton>
+            </UiDropdownMenu>
             <UiButton @click="openCollect">
               <Icon icon="lucide:play" class="mr-1.5 h-4 w-4" />
               {{ collectCta }}
@@ -665,11 +822,61 @@ onUnmounted(() => {
           {{ noticeText }}
         </button>
 
-        <!-- Compact pipeline + key stats -->
-        <div
-          class="flex flex-col gap-2 border-t border-ink-border pt-3 text-sm text-ink-text-secondary sm:flex-row sm:flex-wrap sm:items-center sm:justify-between"
+        <details
+          v-if="protocol"
+          class="group rounded-ink-md border border-ink-border bg-ink-surface-muted/40 open:bg-ink-surface-muted/60"
         >
-          <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs sm:text-sm">
+          <summary
+            class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm marker:content-none [&::-webkit-details-marker]:hidden"
+            :title="t('experiment.protocolFrozen')"
+          >
+            <Icon
+              icon="lucide:chevron-right"
+              class="h-3.5 w-3.5 shrink-0 text-ink-text-secondary transition-transform group-open:rotate-90"
+            />
+            <span class="font-medium text-ink-text">{{ t('experiment.protocolTitle') }}</span>
+            <span
+              v-if="protocolSummaryBits.length"
+              class="min-w-0 truncate text-sm text-ink-text-secondary"
+            >
+              {{ protocolSummaryBits.join(' · ') }}
+            </span>
+            <span v-if="protocolDrift" class="ml-auto shrink-0 text-xs text-ink-warning">
+              {{ t('experiment.protocolDriftShort') }}
+            </span>
+          </summary>
+          <div class="space-y-2 border-t border-ink-border px-3 py-2.5 text-sm text-ink-text-secondary">
+            <ul class="flex flex-wrap gap-1.5">
+              <li
+                v-for="p in protocolPlayers"
+                :key="p.id"
+                class="rounded-ink border border-ink-border bg-ink-surface px-2 py-0.5 tabular-nums"
+              >
+                <span class="font-medium text-ink-text">{{ p.name }}</span>
+                <span class="text-ink-text-secondary">
+                  · {{ p.model_config.model_name }} · T={{
+                    p.model_config.temperature ?? t('common.dash')
+                  }}
+                </span>
+              </li>
+            </ul>
+            <p
+              v-if="protocol.pair_deals && protocol.source_experiment_id"
+              class="text-ink-text-secondary"
+              :title="protocol.source_experiment_id"
+            >
+              {{
+                t('experiment.protocolSource', {
+                  id: shortExperimentId(protocol.source_experiment_id),
+                })
+              }}
+            </p>
+          </div>
+        </details>
+
+        <!-- Compact pipeline + KPI -->
+        <div class="space-y-3 border-t border-ink-border pt-3">
+          <p class="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-ink-text-secondary sm:text-sm">
             <template v-for="(stage, idx) in stages" :key="stage.id">
               <span v-if="idx > 0" class="text-ink-text-muted">→</span>
               <span
@@ -688,60 +895,22 @@ onUnmounted(() => {
               </span>
             </template>
           </p>
-          <p class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs tabular-nums sm:text-sm">
-            <span>
-              {{
-                t('experiment.completed', {
-                  finished: Math.round(finishedDisplay),
-                  target: targetCount,
-                })
-              }}
-            </span>
-            <span class="text-ink-text-muted">
-              {{ t('experiment.winnersCount', { n: Math.round(winnerDisplay) }) }}
-            </span>
-            <button
-              type="button"
-              class="text-ink-primary hover:underline"
-              @click="goDecisions"
-            >
-              {{ t('experiment.trainUsableCount', { n: Math.round(usableDisplay) }) }}
-            </button>
-            <span class="text-ink-text-muted">
-              {{ t('experiment.avgRounds', { n: summary.avg_rounds }) }}
-            </span>
-            <span v-if="scopedStats" class="text-ink-text-muted">
-              Token {{ scopedStats.total_tokens }}
-            </span>
-            <span v-if="scopedStats" class="text-ink-text-muted">
-              {{ t('experiment.avgResponse', { ms: Math.round(scopedStats.avg_response_time_ms || 0) }) }}
-            </span>
-          </p>
+          <KpiStrip :items="kpiItems" />
         </div>
 
         <UiProgress :value="progressPct" class="h-1.5" />
-
-        <div class="flex flex-wrap gap-2">
-          <UiButton variant="secondary" size="sm" @click="goDecisions">{{ t('nav.decisions') }}</UiButton>
-          <UiButton variant="secondary" size="sm" @click="goTraces">{{ t('nav.traces') }}</UiButton>
-          <UiButton variant="secondary" size="sm" @click="goData">{{ t('nav.data') }}</UiButton>
-          <UiButton variant="secondary" size="sm" @click="goCompare">{{ t('experiment.compare') }}</UiButton>
-          <UiButton variant="secondary" size="sm" @click="openControlDialog">
-            {{ t('experiment.newRound') }}
-          </UiButton>
-        </div>
       </div>
 
-      <div class="mb-1 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
+      <div class="mb-1 flex flex-wrap gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
         <button
           type="button"
           class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
           :class="
             contentTab === 'games'
               ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
-              : 'text-ink-text-muted hover:text-ink-text'
+              : 'text-ink-text-secondary hover:text-ink-text'
           "
-          @click="contentTab = 'games'"
+          @click="setContentTab('games')"
         >
           {{ t('experiment.tabGames') }}
         </button>
@@ -751,9 +920,9 @@ onUnmounted(() => {
           :class="
             contentTab === 'players'
               ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
-              : 'text-ink-text-muted hover:text-ink-text'
+              : 'text-ink-text-secondary hover:text-ink-text'
           "
-          @click="contentTab = 'players'"
+          @click="setContentTab('players')"
         >
           {{ t('experiment.tabPlayers') }}
         </button>
@@ -761,11 +930,38 @@ onUnmounted(() => {
           type="button"
           class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
           :class="
+            contentTab === 'decisions'
+              ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
+              : 'text-ink-text-secondary hover:text-ink-text'
+          "
+          @click="setContentTab('decisions')"
+        >
+          {{ t('experiment.tabDecisions') }}
+          <span v-if="usableCount" class="ml-1 tabular-nums opacity-70">
+            {{ usableCount }}
+          </span>
+        </button>
+        <button
+          type="button"
+          class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
+          :class="
+            contentTab === 'traces'
+              ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
+              : 'text-ink-text-secondary hover:text-ink-text'
+          "
+          @click="setContentTab('traces')"
+        >
+          {{ t('experiment.tabTraces') }}
+        </button>
+        <button
+          type="button"
+          class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
+          :class="
             contentTab === 'training'
               ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
-              : 'text-ink-text-muted hover:text-ink-text'
+              : 'text-ink-text-secondary hover:text-ink-text'
           "
-          @click="contentTab = 'training'"
+          @click="setContentTab('training')"
         >
           {{ t('experiment.tabTraining') }}
           <span v-if="trainingTasks.length" class="ml-1 tabular-nums opacity-70">
@@ -784,6 +980,18 @@ onUnmounted(() => {
         v-else-if="contentTab === 'training'"
         :tasks="trainingTasks"
         :experiment-id="experimentId"
+      />
+
+      <DecisionWorkbenchPanel
+        v-else-if="contentTab === 'decisions'"
+        :experiment-id="experimentId"
+        embedded
+      />
+
+      <TraceWorkbenchPanel
+        v-else-if="contentTab === 'traces'"
+        :experiment-id="experimentId"
+        embedded
       />
 
       <ExperimentGamesTab
@@ -811,10 +1019,12 @@ onUnmounted(() => {
       :title="t('experiment.collectTitle')"
       :description="t('experiment.collectDesc')"
     >
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium text-ink-text">{{ t('experiment.batchCount') }}</span>
+      <div>
+        <label class="mb-1.5 block text-sm font-medium text-ink-text">
+          {{ t('experiment.batchCount') }}
+        </label>
         <UiInputNumber v-model="collectCount" :min="1" :max="50" />
-      </label>
+      </div>
       <template #footer>
         <UiButton variant="secondary" @click="collectOpen = false">{{ t('common.cancel') }}</UiButton>
         <UiButton :loading="collecting" @click="submitCollect">{{ t('experiment.confirmStart') }}</UiButton>
@@ -826,6 +1036,7 @@ onUnmounted(() => {
       v-model:name="controlName"
       v-model:target="controlTarget"
       v-model:playerIds="controlPlayerIds"
+      v-model:pairDeals="controlPairDeals"
       :challenger-options="challengerOptions"
       :baseline-options="configSelectOptions"
       :can-submit="canSubmitControl"

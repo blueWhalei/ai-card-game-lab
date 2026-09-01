@@ -35,7 +35,6 @@ const pathItems = computed(() => {
   return [
     { label: t('settings.dataDir'), value: config.value.data_dir },
     { label: t('settings.database'), value: config.value.sqlite_path },
-    { label: t('settings.configDir'), value: config.value.config_dir },
     { label: t('settings.modelsDir'), value: config.value.models_dir },
   ]
 })

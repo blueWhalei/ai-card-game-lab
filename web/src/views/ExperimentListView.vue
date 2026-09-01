@@ -22,6 +22,7 @@ import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { formatDateTime } from '@/utils/format'
 import EmptyState from '@/components/common/EmptyState.vue'
+import NameChips from '@/components/common/NameChips.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiCheckbox from '@/components/ui/Checkbox.vue'
@@ -42,8 +43,8 @@ const experimentColumns = computed((): TableColumn<ExperimentRow>[] => [
   { key: 'status', label: t('common.status'), class: 'w-28' },
   { key: 'progress', label: t('common.progress'), class: 'w-24' },
   { key: 'players', label: t('common.players') },
-  { key: 'summary_extra', label: t('experiment.summary'), class: 'w-40' },
-  { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
+  { key: 'summary_extra', label: t('experiment.summary'), class: 'hidden w-40 md:table-cell' },
+  { key: 'created_at', label: t('common.createdAt'), class: 'hidden w-44 md:table-cell' },
 ])
 
 const experimentRows = computed(() => experiments.value as ExperimentRow[])
@@ -172,25 +173,17 @@ onMounted(() => {
 
 <template>
   <div class="page-container space-y-6">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <h1 class="page-title mb-1">{{ t('experiment.title') }}</h1>
-        <p class="page-subtitle mb-0 mt-0">
-          {{ t('experiment.subtitle') }}
-        </p>
-      </div>
-      <div class="flex flex-wrap gap-2">
-        <UiButton variant="secondary" @click="router.push('/experiments/compare')">
-          {{ t('experiment.compare') }}
-        </UiButton>
-        <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
-          {{ t('experiment.loadDemo') }}
-        </UiButton>
-        <UiButton @click="openCreate">
-          <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
-          {{ t('experiment.create') }}
-        </UiButton>
-      </div>
+    <div class="flex flex-wrap items-center justify-end gap-2">
+      <UiButton variant="secondary" @click="router.push('/experiments/compare')">
+        {{ t('experiment.compare') }}
+      </UiButton>
+      <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
+        {{ t('experiment.loadDemo') }}
+      </UiButton>
+      <UiButton @click="openCreate">
+        <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
+        {{ t('experiment.create') }}
+      </UiButton>
     </div>
 
     <div v-if="loading" class="py-2">
@@ -236,9 +229,7 @@ onMounted(() => {
         <span class="tabular-nums text-sm">{{ progressText(row as Experiment) }}</span>
       </template>
       <template #cell-players="{ row }">
-        <span class="text-sm text-ink-text-secondary">
-          {{ (row.player_ids as string[]).map((pid) => configName(pid)).join(' · ') }}
-        </span>
+        <NameChips :names="(row.player_ids as string[]).map((pid) => configName(pid))" />
       </template>
       <template #cell-summary_extra="{ row }">
         <span class="text-sm text-ink-text-secondary">
@@ -253,11 +244,6 @@ onMounted(() => {
       <template #cell-created_at="{ row }">
         {{ formatDateTime(String(row.created_at)) }}
       </template>
-      <template #actions="{ row }">
-        <UiButton size="sm" variant="secondary" @click="goDetail(String(row.id))">
-          {{ t('common.detail') }}
-        </UiButton>
-      </template>
     </UiTable>
 
     <UiDialog
@@ -266,19 +252,28 @@ onMounted(() => {
       :description="t('experiment.createDesc')"
     >
       <div class="space-y-4">
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-text">{{ t('common.name') }}</span>
-          <UiInput v-model="formName" :placeholder="t('experiment.namePlaceholder')" />
-        </label>
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-text">{{ t('common.notes') }}</span>
-          <UiTextarea v-model="formNotes" :rows="2" :placeholder="t('experiment.notesPlaceholder')" />
-        </label>
-        <div class="space-y-2">
-          <div class="flex items-center justify-between">
-            <span class="text-sm font-medium text-ink-text">
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.name') }}</label>
+          <UiInput
+            v-model="formName"
+            :placeholder="t('experiment.namePlaceholder')"
+            class="w-full"
+          />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.notes') }}</label>
+          <UiTextarea
+            v-model="formNotes"
+            :rows="2"
+            :placeholder="t('experiment.notesPlaceholder')"
+            class="w-full"
+          />
+        </div>
+        <div>
+          <div class="mb-1.5 flex items-center justify-between">
+            <label class="text-sm font-medium text-ink-text">
               {{ t('experiment.pickPlayers', { n: slotsLabel }) }}
-            </span>
+            </label>
             <span class="text-xs text-ink-text-muted">{{ selectedConfigIds.length }}/{{ maxPlayers }}</span>
           </div>
           <div
@@ -305,10 +300,12 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-text">{{ t('experiment.targetGames') }}</span>
+        <div>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+            {{ t('experiment.targetGames') }}
+          </label>
           <UiInputNumber v-model="formTarget" :min="1" :max="50" />
-        </label>
+        </div>
       </div>
       <template #footer>
         <UiButton variant="secondary" @click="createOpen = false">{{ t('common.cancel') }}</UiButton>

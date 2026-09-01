@@ -45,7 +45,7 @@ function onPageSize(v: string): void {
 <template>
   <div
     :class="
-      cn('flex flex-wrap items-center justify-end gap-2 text-sm text-ink-text-muted', props.class)
+      cn('flex flex-wrap items-center justify-end gap-2 text-sm text-ink-text-secondary', props.class)
     "
   >
     <label class="flex items-center gap-1.5">

@@ -1,4 +1,5 @@
 <script setup lang="ts" generic="T extends Record<string, unknown>">
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
@@ -9,15 +10,27 @@ export type TableColumn<T> = {
   render?: (row: T) => string
 }
 
-const props = defineProps<{
-  columns: TableColumn<T>[]
-  rows: T[]
-  rowKey?: string | ((row: T) => string)
-  class?: string
-  emptyText?: string
-}>()
+export type TableDensity = 'comfortable' | 'compact'
+
+const props = withDefaults(
+  defineProps<{
+    columns: TableColumn<T>[]
+    rows: T[]
+    rowKey?: string | ((row: T) => string)
+    class?: string
+    emptyText?: string
+    density?: TableDensity
+  }>(),
+  {
+    density: 'compact',
+  },
+)
 
 const { t } = useI18n()
+
+const isCompact = computed(() => props.density === 'compact')
+
+const cellPad = computed(() => (isCompact.value ? 'px-3 py-1.5' : 'px-3 py-2.5'))
 
 function keyOf(row: T, index: number): string {
   if (typeof props.rowKey === 'function') return props.rowKey(row)
@@ -35,24 +48,43 @@ function cell(row: T, col: TableColumn<T>): string {
 
 <template>
   <div :class="cn('overflow-x-auto rounded-ink-md border border-ink-border', props.class)">
-    <table class="w-full min-w-[480px] border-collapse text-left text-base">
-      <thead class="bg-ink-surface-muted text-ink-text-secondary">
+    <table
+      :class="
+        cn(
+          'w-full min-w-[480px] border-collapse text-left',
+          isCompact ? 'text-sm' : 'text-base',
+        )
+      "
+    >
+      <thead class="bg-ink-surface-muted text-ink-text">
         <tr>
           <th
             v-for="col in columns"
             :key="col.key"
-            :class="cn('px-3 py-2.5 font-medium', col.class)"
+            :class="
+              cn(
+                cellPad,
+                'whitespace-nowrap font-semibold',
+                isCompact ? 'text-xs' : 'text-sm',
+                col.class,
+              )
+            "
           >
             {{ col.label }}
           </th>
-          <th v-if="$slots.actions" class="px-3 py-2.5 font-medium">{{ t('common.actions') }}</th>
+          <th
+            v-if="$slots.actions"
+            :class="cn(cellPad, 'whitespace-nowrap font-semibold', isCompact ? 'text-xs' : 'text-sm')"
+          >
+            {{ t('common.actions') }}
+          </th>
         </tr>
       </thead>
       <tbody>
         <tr v-if="rows.length === 0">
           <td
             :colspan="columns.length + ($slots.actions ? 1 : 0)"
-            class="px-3 py-8 text-center text-ink-text-muted"
+            class="px-3 py-8 text-center text-ink-text-secondary"
           >
             {{ emptyText ?? t('common.noData') }}
           </td>
@@ -62,10 +94,14 @@ function cell(row: T, col: TableColumn<T>): string {
           :key="keyOf(row, i)"
           class="border-t border-ink-border bg-ink-surface hover:bg-ink-paper-elevated/60"
         >
-          <td v-for="col in columns" :key="col.key" :class="cn('px-3 py-2.5 text-ink-text', col.class)">
+          <td
+            v-for="col in columns"
+            :key="col.key"
+            :class="cn(cellPad, 'whitespace-nowrap text-ink-text', col.class)"
+          >
             <slot :name="`cell-${col.key}`" :row="row">{{ cell(row, col) }}</slot>
           </td>
-          <td v-if="$slots.actions" class="px-3 py-2.5">
+          <td v-if="$slots.actions" :class="cn(cellPad, 'whitespace-nowrap')">
             <slot name="actions" :row="row" />
           </td>
         </tr>

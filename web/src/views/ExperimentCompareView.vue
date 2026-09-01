@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   type Experiment,
@@ -9,9 +10,16 @@ import {
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
-import { formatWinRate, formatWinRateCi } from '@/utils/experimentWorkbench'
+import { formatWinRate } from '@/utils/experimentWorkbench'
+import {
+  COMPARE_METRICS,
+  bestIndex,
+  formatDelta,
+  metricUnit,
+  type CompareMetricDef,
+} from '@/utils/compareMatrix'
+import { cn } from '@/lib/cn'
 import UiButton from '@/components/ui/Button.vue'
-import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
 const { t } = useI18n()
@@ -32,13 +40,13 @@ const canCompare = computed(
   () => selectedIds.value.length >= 2 && selectedIds.value.length <= 5,
 )
 
-function toggleId(id: string, checked: boolean): void {
-  if (checked) {
-    if (selectedIds.value.includes(id) || selectedIds.value.length >= 5) return
-    selectedIds.value = [...selectedIds.value, id]
+function toggleId(id: string): void {
+  if (selectedIds.value.includes(id)) {
+    selectedIds.value = selectedIds.value.filter((x) => x !== id)
     return
   }
-  selectedIds.value = selectedIds.value.filter((x) => x !== id)
+  if (selectedIds.value.length >= 5) return
+  selectedIds.value = [...selectedIds.value, id]
 }
 
 function idsFromQuery(): string[] {
@@ -69,6 +77,145 @@ async function submit(): Promise<void> {
   void router.replace({ query: { ids: ids.join(',') } })
   await runCompare(ids)
 }
+
+function metricLabel(id: string): string {
+  const map: Record<string, string> = {
+    finished: t('compare.colFinished'),
+    landlord: t('compare.colLandlordWinRate'),
+    pairedLandlord: t('compare.colPairedLandlord'),
+    p50: t('compare.colP50'),
+    p95: t('compare.colP95'),
+    tokens: t('compare.colTokensPerGame'),
+    train: t('compare.colTrainRate'),
+    parser: t('compare.colParser'),
+  }
+  return map[id] ?? id
+}
+
+function cellFor(row: ExperimentCompareRow, metric: CompareMetricDef): {
+  value: number | null
+  display: string
+} {
+  const dash = t('common.dash')
+  switch (metric.id) {
+    case 'finished':
+      return { value: row.finished_games, display: String(row.finished_games) }
+    case 'landlord':
+      return (row.decisive_games ?? 0) > 0
+        ? {
+            value: row.landlord_win_rate ?? 0,
+            display: formatWinRate(row.landlord_win_rate ?? 0),
+          }
+        : { value: null, display: dash }
+    case 'pairedLandlord':
+      return (row.paired_n ?? 0) > 0
+        ? {
+            value: row.paired_landlord_win_rate ?? 0,
+            display: formatWinRate(row.paired_landlord_win_rate ?? 0),
+          }
+        : { value: null, display: dash }
+    case 'p50':
+      return (row.p50_response_ms ?? 0) > 0
+        ? {
+            value: row.p50_response_ms ?? 0,
+            display: `${Math.round(row.p50_response_ms ?? 0)}ms`,
+          }
+        : { value: null, display: dash }
+    case 'p95':
+      return (row.p95_response_ms ?? 0) > 0
+        ? {
+            value: row.p95_response_ms ?? 0,
+            display: `${Math.round(row.p95_response_ms ?? 0)}ms`,
+          }
+        : { value: null, display: dash }
+    case 'tokens':
+      return (row.tokens_per_game ?? 0) > 0
+        ? {
+            value: row.tokens_per_game ?? 0,
+            display: String(Math.round(row.tokens_per_game ?? 0)),
+          }
+        : { value: null, display: dash }
+    case 'train':
+      return {
+        value: row.train_usable_rate,
+        display: formatWinRate(row.train_usable_rate),
+      }
+    case 'parser':
+      return {
+        value: row.parser_success_rate,
+        display: formatWinRate(row.parser_success_rate),
+      }
+    default:
+      return { value: null, display: dash }
+  }
+}
+
+type MatrixRow = {
+  metric: CompareMetricDef
+  label: string
+  cells: Array<{
+    display: string
+    delta: string | null
+    isBest: boolean
+  }>
+}
+
+const matrixRows = computed((): MatrixRow[] => {
+  if (rows.value.length === 0) return []
+  return COMPARE_METRICS.map((metric) => {
+    const raw = rows.value.map((row) => cellFor(row, metric))
+    const best = bestIndex(
+      raw.map((c) => c.value),
+      metric.kind,
+    )
+    const bestVal = best != null ? raw[best]?.value ?? null : null
+    const unit = metricUnit(metric.id)
+    return {
+      metric,
+      label: metricLabel(metric.id),
+      cells: raw.map((c, i) => ({
+        display: c.display,
+        delta: formatDelta(c.value, bestVal, unit),
+        isBest: best === i && c.value != null,
+      })),
+    }
+  })
+})
+
+const playerIds = computed(() => {
+  const ids = new Set<string>()
+  for (const row of rows.value) {
+    for (const stat of row.player_stats) ids.add(stat.player_id)
+  }
+  return [...ids]
+})
+
+type PlayerMatrixRow = {
+  playerId: string
+  name: string
+  cells: Array<{ display: string; isBest: boolean }>
+}
+
+const playerMatrix = computed((): PlayerMatrixRow[] => {
+  return playerIds.value.map((pid) => {
+    const rates = rows.value.map((row) => {
+      const stat = row.player_stats.find((s) => s.player_id === pid)
+      return stat ? { value: stat.win_rate, display: formatWinRate(stat.win_rate) } : null
+    })
+    const best = bestIndex(
+      rates.map((r) => r?.value ?? null),
+      'higher',
+    )
+    return {
+      playerId: pid,
+      name: configName(pid),
+      cells: rates.map((r, i) => ({
+        display: r?.display ?? t('common.dash'),
+        isBest: best === i && r != null,
+      })),
+    }
+  })
+})
 
 onMounted(async () => {
   loading.value = true
@@ -104,20 +251,14 @@ watch(
 
 <template>
   <div class="page-container space-y-6">
-    <div class="flex flex-wrap items-start justify-between gap-3">
-      <div>
-        <button
-          type="button"
-          class="mb-2 inline-flex items-center gap-1 text-sm text-ink-text-muted hover:text-ink-text"
-          @click="router.push('/')"
-        >
-          {{ t('compare.back') }}
-        </button>
-        <h1 class="page-title mb-1">{{ t('compare.title') }}</h1>
-        <p class="page-subtitle mb-0 mt-0">
-          {{ t('compare.subtitle') }}
-        </p>
-      </div>
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <button
+        type="button"
+        class="inline-flex items-center gap-1 text-sm text-ink-text-secondary hover:text-ink-text"
+        @click="router.push('/')"
+      >
+        {{ t('compare.back') }}
+      </button>
       <UiButton :disabled="!canCompare" :loading="comparing" @click="submit">
         {{ t('compare.submit') }}
       </UiButton>
@@ -131,39 +272,37 @@ watch(
       <section class="space-y-2">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-ink-text">{{ t('compare.pickRange') }}</h2>
-          <span class="text-xs text-ink-text-muted">{{ selectedIds.length }}/5</span>
+          <span class="text-sm text-ink-text-secondary">{{ selectedIds.length }}/5</span>
         </div>
         <div
           v-if="experiments.length === 0"
-          class="rounded-ink border border-dashed border-ink-border px-4 py-8 text-center text-sm text-ink-text-muted"
+          class="rounded-ink border border-dashed border-ink-border px-4 py-8 text-center text-sm text-ink-text-secondary"
         >
           {{ t('compare.empty') }}
         </div>
-        <div v-else class="max-h-56 space-y-2 overflow-y-auto rounded-ink-md border border-ink-border p-3">
-          <label
+        <div v-else class="flex flex-wrap gap-2">
+          <button
             v-for="exp in experiments"
             :key="exp.id"
-            class="flex items-start gap-2 rounded-ink px-2 py-1.5 hover:bg-ink-surface-muted"
+            type="button"
+            class="inline-flex max-w-full items-center gap-1.5 rounded-ink border px-2.5 py-1.5 text-left text-sm transition-colors"
+            :class="
+              selectedIds.includes(exp.id)
+                ? 'border-ink-primary bg-ink-primary-muted text-ink-primary'
+                : 'border-ink-border bg-ink-surface text-ink-text hover:bg-ink-surface-muted'
+            "
+            :disabled="!selectedIds.includes(exp.id) && selectedIds.length >= 5"
+            @click="toggleId(exp.id)"
           >
-            <UiCheckbox
-              :model-value="selectedIds.includes(exp.id)"
-              :disabled="!selectedIds.includes(exp.id) && selectedIds.length >= 5"
-              class="mt-0.5"
-              @update:model-value="(v) => toggleId(exp.id, Boolean(v))"
+            <Icon
+              :icon="selectedIds.includes(exp.id) ? 'lucide:check' : 'lucide:plus'"
+              class="h-3.5 w-3.5 shrink-0"
             />
-            <span class="min-w-0 flex-1">
-              <span class="block text-sm font-medium text-ink-text">{{ exp.name }}</span>
-              <span class="text-xs text-ink-text-muted">
-                {{
-                  t('compare.gamesUsable', {
-                    finished: exp.summary.finished_games,
-                    target: exp.summary.target_games,
-                    n: exp.summary.train_usable_decisions,
-                  })
-                }}
-              </span>
+            <span class="min-w-0 truncate font-medium">{{ exp.name }}</span>
+            <span class="shrink-0 text-xs opacity-70">
+              {{ exp.summary.finished_games }}/{{ exp.summary.target_games }}
             </span>
-          </label>
+          </button>
         </div>
       </section>
 
@@ -173,24 +312,17 @@ watch(
 
       <section v-else-if="rows.length > 0" class="space-y-4">
         <div class="overflow-x-auto rounded-ink-md border border-ink-border">
-          <table class="w-full min-w-[48rem] text-left text-sm">
-            <thead class="bg-ink-surface-muted text-ink-text-muted">
+          <table class="w-full text-left text-sm">
+            <thead class="bg-ink-surface-muted text-ink-text">
               <tr>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colExperiment') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colFinished') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colAvgResponse') }}</th>
-                <th class="px-3 py-2 font-medium">Token</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colTrainRate') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colParser') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in rows"
-                :key="row.id"
-                class="border-t border-ink-border bg-ink-surface"
-              >
-                <td class="px-3 py-2">
+                <th class="sticky left-0 z-10 bg-ink-surface-muted px-3 py-2 font-medium">
+                  {{ t('compare.colMetric') }}
+                </th>
+                <th
+                  v-for="row in rows"
+                  :key="row.id"
+                  class="px-3 py-2 font-medium"
+                >
                   <button
                     type="button"
                     class="font-medium text-ink-primary hover:underline"
@@ -198,59 +330,98 @@ watch(
                   >
                     {{ row.name }}
                   </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="mrow in matrixRows"
+                :key="mrow.metric.id"
+                class="border-t border-ink-border bg-ink-surface"
+                :class="mrow.metric.core ? '' : 'hidden xl:table-row'"
+              >
+                <th
+                  class="sticky left-0 z-10 bg-ink-surface px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-ink-text-secondary"
+                >
+                  {{ mrow.label }}
+                </th>
+                <td
+                  v-for="(cell, i) in mrow.cells"
+                  :key="`${mrow.metric.id}-${i}`"
+                  class="px-3 py-1.5 tabular-nums whitespace-nowrap"
+                >
+                  <span
+                    :class="
+                      cn(
+                        cell.isBest ? 'font-semibold text-ink-primary' : 'text-ink-text',
+                      )
+                    "
+                  >
+                    {{ cell.display }}
+                  </span>
+                  <span
+                    v-if="cell.delta"
+                    class="ml-1.5 text-xs text-ink-text-muted"
+                  >
+                    ({{ cell.delta }})
+                  </span>
                 </td>
-                <td class="px-3 py-2 tabular-nums">
-                  {{
-                    t('compare.finishedWinners', {
-                      finished: row.finished_games,
-                      winners: row.games_with_winner,
-                    })
-                  }}
-                </td>
-                <td class="px-3 py-2 tabular-nums">
-                  {{ row.avg_response_time_ms ? `${Math.round(row.avg_response_time_ms)}ms` : t('common.dash') }}
-                </td>
-                <td class="px-3 py-2 tabular-nums">{{ row.total_tokens || t('common.dash') }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ formatWinRate(row.train_usable_rate) }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ formatWinRate(row.parser_success_rate) }}</td>
               </tr>
             </tbody>
           </table>
         </div>
 
-        <div
-          v-for="row in rows"
-          :key="`${row.id}-players`"
-          class="overflow-x-auto rounded-ink-md border border-ink-border"
+        <p
+          v-if="rows.some((r) => (r.paired_n ?? 0) > 0)"
+          class="text-sm text-ink-text-secondary"
         >
-          <h3 class="border-b border-ink-border bg-ink-surface-muted px-3 py-2 text-sm font-semibold">
-            {{ t('compare.playerWinRate', { name: row.name }) }}
-          </h3>
-          <table class="w-full min-w-[32rem] text-left text-sm">
-            <thead class="text-ink-text-muted">
-              <tr>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colPlayer') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colWins') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colWinRate') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colCi') }}</th>
-                <th class="px-3 py-2 font-medium">{{ t('compare.colTrainable') }}</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="stat in row.player_stats"
-                :key="stat.player_id"
-                class="border-t border-ink-border"
-              >
-                <td class="px-3 py-2">{{ configName(stat.player_id) }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ stat.wins }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ formatWinRate(stat.win_rate) }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ formatWinRateCi(stat.win_rate_ci) }}</td>
-                <td class="px-3 py-2 tabular-nums">{{ stat.train_usable_decisions }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+          {{ t('compare.pairedHint') }}
+        </p>
+
+        <details class="group rounded-ink-md border border-ink-border">
+          <summary
+            class="flex cursor-pointer list-none items-center gap-2 bg-ink-surface-muted px-3 py-2 text-sm font-semibold marker:content-none [&::-webkit-details-marker]:hidden"
+          >
+            <Icon
+              icon="lucide:chevron-right"
+              class="h-3.5 w-3.5 shrink-0 text-ink-text-secondary transition-transform group-open:rotate-90"
+            />
+            {{ t('compare.playerMatrix') }}
+          </summary>
+          <div class="overflow-x-auto border-t border-ink-border">
+            <table class="w-full text-left text-sm">
+              <thead class="text-ink-text">
+                <tr>
+                  <th class="px-3 py-2 font-medium">{{ t('compare.colPlayer') }}</th>
+                  <th
+                    v-for="row in rows"
+                    :key="`p-${row.id}`"
+                    class="px-3 py-2 font-medium"
+                  >
+                    {{ row.name }}
+                  </th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="prow in playerMatrix"
+                  :key="prow.playerId"
+                  class="border-t border-ink-border"
+                >
+                  <td class="px-3 py-1.5 font-medium whitespace-nowrap">{{ prow.name }}</td>
+                  <td
+                    v-for="(cell, i) in prow.cells"
+                    :key="`${prow.playerId}-${i}`"
+                    class="px-3 py-1.5 tabular-nums"
+                    :class="cell.isBest ? 'font-semibold text-ink-primary' : ''"
+                  >
+                    {{ cell.display }}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </details>
       </section>
     </template>
   </div>

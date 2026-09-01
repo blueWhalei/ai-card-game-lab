@@ -17,7 +17,6 @@ export type SystemConfig = {
   debug: boolean
   data_dir: string
   sqlite_path: string
-  config_dir: string
   models_dir: string
   prompt_version?: string
   prompt_ab_test_enabled?: boolean

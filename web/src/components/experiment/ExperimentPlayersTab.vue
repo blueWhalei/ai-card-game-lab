@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { ExperimentSummary } from '@/api/experimentApi'
-import { formatWinRate } from '@/utils/experimentWorkbench'
+import { formatWinRate, formatWinRateCi } from '@/utils/experimentWorkbench'
 
 defineProps<{
   summary: ExperimentSummary
@@ -20,19 +20,21 @@ function formatAvgMs(ms: number, traceCount: number): string {
   <section class="space-y-2">
     <p
       v-if="(summary.total_games ?? 0) === 0"
-      class="rounded-ink-md border border-dashed border-ink-border bg-ink-surface px-4 py-6 text-center text-sm text-ink-text-muted"
+      class="rounded-ink-md border border-dashed border-ink-border bg-ink-surface px-4 py-6 text-center text-sm text-ink-text-secondary"
     >
       {{ t('playersTab.empty') }}
     </p>
     <div v-else class="overflow-x-auto rounded-ink-md border border-ink-border">
       <table class="w-full min-w-[32rem] text-left text-sm">
-        <thead class="bg-ink-surface-muted text-ink-text-muted">
+        <thead class="bg-ink-surface-muted text-ink-text">
           <tr>
-            <th class="px-3 py-2 font-medium">{{ t('playersTab.colPlayer') }}</th>
-            <th class="px-3 py-2 font-medium">{{ t('playersTab.colWins') }}</th>
-            <th class="px-3 py-2 font-medium">{{ t('playersTab.colWinRate') }}</th>
-            <th class="px-3 py-2 font-medium">{{ t('playersTab.colUsable') }}</th>
-            <th class="px-3 py-2 font-medium">{{ t('playersTab.colAvgResponse') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colPlayer') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colWins') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colWinRate') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colCi') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colLandlordWinRate') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colUsable') }}</th>
+            <th class="px-3 py-2 font-semibold">{{ t('playersTab.colAvgResponse') }}</th>
           </tr>
         </thead>
         <tbody>
@@ -46,6 +48,16 @@ function formatAvgMs(ms: number, traceCount: number): string {
             </td>
             <td class="px-3 py-2 tabular-nums">{{ stat.wins }}</td>
             <td class="px-3 py-2 tabular-nums">{{ formatWinRate(stat.win_rate) }}</td>
+            <td class="px-3 py-2 tabular-nums">{{ formatWinRateCi(stat.win_rate_ci) }}</td>
+            <td class="px-3 py-2 tabular-nums">
+              <template v-if="(stat.games_as_landlord ?? 0) > 0">
+                {{ formatWinRate(stat.landlord_win_rate ?? 0) }}
+                <span class="text-ink-text-secondary">
+                  ({{ stat.wins_as_landlord ?? 0 }}/{{ stat.games_as_landlord }})
+                </span>
+              </template>
+              <template v-else>{{ t('common.dash') }}</template>
+            </td>
             <td class="px-3 py-2 tabular-nums">{{ stat.train_usable_decisions }}</td>
             <td class="px-3 py-2 tabular-nums">
               {{ formatAvgMs(stat.avg_response_time_ms, stat.trace_count) }}

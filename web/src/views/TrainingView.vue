@@ -2,6 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { showApiError } from '@/utils/error'
@@ -26,6 +27,7 @@ import {
 import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
 import TrainingModelsPanel from '@/components/training/TrainingModelsPanel.vue'
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
+import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
 
 const { t } = useI18n()
 const store = useTrainingStore()
@@ -443,26 +445,18 @@ onUnmounted(() => {
       <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-xs">cd server && poetry install --with training</code>
     </div>
 
-    <div
+    <ExperimentContextBar
       v-if="experimentIdFilter"
-      class="mb-5 flex flex-wrap items-center justify-between gap-2 rounded-ink-md border border-ink-border bg-ink-surface px-4 py-3 text-sm"
-    >
-      <span class="text-ink-text-secondary">
-        {{ t('training.filterExperiment', { id: experimentIdFilter }) }}
-      </span>
-      <UiButton
-        variant="ghost"
-        size="sm"
-        @click="
-          router.replace({
-            path: '/training',
-            query: { ...route.query, experiment_id: undefined },
-          })
-        "
-      >
-        {{ t('training.clearFilter') }}
-      </UiButton>
-    </div>
+      :experiment-id="experimentIdFilter"
+      return-tab="training"
+      clearable
+      @clear="
+        router.replace({
+          path: '/training',
+          query: { ...route.query, experiment_id: undefined },
+        })
+      "
+    />
 
     <div class="mb-6 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
       <button
@@ -527,7 +521,7 @@ onUnmounted(() => {
     <UiDialog
       :open="showCreateDialog"
       :title="t('training.createTask')"
-      class="w-[min(92vw,550px)]"
+      class="w-[min(92vw,480px)]"
       @update:open="showCreateDialog = $event"
     >
       <div class="space-y-4">
@@ -567,68 +561,83 @@ onUnmounted(() => {
             class="w-full"
           />
         </div>
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.params') }}</label>
-          <div class="grid grid-cols-3 gap-3">
+        <p class="text-xs text-ink-text-muted">{{ t('training.commonHint') }}</p>
+
+        <details class="group rounded-ink border border-ink-border">
+          <summary
+            class="flex cursor-pointer list-none items-center gap-2 px-3 py-2 text-sm font-medium text-ink-text marker:content-none [&::-webkit-details-marker]:hidden"
+          >
+            <Icon
+              icon="lucide:chevron-right"
+              class="h-3.5 w-3.5 shrink-0 text-ink-text-secondary transition-transform group-open:rotate-90"
+            />
+            {{ t('training.advanced') }}
+          </summary>
+          <div class="space-y-4 border-t border-ink-border px-3 py-3">
             <div>
-              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.lr') }}</div>
-              <UiInputNumber
-                :model-value="createForm.learning_rate"
-                :min="1e-6"
-                :max="1e-3"
-                :step="1e-5"
-                class="w-full"
-                @update:model-value="(v) => (createForm.learning_rate = v ?? 2e-5)"
-              />
+              <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.params') }}</label>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.lr') }}</div>
+                  <UiInputNumber
+                    :model-value="createForm.learning_rate"
+                    :min="1e-6"
+                    :max="1e-3"
+                    :step="1e-5"
+                    class="w-full"
+                    @update:model-value="(v) => (createForm.learning_rate = v ?? 2e-5)"
+                  />
+                </div>
+                <div>
+                  <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.batch') }}</div>
+                  <UiInputNumber
+                    :model-value="createForm.batch_size"
+                    :min="1"
+                    :max="64"
+                    class="w-full"
+                    @update:model-value="(v) => (createForm.batch_size = v ?? 1)"
+                  />
+                </div>
+                <div>
+                  <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.epochs') }}</div>
+                  <UiInputNumber
+                    :model-value="createForm.num_epochs"
+                    :min="1"
+                    :max="20"
+                    class="w-full"
+                    @update:model-value="(v) => (createForm.num_epochs = v ?? 1)"
+                  />
+                </div>
+              </div>
             </div>
             <div>
-              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.batch') }}</div>
-              <UiInputNumber
-                :model-value="createForm.batch_size"
-                :min="1"
-                :max="64"
-                class="w-full"
-                @update:model-value="(v) => (createForm.batch_size = v ?? 1)"
-              />
-            </div>
-            <div>
-              <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.epochs') }}</div>
-              <UiInputNumber
-                :model-value="createForm.num_epochs"
-                :min="1"
-                :max="20"
-                class="w-full"
-                @update:model-value="(v) => (createForm.num_epochs = v ?? 1)"
-              />
+              <label class="mb-1.5 block text-sm font-medium text-ink-text">LoRA</label>
+              <div class="flex flex-wrap items-center gap-4">
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-ink-text-muted">LoRA r</span>
+                  <UiInputNumber
+                    :model-value="createForm.lora_r"
+                    :min="1"
+                    :max="64"
+                    @update:model-value="(v) => (createForm.lora_r = v ?? 8)"
+                  />
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-ink-text-muted">{{ t('training.maxSteps') }}</span>
+                  <UiInputNumber
+                    :model-value="createForm.max_steps"
+                    :min="1"
+                    :max="1000"
+                    @update:model-value="(v) => (createForm.max_steps = v ?? CPU_SMOKE_MAX_STEPS)"
+                  />
+                </div>
+              </div>
+              <div class="mt-1 text-xs text-ink-text-muted">
+                {{ t('training.loraHint') }}
+              </div>
             </div>
           </div>
-        </div>
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">LoRA</label>
-          <div class="flex flex-wrap items-center gap-4">
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-ink-text-muted">LoRA r</span>
-              <UiInputNumber
-                :model-value="createForm.lora_r"
-                :min="1"
-                :max="64"
-                @update:model-value="(v) => (createForm.lora_r = v ?? 8)"
-              />
-            </div>
-            <div class="flex items-center gap-2">
-              <span class="text-xs text-ink-text-muted">{{ t('training.maxSteps') }}</span>
-              <UiInputNumber
-                :model-value="createForm.max_steps"
-                :min="1"
-                :max="1000"
-                @update:model-value="(v) => (createForm.max_steps = v ?? CPU_SMOKE_MAX_STEPS)"
-              />
-            </div>
-          </div>
-          <div class="mt-1 text-xs text-ink-text-muted">
-            {{ t('training.loraHint') }}
-          </div>
-        </div>
+        </details>
       </div>
       <template #footer>
         <UiButton variant="secondary" @click="showCreateDialog = false">{{ t('common.cancel') }}</UiButton>

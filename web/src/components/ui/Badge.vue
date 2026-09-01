@@ -17,7 +17,7 @@ const variantClass: Record<string, string> = {
   warning: 'bg-ink-accent-muted text-ink-accent',
   danger: 'bg-ink-danger/15 text-ink-danger',
   accent: 'bg-ink-accent-muted text-ink-accent',
-  muted: 'bg-ink-surface-muted text-ink-text-muted',
+  muted: 'bg-ink-surface-muted text-ink-text-secondary',
 }
 </script>
 

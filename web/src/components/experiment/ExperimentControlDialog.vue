@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import UiButton from '@/components/ui/Button.vue'
+import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
@@ -26,6 +27,7 @@ const open = defineModel<boolean>('open', { required: true })
 const name = defineModel<string>('name', { required: true })
 const target = defineModel<number>('target', { required: true })
 const playerIds = defineModel<string[]>('playerIds', { required: true })
+const pairDeals = defineModel<boolean>('pairDeals', { default: true })
 
 const slotLabels = computed(() => controlSlotLabels(playerIds.value.length))
 
@@ -48,28 +50,32 @@ function setPlayerAt(index: number, value: string): void {
     @update:open="open = $event"
   >
     <div class="space-y-4">
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium text-ink-text">{{ t('common.name') }}</span>
-        <UiInput v-model="name" :placeholder="t('control.namePlaceholder')" />
-      </label>
-      <label
-        v-for="(label, index) in slotLabels"
-        :key="`${label}-${index}`"
-        class="block space-y-1.5"
-      >
-        <span class="text-sm font-medium text-ink-text">{{ label }}</span>
+      <div>
+        <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.name') }}</label>
+        <UiInput v-model="name" :placeholder="t('control.namePlaceholder')" class="w-full" />
+      </div>
+      <div v-for="(label, index) in slotLabels" :key="`${label}-${index}`">
+        <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ label }}</label>
         <UiSelect
           :model-value="playerIds[index] ?? ''"
           :options="index === 0 ? challengerOptions : baselineOptions"
-          :placeholder="index === 0 ? t('control.challengerPlaceholder') : t('control.baselinePlaceholder')"
+          :placeholder="
+            index === 0 ? t('control.challengerPlaceholder') : t('control.baselinePlaceholder')
+          "
           class="w-full"
           @update:model-value="setPlayerAt(index, $event)"
         />
-      </label>
-      <label class="block space-y-1.5">
-        <span class="text-sm font-medium text-ink-text">{{ t('experiment.targetGames') }}</span>
+      </div>
+      <div>
+        <label class="mb-1.5 block text-sm font-medium text-ink-text">
+          {{ t('experiment.targetGames') }}
+        </label>
         <UiInputNumber v-model="target" :min="1" :max="50" />
-      </label>
+      </div>
+      <div class="space-y-1.5">
+        <UiCheckbox v-model="pairDeals" :label="t('control.pairDeals')" />
+        <p class="text-xs text-ink-text-muted">{{ t('control.pairDealsHint') }}</p>
+      </div>
       <p v-if="challengerOptions.length === 0" class="text-xs text-ink-warning">
         {{ t('control.noPlayers') }}
       </p>

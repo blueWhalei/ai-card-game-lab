@@ -85,54 +85,57 @@ function handleSelect(template: PromptTemplateResponse) {
       <UiButton variant="ghost" size="sm" @click="emit('create')">{{ t('prompt.createFirst') }}</UiButton>
     </UiEmpty>
 
-    <div v-else-if="!loading" class="space-y-6">
-      <div
-        v-for="key in templateKeys"
-        :key="key"
-        class="rounded-ink-md border border-ink-border bg-ink-surface p-5"
-      >
-        <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
-          <div class="flex items-center gap-3">
-            <h3 class="text-base font-semibold text-ink-text">{{ getTemplateKeyLabel(key) }}</h3>
+    <div
+      v-else-if="!loading"
+      class="divide-y divide-ink-border overflow-hidden rounded-ink-md border border-ink-border bg-ink-surface"
+    >
+      <section v-for="key in templateKeys" :key="key" class="px-3 py-2.5">
+        <div class="mb-2 flex items-center justify-between gap-2">
+          <div class="flex min-w-0 items-center gap-2">
+            <h3 class="truncate text-sm font-semibold text-ink-text">{{ getTemplateKeyLabel(key) }}</h3>
             <UiBadge variant="muted">{{
               t('prompt.versionCount', { n: groupedTemplates[key]?.length ?? 0 })
             }}</UiBadge>
           </div>
-          <UiButton size="sm" @click="emit('create')">{{ t('prompt.newVersion') }}</UiButton>
+          <UiButton size="sm" variant="secondary" @click="emit('create')">{{
+            t('prompt.newVersion')
+          }}</UiButton>
         </div>
 
         <div class="overflow-x-auto">
           <table class="w-full text-sm">
             <thead>
               <tr class="border-b border-ink-border text-left text-xs text-ink-text-muted">
-                <th class="pb-2 font-medium">{{ tableHeaders[0] }}</th>
-                <th class="pb-2 font-medium">{{ tableHeaders[1] }}</th>
-                <th class="pb-2 font-medium">{{ tableHeaders[2] }}</th>
-                <th class="pb-2 text-right font-medium">{{ tableHeaders[3] }}</th>
+                <th class="pb-1.5 font-medium">{{ tableHeaders[0] }}</th>
+                <th class="pb-1.5 font-medium">{{ tableHeaders[1] }}</th>
+                <th class="hidden pb-1.5 font-medium md:table-cell">{{ tableHeaders[2] }}</th>
+                <th class="pb-1.5 text-right font-medium">{{ tableHeaders[3] }}</th>
               </tr>
             </thead>
             <tbody>
               <tr
                 v-for="template in groupedTemplates[key]"
                 :key="template.version"
-                class="group cursor-pointer border-b border-ink-border transition-colors hover:bg-ink-surface-muted"
-                :class="{ 'bg-ink-surface-muted': selectedTemplateKey === key }"
+                class="group cursor-pointer border-b border-ink-border last:border-b-0 transition-colors hover:bg-ink-surface-muted"
+                :class="{ 'bg-ink-primary-muted/40': selectedTemplateKey === key }"
                 @click="handleSelect(template)"
               >
-                <td class="py-3 font-medium text-ink-text">v{{ template.version }}</td>
-                <td class="py-3">
+                <td class="py-1.5 font-medium text-ink-text">v{{ template.version }}</td>
+                <td class="py-1.5">
                   <UiBadge :variant="template.is_active ? 'success' : 'muted'">
                     {{ template.is_active ? t('prompt.active') : t('prompt.inactive') }}
                   </UiBadge>
                 </td>
-                <td class="py-3 text-ink-text-muted">{{ formatDateTime(template.updated_at) }}</td>
-                <td class="py-3 text-right">
+                <td class="hidden py-1.5 text-ink-text-muted md:table-cell">
+                  {{ formatDateTime(template.updated_at) }}
+                </td>
+                <td class="py-1.5 text-right">
                   <div
-                    class="flex items-center justify-end gap-2 opacity-0 transition-opacity group-hover:opacity-100"
+                    class="flex flex-nowrap items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                   >
                     <UiButton
                       size="sm"
-                      :variant="template.is_active ? 'secondary' : 'primary'"
+                      variant="ghost"
                       @click.stop="handleActivate(template)"
                     >
                       {{ template.is_active ? t('prompt.deactivate') : t('prompt.activate') }}
@@ -151,7 +154,7 @@ function handleSelect(template: PromptTemplateResponse) {
             </tbody>
           </table>
         </div>
-      </div>
+      </section>
     </div>
   </div>
 </template>

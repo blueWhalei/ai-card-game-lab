@@ -13,9 +13,36 @@ export interface ExperimentPlayerStat {
   player_id: string
   wins: number
   win_rate: number
+  win_rate_ci?: [number, number]
   train_usable_decisions: number
   avg_response_time_ms: number
   trace_count: number
+  games_as_landlord?: number
+  wins_as_landlord?: number
+  landlord_win_rate?: number
+}
+
+export interface ExperimentProtocolPlayer {
+  id: string
+  name: string
+  notes: string
+  model_config: {
+    provider: string
+    model_name: string
+    temperature?: number
+    top_p?: number
+    max_tokens?: number
+  }
+}
+
+export interface ExperimentProtocol {
+  schema_version: number
+  frozen_at: string
+  prompt_version: string
+  players: ExperimentProtocolPlayer[]
+  source_experiment_id: string | null
+  pair_deals: boolean
+  deal_seeds: number[]
 }
 
 export interface ExperimentSummary {
@@ -26,10 +53,26 @@ export interface ExperimentSummary {
   finished_games: number
   games_with_winner: number
   train_usable_decisions: number
+  train_usable_rate?: number
+  decision_count?: number
   avg_rounds: number
   wins_by_config: Record<string, number>
+  wins_by_role?: Record<string, number>
+  decisive_games?: number
+  landlord_win_rate?: number
+  landlord_win_rate_ci?: [number, number]
+  parser_success_rate?: number
+  parser_n?: number
+  avg_response_time_ms?: number
+  p50_response_ms?: number
+  p95_response_ms?: number
+  total_tokens?: number
+  tokens_per_game?: number
+  avg_tokens_per_round?: number
+  status_counts?: Record<string, number>
   player_stats: ExperimentPlayerStat[]
   latest_game_id: string | null
+  paired_games?: number
 }
 
 export interface Experiment {
@@ -39,6 +82,7 @@ export interface Experiment {
   game_type: string
   player_ids: string[]
   target_games: number
+  protocol?: ExperimentProtocol | null
   created_at: string
   updated_at: string
   summary: ExperimentSummary
@@ -51,6 +95,8 @@ export interface CreateExperimentRequest {
   game_type?: string
   player_ids: string[]
   target_games: number
+  source_experiment_id?: string | null
+  pair_deals?: boolean
 }
 
 export interface CollectExperimentRequest {
@@ -70,6 +116,10 @@ export interface ExperimentComparePlayerStat {
   train_usable_decisions: number
   avg_response_time_ms: number
   trace_count: number
+  paired_wins?: number
+  games_as_landlord?: number
+  wins_as_landlord?: number
+  landlord_win_rate?: number
 }
 
 export interface ExperimentCompareRow {
@@ -82,14 +132,25 @@ export interface ExperimentCompareRow {
   games_with_winner: number
   avg_rounds: number
   avg_response_time_ms: number
+  p50_response_ms?: number
+  p95_response_ms?: number
   total_tokens: number
+  tokens_per_game?: number
   avg_tokens_per_round: number
   train_usable_rate: number
   train_usable_n: number
   decision_count: number
   parser_success_rate: number
   parser_n: number
+  wins_by_role?: Record<string, number>
+  decisive_games?: number
+  landlord_win_rate?: number
+  landlord_win_rate_ci?: [number, number]
+  status_counts?: Record<string, number>
   player_stats: ExperimentComparePlayerStat[]
+  paired_n?: number
+  paired_seat_wins?: number[]
+  paired_landlord_win_rate?: number
 }
 
 export interface ExperimentCompareResult {

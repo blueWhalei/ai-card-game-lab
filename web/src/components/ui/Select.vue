@@ -89,10 +89,10 @@ const wrapClass = computed(() =>
       >
         <SelectValue
           :placeholder="resolvedPlaceholder"
-          class="flex min-h-0 min-w-0 flex-1 items-center justify-center truncate leading-none [&[data-placeholder]]:text-ink-text-muted [&>span]:flex [&>span]:w-full [&>span]:items-center [&>span]:justify-center"
+          class="flex min-h-0 min-w-0 flex-1 items-center justify-center truncate leading-none [&[data-placeholder]]:text-ink-text-secondary [&>span]:flex [&>span]:w-full [&>span]:items-center [&>span]:justify-center"
         />
         <SelectIcon as-child>
-          <Icon icon="lucide:chevron-down" class="h-4 w-4 shrink-0 text-ink-text-muted" />
+          <Icon icon="lucide:chevron-down" class="h-4 w-4 shrink-0 text-ink-text-secondary" />
         </SelectIcon>
       </SelectTrigger>
       <SelectPortal>

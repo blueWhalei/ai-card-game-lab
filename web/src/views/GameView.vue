@@ -11,6 +11,7 @@ import type { ExperimentConfig } from '@/api/experimentConfigApi'
 import { GAME_STATUS_MAP } from '@/utils/constants'
 import { formatDateTime } from '@/utils/format'
 import EmptyState from '@/components/common/EmptyState.vue'
+import NameChips from '@/components/common/NameChips.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiSelect from '@/components/ui/Select.vue'
@@ -67,16 +68,26 @@ const modeOptions = computed(() => [{ label: t('game.realtime'), value: 'realtim
 type GameRow = GameItem & Record<string, unknown>
 
 const columns = computed<TableColumn<GameRow>[]>(() => [
-  { key: 'id', label: t('game.colId'), class: 'w-60' },
+  { key: 'id', label: t('game.colId'), class: 'w-44 max-w-[11rem]' },
   { key: 'game_type', label: t('game.colType'), class: 'w-28' },
   { key: 'status', label: t('game.colStatus'), class: 'w-24' },
   { key: 'player_ids', label: t('game.colPlayers') },
   { key: 'total_rounds', label: t('game.colRounds'), class: 'w-20' },
   { key: 'winner_id', label: t('game.colWinner'), class: 'w-36' },
-  { key: 'created_at', label: t('game.colCreated'), class: 'w-44' },
+  { key: 'created_at', label: t('game.colCreated'), class: 'hidden w-44 md:table-cell' },
 ])
 
 const gameRows = computed(() => games.value as GameRow[])
+
+const configNameById = computed(() => {
+  const map = new Map<string, string>()
+  for (const c of configs.value) map.set(c.id, c.name)
+  return map
+})
+
+function playerChipNames(ids: string[]): string[] {
+  return ids.map((id) => configNameById.value.get(id) ?? id)
+}
 
 const unconfiguredProviders = computed(() => {
   const selected = new Set(createForm.value.player_ids)
@@ -253,7 +264,7 @@ onMounted(async () => {
     // Non-blocking: keep doudizhu fallback option
     showApiError(e, t('game.typesFallback'))
   }
-  await fetchGames()
+  await Promise.all([fetchGames(), fetchConfigs()])
   await applyPlayersFromQuery()
 })
 
@@ -267,14 +278,11 @@ watch(
 
 <template>
   <div class="page-container">
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
-      <p class="text-base text-ink-text-secondary">{{ t('game.listSubtitle') }}</p>
-      <div class="flex flex-wrap gap-2">
-        <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemoGame">
-          {{ t('experiment.loadDemo') }}
-        </UiButton>
-        <UiButton @click="openCreateDialog">{{ t('game.create') }}</UiButton>
-      </div>
+    <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
+      <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemoGame">
+        {{ t('experiment.loadDemo') }}
+      </UiButton>
+      <UiButton @click="openCreateDialog">{{ t('game.create') }}</UiButton>
     </div>
 
     <div class="relative">
@@ -306,7 +314,8 @@ watch(
         <template #cell-id="{ row }">
           <button
             type="button"
-            class="font-mono text-sm text-ink-primary hover:underline"
+            class="block max-w-full truncate font-mono text-sm text-ink-primary hover:underline"
+            :title="String(row.id)"
             @click="goToGame(row)"
           >
             {{ row.id }}
@@ -324,11 +333,7 @@ watch(
           </UiBadge>
         </template>
         <template #cell-player_ids="{ row }">
-          <div class="flex flex-wrap gap-1">
-            <UiBadge v-for="pid in (row.player_ids as string[])" :key="pid" variant="muted">
-              {{ pid }}
-            </UiBadge>
-          </div>
+          <NameChips :names="playerChipNames((row.player_ids as string[]) ?? [])" :max="4" />
         </template>
         <template #cell-total_rounds="{ row }">
           {{ row.total_rounds ?? '-' }}

@@ -56,18 +56,18 @@ function formatRate(rate: number): string {
 </script>
 
 <template>
-  <section class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
-    <h3 class="mb-3 text-base font-semibold text-ink-text">{{ t('prompt.compareTitle') }}</h3>
-    <p class="mb-4 text-sm text-ink-text-muted">
-      {{ t('prompt.compareHint') }}
-    </p>
+  <section class="space-y-3 rounded-ink-md border border-ink-border bg-ink-surface px-3 py-3">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="text-sm font-semibold text-ink-text">{{ t('prompt.compareTitle') }}</h3>
+      <p class="text-xs text-ink-text-muted">{{ t('prompt.compareHint') }}</p>
+    </div>
     <div v-if="versions.length < 2" class="text-sm text-ink-text-muted">
       {{ t('prompt.needTwo') }}
     </div>
-    <div v-else class="space-y-4">
-      <div class="grid gap-3 sm:grid-cols-2">
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-text">{{ t('prompt.versionA') }}</span>
+    <div v-else class="space-y-3">
+      <div class="flex flex-wrap items-end gap-2">
+        <label class="min-w-[8rem] flex-1 space-y-1">
+          <span class="text-xs font-medium text-ink-text-muted">{{ t('prompt.versionA') }}</span>
           <UiSelect
             v-model="version1"
             :options="options"
@@ -75,8 +75,8 @@ function formatRate(rate: number): string {
             class="w-full"
           />
         </label>
-        <label class="block space-y-1.5">
-          <span class="text-sm font-medium text-ink-text">{{ t('prompt.versionB') }}</span>
+        <label class="min-w-[8rem] flex-1 space-y-1">
+          <span class="text-xs font-medium text-ink-text-muted">{{ t('prompt.versionB') }}</span>
           <UiSelect
             v-model="version2"
             :options="options"
@@ -84,43 +84,48 @@ function formatRate(rate: number): string {
             class="w-full"
           />
         </label>
+        <UiButton
+          class="shrink-0"
+          :disabled="!canCompare"
+          :loading="loading"
+          @click="runCompare"
+        >
+          {{ t('prompt.compare') }}
+        </UiButton>
       </div>
-      <UiButton :disabled="!canCompare" :loading="loading" @click="runCompare">{{
-        t('prompt.compare')
-      }}</UiButton>
-      <div v-if="loading" class="flex justify-center py-4">
+      <div v-if="loading" class="flex justify-center py-3">
         <UiSpinner />
       </div>
       <div v-else-if="result" class="overflow-x-auto rounded-ink border border-ink-border">
         <table class="w-full text-left text-sm">
           <thead class="bg-ink-surface-muted text-ink-text-muted">
             <tr>
-              <th class="px-3 py-2 font-medium">{{ compareColumns[0] }}</th>
-              <th class="px-3 py-2 font-medium">{{ compareColumns[1] }}</th>
-              <th class="px-3 py-2 font-medium">{{ compareColumns[2] }}</th>
-              <th class="px-3 py-2 font-medium">{{ compareColumns[3] }}</th>
+              <th class="px-3 py-1.5 font-medium">{{ compareColumns[0] }}</th>
+              <th class="px-3 py-1.5 font-medium">{{ compareColumns[1] }}</th>
+              <th class="px-3 py-1.5 font-medium">{{ compareColumns[2] }}</th>
+              <th class="px-3 py-1.5 font-medium">{{ compareColumns[3] }}</th>
             </tr>
           </thead>
           <tbody>
             <tr class="border-t border-ink-border">
-              <td class="px-3 py-2">v{{ result.version1.version }}</td>
-              <td class="px-3 py-2 tabular-nums">{{ result.version1.total_traces }}</td>
-              <td class="px-3 py-2 tabular-nums">
+              <td class="px-3 py-1.5">v{{ result.version1.version }}</td>
+              <td class="px-3 py-1.5 tabular-nums">{{ result.version1.total_traces }}</td>
+              <td class="px-3 py-1.5 tabular-nums">
                 {{ formatMs(result.version1.avg_response_time_ms) }}
               </td>
-              <td class="px-3 py-2 tabular-nums">{{ formatRate(result.version1.success_rate) }}</td>
+              <td class="px-3 py-1.5 tabular-nums">{{ formatRate(result.version1.success_rate) }}</td>
             </tr>
             <tr class="border-t border-ink-border">
-              <td class="px-3 py-2">v{{ result.version2.version }}</td>
-              <td class="px-3 py-2 tabular-nums">{{ result.version2.total_traces }}</td>
-              <td class="px-3 py-2 tabular-nums">
+              <td class="px-3 py-1.5">v{{ result.version2.version }}</td>
+              <td class="px-3 py-1.5 tabular-nums">{{ result.version2.total_traces }}</td>
+              <td class="px-3 py-1.5 tabular-nums">
                 {{ formatMs(result.version2.avg_response_time_ms) }}
               </td>
-              <td class="px-3 py-2 tabular-nums">{{ formatRate(result.version2.success_rate) }}</td>
+              <td class="px-3 py-1.5 tabular-nums">{{ formatRate(result.version2.success_rate) }}</td>
             </tr>
           </tbody>
         </table>
-        <p class="px-3 py-2 text-xs text-ink-text-muted">
+        <p class="px-3 py-1.5 text-xs text-ink-text-muted">
           {{
             t('prompt.diff', {
               ms: result.response_time_diff.toFixed(0),

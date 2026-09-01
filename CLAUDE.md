@@ -74,7 +74,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `events/` — in-process `EventBus` + game lifecycle events.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
-- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. `config/experiment_configs.yaml` is first-boot seed only.
+- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Experiment Configs UI; there is no YAML seed.
 
 ## Frontend
 
@@ -106,7 +106,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 | `/traces` | `TraceView` |
 | `/settings` | `SettingsView` (read-only: providers, paths, storage) |
 
-Deep links: `/decisions?experiment_id=` and `/traces?experiment_id=`.
+Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experiment_id=`, `/training?experiment_id=`. Tool pages with `experiment_id` show a context bar back to the experiment detail.
 
 ## Experiments
 
@@ -114,6 +114,8 @@ Deep links: `/decisions?experiment_id=` and `/traces?experiment_id=`.
 - Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
 - Detail workspace: collect / pause, watch, register-and-train, control experiment, compare.
+- Detail content tabs: games / players / **decisions** / **traces** / training; sync with `?tab=` (e.g. `/experiments/:id?tab=decisions`).
+- Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, and per-seat as-landlord win rate (needs `metadata.landlord_id`).
 - Training models tab can register an Ollama tag as a player config.
 
 Main HTTP:
@@ -200,7 +202,7 @@ Routing is by `game_type`; no API/Service/Repository changes for a well-behaved 
 
 - If the vendor is OpenAI-compatible (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
 - A new `LLMClient` subclass is only for a non-compatible protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
-- Player configs are edited in the Experiment Configs UI (SQLite). YAML is seed only.
+- Player configs are created and edited in the Experiment Configs UI (SQLite). There is no YAML seed.
 
 ## Key conventions
 
@@ -221,14 +223,13 @@ Routing is by `game_type`; no API/Service/Repository changes for a well-behaved 
 
 | Doc | Role |
 |-----|------|
-| `README.md` | Human getting-started (Chinese) |
+| `README.md` | Human getting-started (Chinese); English: `README.en.md` |
 | `docs/E2E_PIPELINE.md` | Collect → train → Ollama loop + scripts |
 | `docs/ARCHITECTURE.md` | Layering, events, WS, schema |
 | `docs/PROJECT_STRUCTURE.md` | Directory map |
 | `docs/CODING_STANDARDS.md` | Python / Vue / Git rules |
 | `docs/API_DESIGN.md` | REST + WebSocket contract |
 | `docs/EXAMPLES.md` | How to extend engines / providers |
-| `config/README.md` | YAML seed vs `.env` |
 | `docs/欢乐斗地主经典玩法规则.md` | Dou Dizhu rules reference |
 
 Prefer this file and the code when a long-form doc disagrees.

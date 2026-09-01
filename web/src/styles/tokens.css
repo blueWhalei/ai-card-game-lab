@@ -13,8 +13,9 @@
   --ink-border-strong: rgba(26, 34, 32, 0.2);
 
   --ink-text: #1a2220;
-  --ink-text-secondary: #4a5552;
-  --ink-text-muted: #6b7572;
+  /* Secondary / muted darkened for WCAG-friendlier body copy on paper */
+  --ink-text-secondary: #3a4441;
+  --ink-text-muted: #52605c;
   --ink-text-inverse: #f2f4f3;
 
   /* Teal / slate primary — lab signal (not Apple blue) */
@@ -48,12 +49,18 @@
   --ink-duration-content: 280ms;
   --ink-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
+  /* Density — workbench default is compact; forms use comfortable */
+  --ink-row-compact: 2.125rem; /* 34px */
+  --ink-row-comfortable: 2.75rem; /* 44px */
+  --ink-pad-compact-y: 0.375rem; /* 6px */
+  --ink-pad-comfortable-y: 0.625rem; /* 10px */
+
   /* ── Observer shell (dark charcoal / ink) ── */
   --ink-obs-bg: #121816;
   --ink-obs-surface: #1c2421;
   --ink-obs-border: rgba(242, 244, 243, 0.1);
   --ink-obs-text: #e6ebe9;
-  --ink-obs-muted: #8fa39a;
+  --ink-obs-muted: #a8b8b0;
   --ink-obs-accent: #3d9b86;
   --ink-obs-pulse: rgba(61, 155, 134, 0.35);
 }
@@ -73,8 +80,8 @@
   --ink-border-strong: rgba(230, 235, 233, 0.2);
 
   --ink-text: #e6ebe9;
-  --ink-text-secondary: #a8b5b0;
-  --ink-text-muted: #8fa39a;
+  --ink-text-secondary: #c0cbc6;
+  --ink-text-muted: #a8b5b0;
   --ink-text-inverse: #121816;
 
   --ink-primary: #3d9b86;
@@ -95,6 +102,12 @@
 }
 
 @theme inline {
+  /* Readable scale: xs≈13px, sm≈15px at 16px root (default xs was 12px) */
+  --text-xs: 0.8125rem;
+  --text-xs--line-height: 1.25rem;
+  --text-sm: 0.9375rem;
+  --text-sm--line-height: 1.4rem;
+
   --color-ink-paper: var(--ink-paper);
   --color-ink-paper-elevated: var(--ink-paper-elevated);
   --color-ink-surface: var(--ink-surface);

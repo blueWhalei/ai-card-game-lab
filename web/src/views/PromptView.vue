@@ -12,6 +12,8 @@ import {
 import PromptComparePanel from '@/components/prompt/PromptComparePanel.vue'
 import PromptList from '@/components/prompt/PromptList.vue'
 import PromptEditor from '@/components/prompt/PromptEditor.vue'
+import KpiStrip from '@/components/common/KpiStrip.vue'
+import type { KpiItem } from '@/components/common/KpiStrip.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiSwitch from '@/components/ui/Switch.vue'
@@ -45,6 +47,29 @@ const dialogTitle = computed(() => (isEditing.value ? t('prompt.editTemplate') :
 const promptVersions = computed(() =>
   [...new Set(templates.value.map((item) => item.version).filter(Boolean))],
 )
+
+const abKpiItems = computed((): KpiItem[] => {
+  if (!abStats.value) return []
+  return [
+    {
+      id: 'total',
+      label: t('prompt.totalAlloc'),
+      value: String(abStats.value.total_assignments),
+    },
+    {
+      id: 'v1',
+      label: t('prompt.v1'),
+      value: String(abStats.value.v1_count),
+      tone: 'primary',
+    },
+    {
+      id: 'v2',
+      label: t('prompt.v2'),
+      value: String(abStats.value.v2_count),
+      tone: 'default',
+    },
+  ]
+})
 
 async function fetchTemplates() {
   loading.value = true
@@ -199,24 +224,21 @@ onMounted(() => {
 
 <template>
   <div class="page-container">
-    <div class="mb-8 flex items-center justify-between gap-4">
-      <p class="page-subtitle mt-0">{{ t('prompt.subtitle') }}</p>
-      <div class="flex shrink-0 gap-3">
-        <UiButton variant="secondary" @click="showABPanel = !showABPanel">
-          {{ showABPanel ? t('common.hide') : t('prompt.abTest') }}
-        </UiButton>
-        <UiButton @click="openCreateDialog()">{{ t('prompt.newTemplate') }}</UiButton>
-      </div>
+    <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
+      <UiButton variant="secondary" @click="showABPanel = !showABPanel">
+        {{ showABPanel ? t('common.hide') : t('prompt.abTest') }}
+      </UiButton>
+      <UiButton @click="openCreateDialog()">{{ t('prompt.newTemplate') }}</UiButton>
     </div>
 
-    <div v-if="showABPanel" class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-5">
-      <div class="mb-4 flex items-center justify-between border-b border-ink-border pb-3">
-        <h3 class="text-base font-semibold text-ink-text">{{ t('prompt.abConfig') }}</h3>
+    <div v-if="showABPanel" class="mb-5 rounded-ink-md border border-ink-border bg-ink-surface px-3 py-3">
+      <div class="mb-3 flex items-center justify-between">
+        <h3 class="text-sm font-semibold text-ink-text">{{ t('prompt.abConfig') }}</h3>
       </div>
-      <div class="grid grid-cols-1 gap-6 md:grid-cols-2">
-        <div>
-          <div class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-ink-text">{{ t('prompt.enableAb') }}</label>
+      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div class="space-y-3">
+          <div>
+            <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('prompt.enableAb') }}</label>
             <div class="flex items-center gap-2">
               <UiSwitch v-model="abConfig.enabled" />
               <span class="text-sm text-ink-text-muted">{{
@@ -224,30 +246,17 @@ onMounted(() => {
               }}</span>
             </div>
           </div>
-          <div v-if="abConfig.enabled" class="mb-4">
-            <label class="mb-2 block text-sm font-medium text-ink-text">
+          <div v-if="abConfig.enabled">
+            <label class="mb-1.5 block text-sm font-medium text-ink-text">
               {{ t('prompt.v2Ratio', { n: (abConfig.ratio * 100).toFixed(0) }) }}
             </label>
             <UiSlider v-model="abConfig.ratio" :min="0" :max="1" :step="0.1" />
           </div>
-          <UiButton @click="handleABConfigUpdate">{{ t('prompt.saveConfig') }}</UiButton>
+          <UiButton size="sm" @click="handleABConfigUpdate">{{ t('prompt.saveConfig') }}</UiButton>
         </div>
-        <div v-if="abStats" class="rounded-ink-md bg-ink-surface-muted p-4">
-          <h4 class="mb-3 text-sm font-semibold text-ink-text-secondary">{{ t('prompt.allocStats') }}</h4>
-          <div class="grid grid-cols-3 gap-4 text-center">
-            <div>
-              <div class="text-2xl font-semibold text-ink-text">{{ abStats.total_assignments }}</div>
-              <div class="text-xs text-ink-text-muted">{{ t('prompt.totalAlloc') }}</div>
-            </div>
-            <div>
-              <div class="text-2xl font-semibold text-ink-primary">{{ abStats.v1_count }}</div>
-              <div class="text-xs text-ink-text-muted">{{ t('prompt.v1') }}</div>
-            </div>
-            <div>
-              <div class="text-2xl font-semibold text-ink-success">{{ abStats.v2_count }}</div>
-              <div class="text-xs text-ink-text-muted">{{ t('prompt.v2') }}</div>
-            </div>
-          </div>
+        <div v-if="abStats" class="space-y-2">
+          <h4 class="text-xs font-medium text-ink-text-muted">{{ t('prompt.allocStats') }}</h4>
+          <KpiStrip :items="abKpiItems" class="md:!grid-cols-3" />
         </div>
       </div>
     </div>

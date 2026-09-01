@@ -57,9 +57,15 @@ const activePath = computed(() => {
   return match?.path ?? p
 })
 
+/** Detail workspace owns its own title (experiment name); hide layout chrome. */
+const isExperimentDetail = computed(
+  () =>
+    route.path.startsWith('/experiments/') && !route.path.startsWith('/experiments/compare'),
+)
+
 const pageTitle = computed(() => {
   if (route.path.startsWith('/experiments/compare')) return t('nav.experimentCompare')
-  if (route.path.startsWith('/experiments/')) return t('nav.experimentDetail')
+  if (isExperimentDetail.value) return ''
   return flatItems.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
 })
 
@@ -78,11 +84,13 @@ const pageHint = computed(() => {
   if (route.path.startsWith('/experiments/compare')) {
     return t('nav.hintCompare')
   }
-  if (route.path.startsWith('/experiments/')) {
-    return t('nav.hintDetail')
+  if (isExperimentDetail.value) {
+    return ''
   }
   return hints[activePath.value] ?? ''
 })
+
+const showPageChrome = computed(() => Boolean(pageTitle.value))
 
 watch(
   () => route.fullPath,
@@ -117,7 +125,7 @@ function go(path: string): void {
 
       <nav class="flex-1 space-y-6 overflow-y-auto px-2 pb-6">
         <div v-for="group in groups" :key="group.id" class="space-y-1">
-          <p class="px-3 pb-1 text-sm font-semibold tracking-wider text-ink-text-muted">
+          <p class="px-3 pb-1 text-sm font-semibold tracking-wide text-ink-text-secondary">
             {{ group.label }}
           </p>
           <RouterLink
@@ -129,7 +137,7 @@ function go(path: string): void {
                 'relative flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2.5 text-base transition-colors duration-150',
                 activePath === item.path
                   ? 'bg-ink-primary-muted font-medium text-ink-primary'
-                  : 'text-ink-text-secondary hover:bg-ink-surface-muted hover:text-ink-text',
+                  : 'text-ink-text hover:bg-ink-surface-muted',
               )
             "
           >
@@ -157,7 +165,9 @@ function go(path: string): void {
         >
           <Icon :icon="mobileOpen ? 'lucide:x' : 'lucide:menu'" class="h-5 w-5" />
         </button>
-        <span class="min-w-0 flex-1 truncate text-base font-semibold">{{ pageTitle }}</span>
+        <span class="min-w-0 flex-1 truncate text-base font-semibold">
+          {{ pageTitle || t('nav.experimentDetail') }}
+        </span>
         <HeaderToggles />
       </header>
 
@@ -175,7 +185,7 @@ function go(path: string): void {
         <aside class="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-ink-paper-elevated p-3 shadow-[var(--ink-shadow-md)]">
           <p class="mb-4 px-2 text-base font-semibold">{{ t('app.name') }}</p>
           <div v-for="group in groups" :key="group.id" class="mb-4 space-y-1">
-            <p class="px-2 text-sm font-semibold tracking-wider text-ink-text-muted">
+            <p class="px-2 text-sm font-semibold tracking-wide text-ink-text-secondary">
               {{ group.label }}
             </p>
             <RouterLink
@@ -187,7 +197,7 @@ function go(path: string): void {
                   'flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2.5 text-base',
                   activePath === item.path
                     ? 'bg-ink-primary-muted font-medium text-ink-primary'
-                    : 'text-ink-text-secondary',
+                    : 'text-ink-text',
                 )
               "
             >
@@ -198,7 +208,10 @@ function go(path: string): void {
         </aside>
       </div>
 
-      <header class="hidden border-b border-ink-border px-6 pt-6 pb-4 md:block md:px-8 xl:px-10">
+      <header
+        v-if="showPageChrome"
+        class="hidden border-b border-ink-border px-6 pt-6 pb-4 md:block md:px-8 xl:px-10"
+      >
         <div class="flex items-start justify-between gap-4">
           <div class="min-w-0">
             <h1 class="page-title">{{ pageTitle }}</h1>
@@ -206,6 +219,12 @@ function go(path: string): void {
           </div>
           <HeaderToggles class="-mt-0.5" />
         </div>
+      </header>
+      <header
+        v-else
+        class="hidden justify-end border-b border-ink-border px-6 py-3 md:flex md:px-8 xl:px-10"
+      >
+        <HeaderToggles />
       </header>
 
       <main class="flex-1">
