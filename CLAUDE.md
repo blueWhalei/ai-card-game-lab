@@ -151,7 +151,7 @@ Schema lives in `app/database.py`. Tables:
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality. SFT filtering uses `train_usable`. Export defaults to `include_thinking=false`.
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality. SFT filtering uses `train_usable`. Each point also stores `train_usable_reason` (from `evaluate_train_usable`); `GET /decision-points/stats` returns `not_usable_reason_counts`. Export defaults to `include_thinking=false`.
 
 ## Decision points (SFT)
 

@@ -63,6 +63,7 @@ class DecisionService:
                 thinking=thinking,
                 created_at=now,
                 train_usable=train_usable,
+                train_usable_reason=reason,
             )
 
         logger.info(
@@ -89,8 +90,8 @@ class DecisionService:
                     legal_actions=item.get("legal_actions"),
                     thinking=item.get("thinking"),
                 )
-                if item.get("train_usable") != usable:
-                    await repo.update_train_usable(item["id"], usable)
+                if item.get("train_usable") != usable or item.get("train_usable_reason") != reason:
+                    await repo.update_train_usable(item["id"], usable, reason)
                     updated += 1
                     logger.debug(
                         "train_usable_recomputed",
@@ -174,6 +175,7 @@ class DecisionService:
 
             total = await repo.count_total(experiment_id)
             usability = await repo.count_usability(experiment_id)
+            reason_counts = await repo.count_not_usable_by_reason(experiment_id)
             quality = await repo.get_quality_stats(experiment_id)
             outcome_counts = await repo.get_outcome_counts(experiment_id)
             phase_counts = await repo.get_phase_counts(experiment_id)
@@ -187,6 +189,7 @@ class DecisionService:
             "train_usable_count": usable,
             "not_usable_count": not_usable,
             "usable_rate": round(usable_rate, 4),
+            "not_usable_reason_counts": reason_counts,
             **quality,
             "outcome_counts": outcome_counts,
             "phase_counts": phase_counts,

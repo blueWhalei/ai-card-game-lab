@@ -339,6 +339,20 @@ function outcomeLabel(o: string | null | undefined): string {
   return t('common.unknown')
 }
 
+function reasonLabel(code: string | null | undefined): string {
+  if (!code) return t('decision.reason.unknown')
+  const key = `decision.reason.${code}`
+  const translated = t(key)
+  return translated === key ? code : translated
+}
+
+const reasonBreakdown = computed(() => {
+  const counts = stats.value?.not_usable_reason_counts ?? {}
+  return Object.entries(counts)
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1])
+})
+
 function outcomeTone(o: string | null | undefined): 'success' | 'danger' | 'muted' {
   if (o === 'win') return 'success'
   if (o === 'lose') return 'danger'
@@ -507,6 +521,19 @@ onMounted(() => {
           {{ t('decision.viewTraces') }}
         </UiButton>
       </div>
+      <div
+        v-if="embedded && reasonBreakdown.length"
+        class="flex flex-wrap items-center gap-2 text-xs text-ink-text-secondary"
+      >
+        <span class="font-medium text-ink-text-muted">{{ t('decision.reasonBreakdown') }}</span>
+        <UiBadge
+          v-for="[code, count] in reasonBreakdown"
+          :key="code"
+          variant="muted"
+        >
+          {{ reasonLabel(code) }} · {{ count }}
+        </UiBadge>
+      </div>
       <WorkbenchFilterBar
         v-else-if="!embedded"
         mode="decision"
@@ -620,7 +647,7 @@ onMounted(() => {
                     {{
                       selectedPoint.train_usable
                         ? t('filter.trainable')
-                        : t('decision.notTrainableReason')
+                        : reasonLabel(selectedPoint.train_usable_reason)
                     }}
                   </UiBadge>
                   <UiBadge

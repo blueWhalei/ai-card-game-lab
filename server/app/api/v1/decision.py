@@ -29,6 +29,7 @@ class DecisionPointResponse(BaseModel):
     outcome: str | None
     quality_score: float
     train_usable: bool = True
+    train_usable_reason: str = ""
     created_at: str
 
 
@@ -44,6 +45,7 @@ class DecisionStatsResponse(BaseModel):
     train_usable_count: int = 0
     not_usable_count: int = 0
     usable_rate: float = 0.0
+    not_usable_reason_counts: dict[str, int] = Field(default_factory=dict)
 
 
 class ExportRequest(BaseModel):

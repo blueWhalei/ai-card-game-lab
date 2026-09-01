@@ -804,6 +804,7 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
         "outcome": "win",
         "quality_score": 0.8,
         "train_usable": true,
+        "train_usable_reason": "ok",
         "created_at": "2024-01-01T10:00:00Z"
       }
     ],
@@ -830,7 +831,12 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
     "phase_counts": {"early": 30, "mid": 70, "endgame": 50},
     "train_usable_count": 120,
     "not_usable_count": 30,
-    "usable_rate": 0.8
+    "usable_rate": 0.8,
+    "not_usable_reason_counts": {
+      "chosen_not_in_legal_actions": 12,
+      "llm_fallback_action": 10,
+      "thinking_pass_action_play": 8
+    }
   }
 }
 ```

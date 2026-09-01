@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from app.database import init_db
+from app.database import connect_or_reuse, init_db
 from app.services.decision_service import DecisionService
 
 
@@ -85,6 +85,7 @@ class TestDecisionServiceCreate:
         item = await decision_service.get_decision_point(dp_id)
         assert item is not None
         assert item["train_usable"] is False
+        assert item["train_usable_reason"] == "chosen_not_in_legal_actions"
 
     @pytest.mark.asyncio
     async def test_legal_action_usable(self, decision_service: DecisionService) -> None:
@@ -92,6 +93,33 @@ class TestDecisionServiceCreate:
         item = await decision_service.get_decision_point(dp_id)
         assert item is not None
         assert item["train_usable"] is True
+        assert item["train_usable_reason"] == "ok"
+
+    @pytest.mark.asyncio
+    async def test_stats_reason_counts(self, decision_service: DecisionService) -> None:
+        await _create_sample(
+            decision_service,
+            chosen={"action_type": "BOMB", "cards": ["C3", "D3", "H3", "S3"]},
+            legal=[{"action_type": "PASS", "cards": []}],
+        )
+        stats = await decision_service.get_stats()
+        assert stats["not_usable_count"] == 1
+        assert stats["not_usable_reason_counts"]["chosen_not_in_legal_actions"] == 1
+
+    @pytest.mark.asyncio
+    async def test_recompute_backfills_reason(self, decision_service: DecisionService) -> None:
+        dp_id = await _create_sample(decision_service, thinking=None)
+        async with connect_or_reuse(decision_service._sqlite_path) as db:
+            await db.execute(
+                "UPDATE decision_points SET train_usable_reason = '' WHERE id = ?",
+                (dp_id,),
+            )
+            await db.commit()
+        updated = await decision_service.recompute_train_usable()
+        assert updated >= 1
+        item = await decision_service.get_decision_point(dp_id)
+        assert item is not None
+        assert item["train_usable_reason"] == "ok"
 
 
 class TestDecisionServiceExport:

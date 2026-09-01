@@ -164,6 +164,7 @@ CREATE TABLE IF NOT EXISTS decision_points (
     outcome         TEXT,
     quality_score   REAL    DEFAULT 0.5,
     train_usable    INTEGER NOT NULL DEFAULT 1,
+    train_usable_reason TEXT NOT NULL DEFAULT '',
     created_at      TEXT    NOT NULL
 );
 
@@ -247,6 +248,12 @@ async def init_db(sqlite_path: str) -> None:
             await db.execute(
                 "CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment "
                 "ON training_tasks(experiment_id)"
+            )
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute(
+                "ALTER TABLE decision_points ADD COLUMN train_usable_reason TEXT NOT NULL DEFAULT ''"
             )
         except aiosqlite.OperationalError:
             pass

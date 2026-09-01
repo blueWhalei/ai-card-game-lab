@@ -29,6 +29,7 @@ class DecisionRepository:
         thinking: str | None,
         created_at: str,
         train_usable: bool = True,
+        train_usable_reason: str = "",
     ) -> None:
         """Insert a new decision point record."""
         await self._db.execute(
@@ -36,8 +37,8 @@ class DecisionRepository:
             INSERT INTO decision_points (
                 id, game_id, round_number, player_id, hand_cards,
                 opponent_hands, last_action, game_phase, legal_actions,
-                chosen_action, thinking, train_usable, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                chosen_action, thinking, train_usable, train_usable_reason, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -52,16 +53,26 @@ class DecisionRepository:
                 json.dumps(chosen_action, ensure_ascii=False),
                 thinking,
                 1 if train_usable else 0,
+                train_usable_reason,
                 created_at,
             ),
         )
         await self._db.commit()
 
-    async def update_train_usable(self, decision_id: str, train_usable: bool) -> None:
-        """Update train_usable flag for a single decision point."""
+    async def update_train_usable(
+        self,
+        decision_id: str,
+        train_usable: bool,
+        train_usable_reason: str = "",
+    ) -> None:
+        """Update train_usable flag and reason for a single decision point."""
         await self._db.execute(
-            "UPDATE decision_points SET train_usable = ? WHERE id = ?",
-            (1 if train_usable else 0, decision_id),
+            """
+            UPDATE decision_points
+            SET train_usable = ?, train_usable_reason = ?
+            WHERE id = ?
+            """,
+            (1 if train_usable else 0, train_usable_reason, decision_id),
         )
         await self._db.commit()
 
@@ -290,6 +301,28 @@ class DecisionRepository:
         rows = await cursor.fetchall()
         return {row["game_phase"]: row["count"] for row in rows}
 
+    async def count_not_usable_by_reason(
+        self,
+        experiment_id: str | None = None,
+    ) -> dict[str, int]:
+        """Return counts grouped by train_usable_reason for not-usable samples."""
+        where, params = self._experiment_where(
+            experiment_id,
+            extra="train_usable = 0",
+        )
+        cursor = await self._db.execute(
+            f"""
+            SELECT train_usable_reason AS reason, COUNT(*) AS count
+            FROM decision_points
+            {where}
+            GROUP BY train_usable_reason
+            ORDER BY count DESC
+            """,
+            params,
+        )
+        rows = await cursor.fetchall()
+        return {str(row["reason"]): int(row["count"]) for row in rows}
+
     def _experiment_where(
         self,
         experiment_id: str | None,
@@ -332,5 +365,8 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "outcome": row["outcome"],
         "quality_score": row["quality_score"],
         "train_usable": bool(train_usable_raw),
+        "train_usable_reason": row["train_usable_reason"]
+        if "train_usable_reason" in keys
+        else "",
         "created_at": row["created_at"],
     }

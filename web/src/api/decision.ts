@@ -26,6 +26,7 @@ export interface DecisionPoint {
   outcome: string | null
   quality_score: number
   train_usable: boolean
+  train_usable_reason?: string
   created_at: string
 }
 
@@ -39,6 +40,7 @@ export interface DecisionStats {
   train_usable_count?: number
   not_usable_count?: number
   usable_rate?: number
+  not_usable_reason_counts?: Record<string, number>
 }
 
 export interface ExportResult {
