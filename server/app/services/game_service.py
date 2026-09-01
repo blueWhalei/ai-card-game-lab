@@ -158,6 +158,9 @@ class GameService:
         db: aiosqlite.Connection | None = None,
         *,
         experiment_id: str | None = None,
+        deal_seed: int | None = None,
+        paired: bool = False,
+        frozen_players: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Create a new game.
 
@@ -167,6 +170,9 @@ class GameService:
             mode: Game mode (realtime or batch)
             db: Optional database connection
             experiment_id: Optional experiment (run) this game belongs to
+            deal_seed: RNG seed for reproducible dealing
+            paired: Whether this deal is paired with a source experiment
+            frozen_players: Optional player config snapshots for this game
 
         Returns:
             The created game record
@@ -174,10 +180,21 @@ class GameService:
         self._validate_player_ids(player_ids)
         self._validate_player_count(game_type, player_ids)
 
+        import secrets
+
+        seed = deal_seed if deal_seed is not None else secrets.randbits(31)
         game_id = generate_id("game")
         now = datetime.now(tz=UTC).isoformat()
 
         data_file = self._collector.start_game(game_id, game_type, player_ids)
+
+        metadata: dict[str, Any] = {
+            "mode": mode,
+            "deal_seed": seed,
+            "paired": paired,
+        }
+        if frozen_players is not None:
+            metadata["players"] = frozen_players
 
         conn = db or await self._get_bg_db()
         try:
@@ -189,7 +206,7 @@ class GameService:
                 data_file=data_file,
                 created_at=now,
                 status="created",
-                metadata={"mode": mode},
+                metadata=metadata,
                 experiment_id=experiment_id,
             )
         finally:
@@ -200,6 +217,8 @@ class GameService:
             game_id=game_id,
             game_type=game_type,
             experiment_id=experiment_id,
+            deal_seed=seed,
+            paired=paired,
         )
         return game
 
@@ -238,19 +257,38 @@ class GameService:
                 if isinstance(player_ids_raw, str)
                 else player_ids_raw
             )
+            metadata_raw = game.get("metadata")
+            metadata: dict[str, Any] = {}
+            if isinstance(metadata_raw, str):
+                metadata = json_mod.loads(metadata_raw)
+            elif isinstance(metadata_raw, dict):
+                metadata = metadata_raw
 
-            await conn.execute(
-                "UPDATE games SET status = 'running' WHERE id = ?", (game_id,)
-            )
+            deal_seed = metadata.get("deal_seed")
+            if deal_seed is None:
+                import secrets
+
+                deal_seed = secrets.randbits(31)
+                metadata["deal_seed"] = deal_seed
+                await conn.execute(
+                    "UPDATE games SET status = 'running', metadata = ? WHERE id = ?",
+                    (json_mod.dumps(metadata, ensure_ascii=False), game_id),
+                )
+            else:
+                await conn.execute(
+                    "UPDATE games SET status = 'running' WHERE id = ?", (game_id,)
+                )
             await conn.commit()
 
             await self._orchestration_service.start_game_execution(
                 game_id=game_id,
                 game_type=game["game_type"],
                 player_ids=player_ids,
+                seed=int(deal_seed),
+                frozen_players=metadata.get("players"),
             )
 
-            logger.info("game_started", game_id=game_id)
+            logger.info("game_started", game_id=game_id, deal_seed=deal_seed)
 
             result = await game_repo.get_by_id(game_id)
         finally:

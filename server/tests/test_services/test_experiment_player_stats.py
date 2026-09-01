@@ -10,7 +10,6 @@ import pytest
 
 from app.database import init_db
 from app.repositories.experiment_repo import ExperimentRepository
-from app.repositories.trace_repo import TraceRepository
 
 
 @pytest.fixture
@@ -61,46 +60,19 @@ async def _seed(db_path: str) -> None:
             """,
             (now, now, now, now),
         )
+        await db.execute(
+            """
+            INSERT INTO rounds (
+                game_id, round_num, player_id, action_type, prompt_tokens,
+                completion_tokens, total_tokens, response_time_ms, created_at
+            ) VALUES
+                ('g1', 1, 'cfg_a', 'play', 10, 5, 15, 100, ?),
+                ('g2', 1, 'cfg_a', 'play', 10, 5, 15, 300, ?),
+                ('g1', 2, 'cfg_b', 'play', 8, 4, 12, 50, ?)
+            """,
+            (now, now, now),
+        )
         await db.commit()
-
-        db.row_factory = aiosqlite.Row
-        traces = TraceRepository(db)
-        await traces.create_trace(
-            trace_id="tr-a",
-            game_id="g1",
-            round_number=1,
-            player_id="cfg_a",
-            model="m",
-            prompt_version="v1",
-            input_snapshot={},
-            output_data={},
-            metrics={"response_time_ms": 100},
-            created_at=now,
-        )
-        await traces.create_trace(
-            trace_id="tr-a2",
-            game_id="g2",
-            round_number=1,
-            player_id="cfg_a",
-            model="m",
-            prompt_version="v1",
-            input_snapshot={},
-            output_data={},
-            metrics={"response_time_ms": 300},
-            created_at=now,
-        )
-        await traces.create_trace(
-            trace_id="tr-b",
-            game_id="g1",
-            round_number=1,
-            player_id="cfg_b",
-            model="m",
-            prompt_version="v1",
-            input_snapshot={},
-            output_data={},
-            metrics={"response_time_ms": 50},
-            created_at=now,
-        )
 
 
 async def test_count_train_usable_by_player(db_path: str) -> None:

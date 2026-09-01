@@ -1,13 +1,11 @@
-"""Experiment config management — SQLite-backed with YAML seed/export."""
+"""Experiment config management — SQLite-backed, edited in the UI."""
 
 from __future__ import annotations
 
 from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 import structlog
-import yaml
 
 from app.database import open_db_connection
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
@@ -22,26 +20,22 @@ _RETIRED_DEEPSEEK_MODELS = {
 
 
 class ExperimentConfigService:
-    """Manages experiment config profiles in SQLite; YAML is seed/export only.
+    """Manages experiment config profiles in SQLite.
 
     Sync ``get_config`` / ``list_configs`` read the in-memory cache (filled by
     ``initialize``). Mutating methods are async and update DB + cache.
     """
 
-    def __init__(self, sqlite_path: str, yaml_seed_path: str | None = None) -> None:
+    def __init__(self, sqlite_path: str) -> None:
         self._sqlite_path = sqlite_path
-        self._yaml_seed_path = Path(yaml_seed_path) if yaml_seed_path else None
         self._configs: dict[str, dict[str, Any]] = {}
         self._ready = False
 
     async def initialize(self) -> None:
-        """Load from DB; if empty, seed from YAML once."""
+        """Load configs from SQLite. Empty table stays empty until the UI creates rows."""
         db = await open_db_connection(self._sqlite_path)
         try:
             repo = ExperimentConfigRepository(db)
-            if await repo.count() == 0 and self._yaml_seed_path:
-                seeded = await self._seed_from_yaml(repo)
-                logger.info("experiment_configs_seeded_from_yaml", count=seeded)
             rows = await repo.list_all()
             migrated = await self._migrate_retired_deepseek_models(repo, rows)
             if migrated:
@@ -78,21 +72,6 @@ class ExperimentConfigService:
                 to_model=new,
             )
         return updated
-
-    async def _seed_from_yaml(self, repo: ExperimentConfigRepository) -> int:
-        if not self._yaml_seed_path or not self._yaml_seed_path.exists():
-            logger.warning(
-                "experiment_configs_yaml_missing",
-                path=str(self._yaml_seed_path) if self._yaml_seed_path else None,
-            )
-            return 0
-        with self._yaml_seed_path.open("r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        count = 0
-        for c in data.get("configs", []):
-            await repo.upsert(c)
-            count += 1
-        return count
 
     def list_configs(self) -> list[dict[str, Any]]:
         self._ensure_ready()
@@ -159,28 +138,6 @@ class ExperimentConfigService:
         finally:
             await db.close()
         del self._configs[config_id]
-
-    async def export_to_yaml(self, path: Path | None = None) -> Path:
-        """Export current configs to YAML (backup / share)."""
-        self._ensure_ready()
-        target = path or self._yaml_seed_path
-        if target is None:
-            raise ValueError("No YAML export path configured")
-        target.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            "configs": [
-                {
-                    "id": c["id"],
-                    "name": c["name"],
-                    "notes": c.get("notes", ""),
-                    "model_config": c.get("model_config", {}),
-                }
-                for c in self._configs.values()
-            ]
-        }
-        with target.open("w", encoding="utf-8") as f:
-            yaml.dump(data, f, allow_unicode=True, default_flow_style=False, sort_keys=False)
-        return target
 
     def _ensure_ready(self) -> None:
         if not self._ready:

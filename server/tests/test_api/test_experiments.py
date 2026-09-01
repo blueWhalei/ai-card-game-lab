@@ -44,9 +44,13 @@ async def test_create_and_get_experiment(client: AsyncClient) -> None:
             "player_id": pid,
             "wins": 0,
             "win_rate": 0.0,
+            "win_rate_ci": [0.0, 0.0],
             "train_usable_decisions": 0,
             "avg_response_time_ms": 0.0,
             "trace_count": 0,
+            "games_as_landlord": 0,
+            "wins_as_landlord": 0,
+            "landlord_win_rate": 0.0,
         }
         for pid in VALID_PLAYER_IDS
     ]

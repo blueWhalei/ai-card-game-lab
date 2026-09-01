@@ -62,8 +62,6 @@ class Settings(BaseSettings):
     # Cap simultaneous live games (batch create still accepts up to 50).
     max_concurrent_games: int = 5
 
-    config_dir: str = str(_PROJECT_ROOT / "config")
-
     prompt_version: str = "v1"
     prompt_ab_test_enabled: bool = False
     prompt_ab_test_ratio: float = 0.5

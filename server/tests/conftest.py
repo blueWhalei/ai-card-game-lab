@@ -47,11 +47,32 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     with pytest.MonkeyPatch.context() as m:
         m.setenv("SQLITE_PATH", test_settings.sqlite_path)
         m.setenv("DATA_DIR", test_settings.data_dir)
-        # Seed configs use DeepSeek. CI has no .env; GameService checks this key.
+        # Some tests still assert DeepSeek key presence; fixture configs use ollama.
         m.setenv("DEEPSEEK_API_KEY", test_settings.deepseek_api_key)
 
         app = create_app(settings=test_settings)
-        await dependencies.get_experiment_config_service().initialize()
+        svc = dependencies.get_experiment_config_service()
+        await svc.initialize()
+        if not svc.list_configs():
+            for cid, temperature in (
+                ("cfg_temp_09", 0.9),
+                ("cfg_temp_06", 0.6),
+                ("cfg_temp_12", 1.2),
+            ):
+                await svc.create_config(
+                    {
+                        "id": cid,
+                        "name": cid,
+                        "notes": "pytest fixture",
+                        "model_config": {
+                            "provider": "ollama",
+                            "model_name": "llama3.2",
+                            "temperature": temperature,
+                            "top_p": 0.95,
+                            "max_tokens": 128,
+                        },
+                    }
+                )
 
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test") as ac:

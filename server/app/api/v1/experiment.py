@@ -33,6 +33,8 @@ async def create_experiment(
         game_type=body.game_type,
         player_ids=body.player_ids,
         target_games=body.target_games,
+        source_experiment_id=body.source_experiment_id,
+        pair_deals=body.pair_deals,
     )
     return ApiResponse(data=experiment)
 

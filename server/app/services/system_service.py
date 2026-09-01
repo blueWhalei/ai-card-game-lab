@@ -117,7 +117,6 @@ class SystemService:
             "debug": self._settings.app_debug,
             "data_dir": self._settings.data_dir,
             "sqlite_path": self._settings.sqlite_path,
-            "config_dir": self._settings.config_dir,
             "models_dir": self._settings.models_dir,
             "prompt_version": self._settings.prompt_version,
             "prompt_ab_test_enabled": self._settings.prompt_ab_test_enabled,
@@ -150,8 +149,8 @@ class SystemService:
         warnings: list[str] = []
         if not cloud_ready:
             warnings.append(
-                "未配置云端 API 密钥。默认选手配置使用 DeepSeek；"
-                "可填写 DEEPSEEK_API_KEY，或把选手配置改成 ollama。"
+                "未配置云端 API 密钥。请在「实验配置」页创建选手，"
+                "并填写对应供应商的 Key，或使用 ollama。"
             )
         if not _cached_training_deps_available():
             warnings.append(

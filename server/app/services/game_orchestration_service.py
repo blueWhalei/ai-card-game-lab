@@ -63,6 +63,7 @@ class GameOrchestrationService:
         self._states: dict[str, GameState] = {}
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._pause_events: dict[str, asyncio.Event] = {}
+        self._frozen_players: dict[str, dict[str, dict[str, Any]]] = {}
         self._game_slots = asyncio.Semaphore(max(1, max_concurrent_games))
 
     def has_active_game(self, game_id: str) -> bool:
@@ -73,11 +74,21 @@ class GameOrchestrationService:
         """Get the current state of an active game."""
         return self._states.get(game_id)
 
+    def _resolve_player_config(self, game_id: str, player_id: str) -> dict[str, Any] | None:
+        """Prefer frozen per-game snapshot; fall back to live experiment configs."""
+        frozen = self._frozen_players.get(game_id, {}).get(player_id)
+        if frozen is not None:
+            return frozen
+        return self._experiment_config_service.get_config(player_id)
+
     async def start_game_execution(
         self,
         game_id: str,
         game_type: str,
         player_ids: list[str],
+        *,
+        seed: int | None = None,
+        frozen_players: list[dict[str, Any]] | None = None,
     ) -> None:
         """Start executing a game in the background.
 
@@ -85,10 +96,23 @@ class GameOrchestrationService:
             game_id: The game identifier
             game_type: The type of game engine to use
             player_ids: List of player identifiers
+            seed: Optional deal seed for reproducible hands
+            frozen_players: Optional player config snapshots keyed by id
         """
         engine = self._engine_registry.get(game_type)
-        state = engine.initialize(player_ids)
+        init_kwargs: dict[str, Any] = {}
+        if seed is not None:
+            init_kwargs["seed"] = seed
+        state = engine.initialize(player_ids, **init_kwargs)
         self._states[game_id] = state
+
+        if frozen_players:
+            by_id: dict[str, dict[str, Any]] = {}
+            for row in frozen_players:
+                pid = str(row.get("id") or "")
+                if pid:
+                    by_id[pid] = row
+            self._frozen_players[game_id] = by_id
 
         event = asyncio.Event()
         event.set()
@@ -111,7 +135,7 @@ class GameOrchestrationService:
             "data": engine.get_public_info(state, "observer", is_observer=True),
         })
 
-        logger.info("game_execution_started", game_id=game_id)
+        logger.info("game_execution_started", game_id=game_id, deal_seed=seed)
 
     async def _run_game_loop(self, game_id: str) -> None:
         """Run the main game loop until completion."""
@@ -198,6 +222,7 @@ class GameOrchestrationService:
         self._states.pop(game_id, None)
         self._tasks.pop(game_id, None)
         self._pause_events.pop(game_id, None)
+        self._frozen_players.pop(game_id, None)
         logger.info("game_aborted", game_id=game_id, status=status)
 
     async def _run_round(
@@ -209,7 +234,7 @@ class GameOrchestrationService:
     ) -> GameState:
         """Execute a single round of gameplay."""
         current_player = engine.get_current_player(state)
-        player_config = self._experiment_config_service.get_config(current_player)
+        player_config = self._resolve_player_config(game_id, current_player)
         model_cfg = (player_config or {}).get("model_config", {})
         legal_actions = engine.get_legal_actions(state, current_player)
         all_hands = {pid: list(cards) for pid, cards in getattr(state, "hands", {}).items()}
@@ -495,12 +520,23 @@ class GameOrchestrationService:
         winner = engine.get_winner(state)
         now = datetime.now(tz=UTC).isoformat()
 
+        metadata_patch: dict[str, Any] = {}
+        roles = getattr(state, "roles", None) or {}
+        if isinstance(roles, dict):
+            landlord_id = next(
+                (pid for pid, role in roles.items() if role == "landlord"),
+                None,
+            )
+            if landlord_id:
+                metadata_patch["landlord_id"] = str(landlord_id)
+
         await game_repo.update_result(
             game_id,
             winner_id=winner,
             winner_role=state.winner_role,
             total_rounds=state.round,
             finished_at=now,
+            metadata_patch=metadata_patch or None,
         )
 
         self._collector.end_game(game_id, {
@@ -509,9 +545,7 @@ class GameOrchestrationService:
             "total_rounds": state.round,
         })
 
-        winner_config = (
-            self._experiment_config_service.get_config(winner) if winner else None
-        )
+        winner_config = self._resolve_player_config(game_id, winner) if winner else None
 
         await ws_manager.broadcast(game_id, {
             "type": "game_ended",
@@ -527,6 +561,7 @@ class GameOrchestrationService:
         self._states.pop(game_id, None)
         self._tasks.pop(game_id, None)
         self._pause_events.pop(game_id, None)
+        self._frozen_players.pop(game_id, None)
 
         logger.info("game_finished", game_id=game_id, winner=winner)
 

@@ -23,6 +23,7 @@ CREATE TABLE IF NOT EXISTS experiments (
     game_type     TEXT    NOT NULL,
     player_ids    TEXT    NOT NULL,
     target_games  INTEGER NOT NULL DEFAULT 1,
+    protocol      TEXT,
     created_at    TEXT    NOT NULL,
     updated_at    TEXT    NOT NULL
 );
@@ -244,6 +245,10 @@ async def init_db(sqlite_path: str) -> None:
                 "CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment "
                 "ON training_tasks(experiment_id)"
             )
+        except aiosqlite.OperationalError:
+            pass
+        try:
+            await db.execute("ALTER TABLE experiments ADD COLUMN protocol TEXT")
         except aiosqlite.OperationalError:
             pass
         await _migrate_ai_players_to_experiment_configs(db)

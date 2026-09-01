@@ -125,15 +125,56 @@ class GameRepository:
         winner_role: str | None,
         total_rounds: int,
         finished_at: str,
+        metadata_patch: dict[str, Any] | None = None,
     ) -> None:
-        """Update a game with its final result."""
-        await self._db.execute(
-            """
-            UPDATE games
-            SET status = 'finished', winner_id = ?, winner_role = ?,
-                total_rounds = ?, finished_at = ?
-            WHERE id = ?
-            """,
-            (winner_id, winner_role, total_rounds, finished_at, game_id),
-        )
+        """Update a game with its final result.
+
+        When *metadata_patch* is provided, merge into existing ``metadata`` JSON
+        so fields like ``deal_seed`` / ``paired`` are preserved.
+        """
+        if metadata_patch:
+            cursor = await self._db.execute(
+                "SELECT metadata FROM games WHERE id = ?",
+                (game_id,),
+            )
+            row = await cursor.fetchone()
+            existing: dict[str, Any] = {}
+            if row is not None and row["metadata"]:
+                raw = row["metadata"]
+                if isinstance(raw, str):
+                    try:
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, dict):
+                            existing = parsed
+                    except json.JSONDecodeError:
+                        existing = {}
+                elif isinstance(raw, dict):
+                    existing = raw
+            merged = {**existing, **metadata_patch}
+            await self._db.execute(
+                """
+                UPDATE games
+                SET status = 'finished', winner_id = ?, winner_role = ?,
+                    total_rounds = ?, finished_at = ?, metadata = ?
+                WHERE id = ?
+                """,
+                (
+                    winner_id,
+                    winner_role,
+                    total_rounds,
+                    finished_at,
+                    json.dumps(merged, ensure_ascii=False),
+                    game_id,
+                ),
+            )
+        else:
+            await self._db.execute(
+                """
+                UPDATE games
+                SET status = 'finished', winner_id = ?, winner_role = ?,
+                    total_rounds = ?, finished_at = ?
+                WHERE id = ?
+                """,
+                (winner_id, winner_role, total_rounds, finished_at, game_id),
+            )
         await self._db.commit()

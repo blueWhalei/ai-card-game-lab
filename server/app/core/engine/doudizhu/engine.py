@@ -84,8 +84,11 @@ class DoudizhuEngine(GameEngine):
                 f"Doudizhu requires exactly {self.min_players} players",
             )
 
+        seed = params.get("seed")
+        rng = random.Random(seed) if seed is not None else random.Random()
+
         deck = FULL_DECK.copy()
-        random.shuffle(deck)
+        rng.shuffle(deck)
 
         hands = {
             player_ids[0]: sort_cards(deck[0:17]),
@@ -94,8 +97,8 @@ class DoudizhuEngine(GameEngine):
         }
         landlord_cards = sort_cards(deck[51:54])
 
-        # Random starting bidder
-        bid_start = random.randint(0, 2)
+        # Starting bidder from the same RNG (reproducible with seed)
+        bid_start = rng.randint(0, 2)
         bid_order = player_ids[bid_start:] + player_ids[:bid_start]
 
         return DoudizhuState(

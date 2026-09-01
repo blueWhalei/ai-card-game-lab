@@ -30,7 +30,6 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from functools import lru_cache
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -161,13 +160,9 @@ def get_llm_factory() -> LLMClientFactory:
 
 @lru_cache
 def get_experiment_config_service() -> ExperimentConfigService:
-    """Singleton experiment config service (SQLite + optional YAML seed)."""
+    """Singleton experiment config service (SQLite)."""
     settings = get_settings()
-    yaml_path = str(Path(settings.config_dir) / "experiment_configs.yaml")
-    return ExperimentConfigService(
-        sqlite_path=settings.sqlite_path,
-        yaml_seed_path=yaml_path,
-    )
+    return ExperimentConfigService(sqlite_path=settings.sqlite_path)
 
 
 @lru_cache

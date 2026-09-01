@@ -24,12 +24,14 @@ class ExperimentRepository:
         target_games: int,
         created_at: str,
         updated_at: str,
+        protocol: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         await self._db.execute(
             """
             INSERT INTO experiments (
-                id, name, notes, game_type, player_ids, target_games, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                id, name, notes, game_type, player_ids, target_games,
+                protocol, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 experiment_id,
@@ -38,12 +40,32 @@ class ExperimentRepository:
                 game_type,
                 json.dumps(player_ids, ensure_ascii=False),
                 target_games,
+                json.dumps(protocol, ensure_ascii=False) if protocol is not None else None,
                 created_at,
                 updated_at,
             ),
         )
         await self._db.commit()
         return await self.get_by_id(experiment_id)
+
+    async def update_protocol(
+        self,
+        experiment_id: str,
+        protocol: dict[str, Any],
+        *,
+        updated_at: str | None = None,
+    ) -> None:
+        if updated_at is not None:
+            await self._db.execute(
+                "UPDATE experiments SET protocol = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(protocol, ensure_ascii=False), updated_at, experiment_id),
+            )
+        else:
+            await self._db.execute(
+                "UPDATE experiments SET protocol = ? WHERE id = ?",
+                (json.dumps(protocol, ensure_ascii=False), experiment_id),
+            )
+        await self._db.commit()
 
     async def get_by_id(self, experiment_id: str) -> dict[str, Any]:
         cursor = await self._db.execute(
@@ -113,17 +135,17 @@ class ExperimentRepository:
         self,
         experiment_id: str,
     ) -> dict[str, tuple[float, int]]:
-        """Average response_time_ms and trace count per player in an experiment."""
+        """Average response_time_ms and round count per player (from rounds)."""
         cursor = await self._db.execute(
             """
             SELECT
-                t.player_id AS player_id,
-                AVG(json_extract(t.metrics, '$.response_time_ms')) AS avg_ms,
+                r.player_id AS player_id,
+                AVG(r.response_time_ms) AS avg_ms,
                 COUNT(*) AS total
-            FROM traces t
-            INNER JOIN games g ON g.id = t.game_id
-            WHERE g.experiment_id = ?
-            GROUP BY t.player_id
+            FROM rounds r
+            INNER JOIN games g ON g.id = r.game_id
+            WHERE g.experiment_id = ? AND r.response_time_ms IS NOT NULL
+            GROUP BY r.player_id
             """,
             (experiment_id,),
         )
@@ -135,8 +157,8 @@ class ExperimentRepository:
             result[str(r["player_id"])] = (avg_ms, int(r["total"]))
         return result
 
-    async def compare_aggregates(self, experiment_id: str) -> dict[str, Any]:
-        """Token, latency, decision, and parser totals for one experiment."""
+    async def eval_aggregates(self, experiment_id: str) -> dict[str, Any]:
+        """Experiment-level evaluation metrics from games / rounds / traces / decisions."""
         decision_cursor = await self._db.execute(
             """
             SELECT
@@ -150,6 +172,7 @@ class ExperimentRepository:
         )
         decision_row = await decision_cursor.fetchone()
         decision_count = int(decision_row["total"] if decision_row else 0)
+        train_usable_n = int(decision_row["usable"] or 0) if decision_row else 0
 
         round_cursor = await self._db.execute(
             """
@@ -167,6 +190,25 @@ class ExperimentRepository:
         avg_ms_raw = round_row["avg_ms"] if round_row else None
         tokens_raw = round_row["tokens"] if round_row else None
         avg_tokens_raw = round_row["avg_tokens"] if round_row else None
+
+        pct_cursor = await self._db.execute(
+            """
+            SELECT r.response_time_ms
+            FROM rounds r
+            INNER JOIN games g ON g.id = r.game_id
+            WHERE g.experiment_id = ? AND r.response_time_ms IS NOT NULL
+            ORDER BY r.response_time_ms
+            """,
+            (experiment_id,),
+        )
+        pct_rows = await pct_cursor.fetchall()
+        p50_ms, p95_ms = 0.0, 0.0
+        if pct_rows:
+            n = len(pct_rows)
+            p50_idx = min(int(n * 0.5), n - 1)
+            p95_idx = min(int(n * 0.95), n - 1)
+            p50_ms = round(float(pct_rows[p50_idx][0]), 1)
+            p95_ms = round(float(pct_rows[p95_idx][0]), 1)
 
         parser_cursor = await self._db.execute(
             """
@@ -186,21 +228,111 @@ class ExperimentRepository:
         parser_n = int(parser_row["total"] if parser_row else 0)
         parser_ok = int(parser_row["parser_ok"] or 0) if parser_row else 0
 
+        games_cursor = await self._db.execute(
+            """
+            SELECT id, status, winner_id, winner_role, metadata
+            FROM games
+            WHERE experiment_id = ?
+            """,
+            (experiment_id,),
+        )
+        game_rows = await games_cursor.fetchall()
+
+        wins_by_role: dict[str, int] = {"landlord": 0, "peasant": 0}
+        decisive_games = 0
+        finished_games = 0
+        status_counts: dict[str, int] = {
+            "finished": 0,
+            "failed": 0,
+            "cancelled": 0,
+            "interrupted": 0,
+            "no_bid": 0,
+        }
+        landlord_games: dict[str, int] = {}
+        landlord_wins: dict[str, int] = {}
+
+        for g in game_rows:
+            status = str(g["status"] or "")
+            role = str(g["winner_role"] or "") if g["winner_role"] else ""
+            if status == "finished":
+                finished_games += 1
+                if role == "no_bid":
+                    status_counts["no_bid"] += 1
+                else:
+                    status_counts["finished"] += 1
+            elif status in status_counts:
+                status_counts[status] = status_counts.get(status, 0) + 1
+
+            if role in ("landlord", "peasant"):
+                decisive_games += 1
+                wins_by_role[role] = wins_by_role.get(role, 0) + 1
+
+            meta_raw = g["metadata"]
+            meta: dict[str, Any] = {}
+            if isinstance(meta_raw, str):
+                try:
+                    parsed = json.loads(meta_raw)
+                    if isinstance(parsed, dict):
+                        meta = parsed
+                except json.JSONDecodeError:
+                    meta = {}
+            elif isinstance(meta_raw, dict):
+                meta = meta_raw
+
+            landlord_id = meta.get("landlord_id")
+            if landlord_id and status == "finished" and role in ("landlord", "peasant"):
+                lid = str(landlord_id)
+                landlord_games[lid] = landlord_games.get(lid, 0) + 1
+                if g["winner_id"] and str(g["winner_id"]) == lid:
+                    landlord_wins[lid] = landlord_wins.get(lid, 0) + 1
+
+        landlord_role_wins = wins_by_role.get("landlord", 0)
+        landlord_win_rate = (
+            landlord_role_wins / decisive_games if decisive_games > 0 else 0.0
+        )
+        tokens_total = int(tokens_raw) if tokens_raw is not None else 0
+        tokens_per_game = (
+            round(tokens_total / finished_games, 2) if finished_games > 0 else 0.0
+        )
+        parser_rate = (parser_ok / parser_n) if parser_n else 0.0
+        train_rate = (train_usable_n / decision_count) if decision_count else 0.0
+
         return {
             "decision_count": decision_count,
-            "avg_response_time_ms": round(float(avg_ms_raw), 2) if avg_ms_raw is not None else 0.0,
-            "total_tokens": int(tokens_raw) if tokens_raw is not None else 0,
+            "train_usable_n": train_usable_n,
+            "train_usable_rate": round(train_rate, 4),
+            "avg_response_time_ms": (
+                round(float(avg_ms_raw), 2) if avg_ms_raw is not None else 0.0
+            ),
+            "p50_response_ms": p50_ms,
+            "p95_response_ms": p95_ms,
+            "total_tokens": tokens_total,
             "avg_tokens_per_round": (
                 round(float(avg_tokens_raw), 2) if avg_tokens_raw is not None else 0.0
             ),
+            "tokens_per_game": tokens_per_game,
             "parser_n": parser_n,
             "parser_ok": parser_ok,
+            "parser_success_rate": round(parser_rate, 4),
+            "wins_by_role": wins_by_role,
+            "decisive_games": decisive_games,
+            "landlord_win_rate": round(landlord_win_rate, 4),
+            "status_counts": status_counts,
+            "landlord_games_by_player": landlord_games,
+            "landlord_wins_by_player": landlord_wins,
+            "finished_games": finished_games,
         }
 
+    async def compare_aggregates(self, experiment_id: str) -> dict[str, Any]:
+        """Backward-compatible alias for eval_aggregates."""
+        return await self.eval_aggregates(experiment_id)
 
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     data = dict(row)
     raw_players = data.get("player_ids")
     if isinstance(raw_players, str):
         data["player_ids"] = json.loads(raw_players)
+    raw_protocol = data.get("protocol")
+    if isinstance(raw_protocol, str):
+        data["protocol"] = json.loads(raw_protocol)
     return data

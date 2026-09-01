@@ -16,6 +16,7 @@ async def test_abort_game_clears_memory_and_updates_status() -> None:
     svc._states = {"g1": object()}
     svc._tasks = {"g1": MagicMock()}
     svc._pause_events = {"g1": MagicMock()}
+    svc._frozen_players = {"g1": {"p1": {"id": "p1"}}}
 
     repo = AsyncMock()
     # Avoid real WS
@@ -37,3 +38,4 @@ async def test_abort_game_clears_memory_and_updates_status() -> None:
     assert "g1" not in svc._states
     assert "g1" not in svc._tasks
     assert "g1" not in svc._pause_events
+    assert "g1" not in svc._frozen_players

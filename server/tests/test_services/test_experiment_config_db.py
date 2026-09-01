@@ -1,4 +1,4 @@
-"""Experiment configs persist to SQLite and seed from YAML when empty."""
+"""Experiment configs persist to SQLite; empty DB stays empty until created."""
 
 from __future__ import annotations
 
@@ -6,48 +6,38 @@ import json
 from pathlib import Path
 
 import pytest
-import yaml
 
 from app.database import init_db, open_db_connection
 from app.services.experiment_config_service import ExperimentConfigService
 
 
 @pytest.mark.asyncio
-async def test_experiment_configs_seed_and_crud(tmp_path: Path) -> None:
+async def test_experiment_configs_empty_init_and_crud(tmp_path: Path) -> None:
     db_path = str(tmp_path / "app.db")
-    yaml_path = tmp_path / "experiment_configs.yaml"
-    yaml_path.write_text(
-        yaml.dump(
-            {
-                "configs": [
-                    {
-                        "id": "cfg_temp_09",
-                        "name": "Temp 0.9",
-                        "notes": "seed note",
-                        "model_config": {
-                            "provider": "ollama",
-                            "model_name": "llama",
-                            "temperature": 0.9,
-                            "top_p": 0.95,
-                            "max_tokens": 128,
-                        },
-                    }
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
     await init_db(db_path)
-    svc = ExperimentConfigService(db_path, str(yaml_path))
+    svc = ExperimentConfigService(db_path)
     await svc.initialize()
-
-    configs = svc.list_configs()
-    assert len(configs) == 1
-    assert configs[0]["id"] == "cfg_temp_09"
-    assert configs[0]["notes"] == "seed note"
-    assert "avatar" not in configs[0]
+    assert svc.list_configs() == []
 
     created = await svc.create_config(
+        {
+            "id": "cfg_temp_09",
+            "name": "Temp 0.9",
+            "notes": "created in test",
+            "model_config": {
+                "provider": "ollama",
+                "model_name": "llama",
+                "temperature": 0.9,
+                "top_p": 0.95,
+                "max_tokens": 128,
+            },
+        }
+    )
+    assert created["id"] == "cfg_temp_09"
+    assert created["notes"] == "created in test"
+    assert "avatar" not in created
+
+    extra = await svc.create_config(
         {
             "id": "cfg_b",
             "name": "B",
@@ -55,9 +45,9 @@ async def test_experiment_configs_seed_and_crud(tmp_path: Path) -> None:
             "model_config": {"provider": "openai", "model_name": "gpt"},
         }
     )
-    assert created["id"] == "cfg_b"
+    assert extra["id"] == "cfg_b"
 
-    svc2 = ExperimentConfigService(db_path, str(yaml_path))
+    svc2 = ExperimentConfigService(db_path)
     await svc2.initialize()
     assert len(svc2.list_configs()) == 2
     await svc2.delete_config("cfg_temp_09")
@@ -68,7 +58,7 @@ async def test_experiment_configs_seed_and_crud(tmp_path: Path) -> None:
 async def test_migrate_retired_deepseek_models(tmp_path: Path) -> None:
     db_path = str(tmp_path / "app.db")
     await init_db(db_path)
-    svc = ExperimentConfigService(db_path, yaml_seed_path=None)
+    svc = ExperimentConfigService(db_path)
     from app.repositories.experiment_config_repo import ExperimentConfigRepository
 
     db = await open_db_connection(db_path)

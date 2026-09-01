@@ -56,7 +56,7 @@ AI Card Game Lab — 1 小时闭环指南（斗地主）
 
 [0] 准备
   - 复制 .env.example → .env，填入至少一个 LLM API Key（或配 Ollama）
-  - 确认 config/experiment_configs.yaml 中三份配置 provider 可用
+  - 在前端「实验配置」页创建至少 3 份选手（斗地主需要 3 个槽位）
   - 启动后端：start-backend.bat  或  cd server && poetry run uvicorn ...
   - 启动前端（可选观战）：start-frontend.bat
 
@@ -105,13 +105,10 @@ def cmd_check(args: argparse.Namespace) -> int:
         print("  → start backend first (start-backend.bat)")
         return 1
     try:
-        configs = _api(args.base_url, "GET", "/api/v1/experiment-configs")
-        ids = [c.get("id") for c in (configs or [])]
-        print(f"[check] experiment configs: {ids}")
-        missing = [p for p in args.players if p not in ids]
-        if missing:
-            print(f"  → missing configs {missing}; edit config/experiment_configs.yaml")
+        resolved = _resolve_players(args.base_url, args.players, stage="check")
+        if resolved is None:
             return 1
+        args.players = resolved
     except Exception as exc:
         print(f"[check] failed to list experiment configs: {exc}", file=sys.stderr)
         return 1
@@ -119,7 +116,34 @@ def cmd_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def _resolve_players(
+    base_url: str,
+    requested: list[str],
+    *,
+    stage: str,
+) -> list[str] | None:
+    """Use requested ids if they exist; otherwise first 3 configs. None if < 3."""
+    configs = _api(base_url, "GET", "/api/v1/experiment-configs")
+    ids = [str(c.get("id")) for c in (configs or []) if c.get("id")]
+    print(f"[{stage}] experiment configs: {ids}")
+    if all(p in ids for p in requested):
+        return requested
+    if len(ids) >= 3:
+        fallback = ids[:3]
+        print(f"  → requested {requested} missing; using {fallback}")
+        return fallback
+    print(
+        "  → need at least 3 experiment configs; create them at /experiment-configs",
+        file=sys.stderr,
+    )
+    return None
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
+    resolved = _resolve_players(args.base_url, args.players, stage="collect")
+    if resolved is None:
+        return 1
+    args.players = resolved
     print(f"[collect] batch create {args.count} doudizhu game(s) ...")
     data = _api(
         args.base_url,
