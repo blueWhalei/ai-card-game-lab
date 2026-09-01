@@ -54,7 +54,7 @@ ai-card-game-lab/
 │   │   │   ├── game_replay_service.py # 对局回放服务
 │   │   │   ├── ai_service.py          # AI 调用业务编排（重试 + 解析）
 │   │   │   ├── experiment_service.py          # 实验（run）编排 / 采集 / summary
-│   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite + YAML seed）
+│   │   │   ├── experiment_config_service.py   # 实验配置 CRUD（SQLite，UI 创建）
 │   │   │   ├── experiment_config_stats_service.py  # 实验配置战绩统计
 │   │   │   ├── data_service.py        # 数据统计 + 数据集导出
 │   │   │   ├── training_service.py    # 训练任务编排（PEFT LoRA / CPU 冒烟）
@@ -204,15 +204,19 @@ ai-card-game-lab/
 │   │   │
 │   │   ├── utils/                      # 前端工具函数
 │   │   │   ├── error.ts               # API 错误消息映射与统一展示入口
-│   │   │   └── format.ts              # 时间/字节/百分比格式化工具
+│   │   │   ├── format.ts              # 时间/字节/百分比格式化工具
+│   │   │   ├── pagination.ts          # 列表页默认 page_size=20
+│   │   │   └── compareMatrix.ts       # 实验对比转置矩阵
 │   │   │
 │   │   ├── i18n/                        # vue-i18n（zh-CN + en）
 │   │   │
 │   │   ├── components/                 # 组件
-│   │   │   ├── ui/                    # Reka UI + Ink Lab 控件
+│   │   │   ├── ui/                    # Reka UI + Ink Lab 控件（含 compact Table）
 │   │   │   ├── common/                # 通用/共享组件
 │   │   │   │   ├── HeaderToggles.vue
-│   │   │   │   ├── WorkbenchFilterBar.vue
+│   │   │   │   ├── WorkbenchFilterBar.vue  # 决策/追踪筛选（可锁定 experiment）
+│   │   │   │   ├── ExperimentContextBar.vue # 工具页回实验上下文条
+│   │   │   │   ├── KpiStrip.vue / NameChips.vue / CompactRecordList.vue
 │   │   │   │   ├── LoadingSpinner.vue
 │   │   │   │   └── EmptyState.vue
 │   │   │   │
@@ -221,6 +225,9 @@ ai-card-game-lab/
 │   │   │   │   ├── ExperimentPlayersTab.vue
 │   │   │   │   ├── ExperimentTrainingTab.vue
 │   │   │   │   └── ExperimentControlDialog.vue
+│   │   │   │
+│   │   │   ├── decision/              # 决策工作台面板（详情嵌入 + 独立页）
+│   │   │   │   └── DecisionWorkbenchPanel.vue
 │   │   │   │
 │   │   │   ├── training/              # 训练台任务 / 模型 / 实时日志
 │   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
@@ -243,6 +250,7 @@ ai-card-game-lab/
 │   │   │   │       └── ArchiveTab.vue
 │   │   │   │
 │   │   │   └── trace/                # 追踪组件
+│   │   │       ├── TraceWorkbenchPanel.vue # 追踪工作台（详情嵌入 + 独立页）
 │   │   │       ├── TraceDetail.vue   # 决策详情展示
 │   │   │       ├── TraceMetrics.vue  # 性能指标仪表盘
 │   │   │       └── ResponseTimeChart.vue # AI 响应时间趋势图
@@ -252,13 +260,13 @@ ai-card-game-lab/
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
 │   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /；/pipeline 重定向至此）
 │   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
-│   │   │   ├── ExperimentDetailView.vue # 实验工作台 /experiments/:id
+│   │   │   ├── ExperimentDetailView.vue # 工作台 /experiments/:id（?tab= 含 decisions/traces）
 │   │   │   ├── ExperimentConfigView.vue  # 实验配置 CRUD
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练控制台（任务列表 + 模型仓库 + 创建对话框）
 │   │   │   ├── PromptView.vue         # 提示词管理（模板列表 + 版本控制）
-│   │   │   ├── TraceView.vue          # 决策追踪（追踪列表 + 详情 + 指标）
-│   │   │   ├── DecisionView.vue       # 决策点数据（SFT 训练样本列表 + 详情）
+│   │   │   ├── TraceView.vue          # 决策追踪（薄壳 → TraceWorkbenchPanel）
+│   │   │   ├── DecisionView.vue       # 决策点（薄壳 → DecisionWorkbenchPanel）
 │   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
 │   │   │
 │   │   ├── layouts/                    # 双壳布局
@@ -279,10 +287,6 @@ ai-card-game-lab/
 │   │       └── env.d.ts               # 环境变量类型声明
 │   │
 │   └── src/**/*.spec.ts               # 前端单测（Vitest，与源码同目录）
-│
-├── config/                              # ===== 运行时配置 =====
-│   ├── experiment_configs.yaml         # 实验配置 seed
-│   └── README.md                       # 说明：experiment_configs.yaml 仅作 seed；运行时配置见 .env
 │
 ├── data/                                # ===== 运行时数据 (gitignore) =====
 │   ├── games/                          # 对局 JSONL 归档

@@ -1,5 +1,7 @@
 # AI Card Game Lab
 
+[English](README.en.md) | 中文
+
 AI 卡牌游戏实验室数据采集与训练平台 —— 面向 AI 研究的本地化工具，用于观察大模型决策过程、采集对局数据、蒸馏专用小模型。
 
 ## 核心能力
@@ -41,8 +43,8 @@ cd ai-card-game-lab
 # 2. 复制环境变量配置
 cp .env.example .env          # macOS / Linux
 # copy .env.example .env      # Windows cmd
-# 编辑 .env：默认 seed 使用 DeepSeek，至少填写 DEEPSEEK_API_KEY
-# 或改用实验配置「Ollama 本地」（需本机已启动 ollama）
+# 编辑 .env：填写至少一个云厂商 Key，或使用本机 Ollama
+# 选手配置在前端「实验配置」页创建，仓库不提供 YAML seed
 
 # 3. 安装 Python 依赖
 cd server
@@ -59,8 +61,8 @@ npm run dev
 
 ### 首次运行检查清单
 
-1. `.env` 已复制，并至少满足其一：`DEEPSEEK_API_KEY`，或其他云厂商 Key，或本机 Ollama。
-2. 默认实验配置是 DeepSeek 温度对照；无 DeepSeek Key 时，用「Ollama 本地」或到「实验配置」改 provider。
+1. `.env` 已复制，并至少满足其一：云厂商 API Key，或本机 Ollama。
+2. 打开「实验配置」页，按引擎槽位数创建选手（斗地主需要 3 个）。首次为空，点空态按钮创建。
 3. 后端启动后可访问 http://localhost:8000/api/v1/system/startup-check 查看警告。
 4. 采集对局会校验所选配置的 API Key；未配置会被拒绝，而不是开局后静默失败。
 5. 训练需 `cd server && poetry install --with training`。缺依赖时无法创建任务；无 GPU 自动走 CPU 冒烟。
@@ -70,13 +72,14 @@ npm run dev
 
 打开 http://localhost:5173 —— 首页即**实验列表**。
 
-1. **新建实验**：按引擎要求选择实验配置 + 目标局数 → 进入详情（**不会**自动开局，避免误打 Key）
-2. **开始采集 / 再开 n 局**：在详情页批量开局；进行中可点进观战，结束可回放
-3. **登记并开训**：可训决策 > 0 时一键登记 ChatML 并创建训练任务（缺训练依赖则只登记）
-4. **训练台 · 模型仓库**：导出部署包 →（本机 GGUF + `ollama create`）→ **登记为选手**
-5. **开对照实验**：详情「开对照实验」选新选手 + 与引擎槽位数相同的基线 → 新建实验后继续采集；「对比实验」并排看胜率 CI / 延迟 / Token
+1. **创建选手配置**：到「实验配置」页为每个槽位建一份（模型 / 温度等）
+2. **新建实验**：按引擎要求选择实验配置 + 目标局数 → 进入详情（**不会**自动开局，避免误打 Key）
+3. **开始采集 / 再开 n 局**：在详情页批量开局；进行中可点进观战，结束可回放
+4. **登记并开训**：可训决策 > 0 时一键登记 ChatML 并创建训练任务（缺训练依赖则只登记）
+5. **训练台 · 模型仓库**：导出部署包 →（本机 GGUF + `ollama create`）→ **登记为选手**
+6. **开对照实验**：详情「开对照实验」选新选手 + 与引擎槽位数相同的基线 → 新建实验后继续采集；「对比实验」并排看胜率 CI / 延迟 / Token
 
-侧栏「对局」仍可用于散局创建；「决策点 / 追踪」可用 `?experiment_id=` 深链到本实验。
+侧栏「对局」仍可用于散局创建。实验详情 Tab 含**对局 / 选手 / 决策点 / 追踪 / 训练**（`?tab=decisions` 等）；侧栏「决策点 / 追踪 / 数据 / 训练」也可用 `?experiment_id=` 深链，工具页顶部有回实验的上下文条。
 
 也可用脚本闭环（不经实验对象）：
 
@@ -97,22 +100,7 @@ npm run dev
 
 ### 配置实验参数
 
-运行时配置保存在 **SQLite**（前端「实验配置」页增删改）。`config/experiment_configs.yaml` 仅在首次启动时作为 **seed** 导入，之后以数据库为准。
-
-也可编辑 seed 文件后清空相关表重新导入（开发环境），示例结构：
-
-```yaml
-configs:
-  - id: "cfg_temp_09"
-    name: "Temp 0.9"
-    notes: "较高 temperature 对照"
-    model_config:
-      provider: "deepseek"
-      model_name: "deepseek-v4-flash"
-      temperature: 0.9
-      top_p: 0.95
-      max_tokens: 1024
-```
+选手配置只保存在 **SQLite**，在前端「实验配置」页增删改。仓库没有 YAML seed：首次启动该表为空，必须先在 UI 里创建足够槽位的配置，才能新建实验。
 
 ### 配置 API Key
 
@@ -138,42 +126,22 @@ OLLAMA_BASE_URL=http://localhost:11434
 
 ### 配置实验参数示例
 
-#### 使用不同 LLM 供应商
+在「实验配置」页填写供应商与模型，例如：
 
-```yaml
-# OpenAI GPT-4
-model_config:
-  provider: "openai"
-  model_name: "gpt-4o-mini"
-  temperature: 0.8
+| provider | model_name 示例 |
+|----------|-----------------|
+| `openai` | `gpt-4o-mini` |
+| `deepseek` | `deepseek-v4-flash` |
+| `ollama` | `qwen2.5:7b` |
+| `dashscope` | `qwen-plus` |
 
-# DeepSeek（推荐）
-model_config:
-  provider: "deepseek"
-  model_name: "deepseek-v4-flash"
-  temperature: 0.7
-
-# 本地 Ollama
-model_config:
-  provider: "ollama"
-  model_name: "qwen2.5:7b"
-  temperature: 0.8
-
-# 阿里通义千问
-model_config:
-  provider: "dashscope"
-  model_name: "qwen-plus"
-  temperature: 0.7
-```
-
-#### 调整采样参数
-
-通过 `model_config.temperature`、`top_p`、`max_tokens` 控制 LLM 行为；实验意图写在 `notes` 字段（如「高 temperature 对照」）。
+采样用 `temperature`、`top_p`、`max_tokens`；实验意图写在 `notes`（如「高 temperature 对照」）。
 
 ## 项目文档
 
 | 文档 | 说明 |
 |------|------|
+| [README.en.md](README.en.md) | English getting-started |
 | [CLAUDE.md](CLAUDE.md) | Agent / 开发入口（英文，与代码同步） |
 | [端到端闭环](docs/E2E_PIPELINE.md) | 1 小时采集→训练→部署指南与脚本 |
 | [架构设计](docs/ARCHITECTURE.md) | 系统架构、分层设计、核心流程 |
@@ -202,9 +170,10 @@ model_config:
 - [x] 一键体验脚本串起采集→训练→部署提示（`scripts/e2e_pipeline.*`）
 
 ### 第三阶段：实验主线
-- [x] 实验列表 / 详情工作台（采集、概要指标、深链决策与追踪）
+- [x] 实验列表 / 详情工作台（采集、概要指标、详情内嵌决策/追踪、深链与上下文条）
 - [x] 按实验过滤决策导出与「登记并开训」
 - [x] 训练产物登记为 Ollama 选手 + 开对照实验
+- [x] 工作台密度系统（KPI 条、紧凑列表、对比矩阵）+ 提示词 / 散局 / 选手配置对齐
 
 > **说明**：决策点上的 `quality_score` 是**终局结果分**（胜 0.8 / 负 0.3 / 平 0.5），不是招法质量分。SFT 筛选以 `train_usable` 为准。实验详情可「登记并开训」；决策点页亦可登记。导出默认 `include_thinking=false`。
 >

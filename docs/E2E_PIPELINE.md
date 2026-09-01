@@ -9,7 +9,7 @@
 |----|------|
 | Python 3.11+ / Poetry / Node 20.19+ 或 22.12+ | 必选 |
 | `.env` | 从 `.env.example` 复制并填 API Key，或配 Ollama |
-| `config/experiment_configs.yaml` | 仅 **seed**：首次启动写入 SQLite；运行时在「实验配置」页维护 |
+| 实验配置 | 在前端「实验配置」页创建至少 3 份选手（斗地主需要 3 个槽位）；无仓库级 YAML seed |
 | 后端 | `start-backend.bat` 或 `cd server && poetry run uvicorn ...` |
 
 可选：
@@ -60,13 +60,13 @@ poetry run python scripts/e2e_pipeline.py all --count 1
 **推荐 UI 路径（实验工作台）：**
 
 1. 首页 **实验** → 新建实验（按引擎槽位选配置 + 目标局数）→ 详情「开始采集」
-2. 可训决策就绪后，详情点 **登记并开训**（或到「决策点」带 `?experiment_id=` 登记）
+2. 可训决策就绪后，详情点 **登记并开训**；或切详情 Tab **决策点**（`?tab=decisions`）筛选/登记；侧栏「决策点」带 `?experiment_id=` 亦可（顶部有回实验上下文条）
 3. 「训练」→ 模型仓库：**推送到 Ollama**（需 `.env` 中 `LLAMA_CPP_DIR` + 本机 Ollama；可选勾选同时登记）→ 或手跑「导出部署包」
 4. 实验详情 **开对照实验**（新选手 + 与引擎人数相同的基线）→ 继续采集；首页或详情进 **对比实验** 看胜率 CI
 
 **脚本 / 决策点备用路径：**
 
-1. 对局结束后打开「决策点」（默认已筛「可训练」；可加 `experiment_id`）
+1. 对局结束后打开详情 **决策点** Tab，或侧栏「决策点」（默认已筛「可训练」；可加 `experiment_id`）
 2. 点主按钮 **登记为训练数据集**（不是「仅导出文件」）
 3. 「训练」页选用刚登记的 ChatML 数据集创建任务
 
@@ -76,7 +76,7 @@ poetry run python scripts/e2e_pipeline.py all --count 1
 
 1. `start-frontend.bat` → http://localhost:5173  
 2. 首页「加载演示对局」或从实验详情进入观战看思考链  
-3. 「决策点」→ **登记为训练数据集**（或实验详情「登记并开训」）  
+3. 详情 **决策点** Tab 或侧栏「决策点」→ **登记为训练数据集**（或实验详情「登记并开训」）  
 4. 「训练」模型仓库：**推送到 Ollama**（或导出部署包手转）→ 登记为选手 → 实验详情开对照  
 
 ## 验收对照（v1.0）

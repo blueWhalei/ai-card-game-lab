@@ -359,19 +359,17 @@ CLAUDE_BASE_URL=https://api.anthropic.com/v1
 
 ### 2.4 在实验配置中使用
 
-修改 `config/experiment_configs.yaml`：
+在前端「实验配置」页新增选手，字段示例：
 
-```yaml
-configs:
-  - id: "cfg_claude_07"
-    name: "Claude Temp 0.7"
-    notes: "使用 Claude 模型的对照配置"
-    model_config:
-      provider: "claude"
-      model_name: "claude-3-sonnet-20240229"
-      temperature: 0.7
-      max_tokens: 1024
-```
+| 字段 | 示例 |
+|------|------|
+| id | `cfg_claude_07` |
+| name | Claude Temp 0.7 |
+| notes | 使用 Claude 模型的对照配置 |
+| provider | `claude` |
+| model_name | `claude-3-sonnet-20240229` |
+| temperature | `0.7` |
+| max_tokens | `1024` |
 
 ---
 

@@ -315,8 +315,8 @@ const emit = defineEmits<{
 
 | 类别 | 命名规范 | 示例 |
 |------|----------|------|
-| Vue 组件 | PascalCase | `GameObserver.vue`, `DataDashboard.vue` |
-| Composable | camelCase + use 前缀 | `useGameState.ts`, `useWebSocket.ts` |
+| Vue 组件 | PascalCase | `GameObserverView.vue`, `GenericBoard.vue` |
+| Composable | camelCase + use 前缀 | `useGameWebSocket.ts`, `useWebSocket.ts` |
 | Store | camelCase + use 前缀 | `useGameStore.ts`, `useDataStore.ts` |
 | API 模块 | camelCase | `gameApi.ts`, `trainingApi.ts` |
 | 类型定义 | camelCase + .types 后缀或 types/ 目录 | `game.types.ts` |

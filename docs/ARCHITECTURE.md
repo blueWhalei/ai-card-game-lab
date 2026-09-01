@@ -47,12 +47,12 @@
 ┌─────────────────────────────────────────────────────────────────┐
 │                     前端 (Vue 3 + TypeScript)                     │
 │                                                                   │
-│  ┌────────────┐ ┌────────────┐ ┌────────────┐    │
-│  │ 牌局观察器 │ │ 数据看板   │ │ 训练控制台 │    │
-│  │ (WebSocket)│ │ (ECharts)  │ │            │    │
-│  └────────────┘ └────────────┘ └────────────┘    │
+│  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
+│  │ 实验工作台 │ │ 牌局观察器 │ │ 数据/决策  │ │ 训练控制台 │   │
+│  │ (详情 Tab) │ │ (WebSocket)│ │ / 追踪     │ │            │   │
+│  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
 │                                                                   │
-│  Tailwind CSS + Reka UI（Ink Lab tokens）                          │
+│  Tailwind CSS + Reka UI（Ink Lab tokens；双壳 Workbench/Observer） │
 └───────────────────────────┬───────────────────────────────────────┘
                             │
                             ▼  HTTP (REST) + WebSocket
@@ -751,7 +751,7 @@ CREATE TABLE experiment_configs (
 ### 10.2 新增 LLM 供应商
 
 OpenAI 兼容协议（`POST /chat/completions` + Bearer）：在 `dependencies.py` 的 provider 列表和 `config.py` / `.env` 增加项即可，**不要**新建 client 类。  
-非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「实验配置」页选用（YAML 仅 seed）。
+非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「实验配置」页创建并选用。
 
 ### 10.3 新增训练算法
 

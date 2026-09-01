@@ -83,9 +83,10 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
 - `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.
 - Dual shells:
-  - `WorkbenchLayout.vue` — grouped nav: Lab (experiments, player configs, scatter games) / Pipeline (data, decisions, training) / Tune (prompts, traces, settings). Page enter fade only (`ink-page`); do not wrap the observer shell.
+  - `WorkbenchLayout.vue` — grouped nav: Lab (experiments, player configs, scatter games) / Pipeline (data, decisions, training) / Tune (prompts, traces, settings). Page enter fade only (`ink-page`); do not wrap the observer shell. Layout owns the page title/hint; list pages should not repeat an in-page subtitle.
   - `ObserverLayout.vue` — fullscreen watch / replay.
-- UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Charts: ECharts.
+- UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Density helpers: `KpiStrip`, `NameChips`, `CompactRecordList`, `UiTable` compact mode. Charts: ECharts.
+- Experiment detail embeds `DecisionWorkbenchPanel` / `TraceWorkbenchPanel` via `?tab=`; standalone Decision/Trace/Data/Training views show `ExperimentContextBar` when `experiment_id` is set.
 - Observation uses **one** `GenericBoard` list board. Do not add `components/game/boards/<Game>Board.vue` or branch `GameObserverView` by `game_type`.
 
 ### Routes

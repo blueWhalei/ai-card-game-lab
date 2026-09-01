@@ -77,7 +77,7 @@ WebSocket:  /api/v1/games/ws/{game_id}
 | 参数 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
 | `page` | int | 1 | 当前页（从 1 开始） |
-| `page_size` | int | 10（决策点/追踪列表）；部分列表仍为 20 | 每页条数（决策点/追踪上限 200） |
+| `page_size` | int | API 默认 10（决策点/追踪）；前端工作台默认传 **20** | 每页条数（决策点/追踪上限 200） |
 
 ### 1.6 排序参数
 
@@ -745,7 +745,7 @@ class PaginatedData(BaseModel, Generic[T]):
 用于 SFT 训练数据的采集和导出。
 
 ```
-GET    /api/v1/decision-points              # 决策点列表（PaginatedData；page/page_size 默认 10）
+GET    /api/v1/decision-points              # 决策点列表（PaginatedData；API page_size 默认 10，前端常传 20）
 GET    /api/v1/decision-points/{id}         # 决策点详情
 GET    /api/v1/decision-points/stats        # 统计数据（?experiment_id=）
 POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登记数据集）
