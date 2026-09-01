@@ -9,11 +9,11 @@ import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decis
 import { dataApi } from '@/api/dataApi'
 import { formatDateTime } from '@/utils/format'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
-import UiSpinner from '@/components/ui/Spinner.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
+import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize } from '@/utils/pagination'
@@ -132,6 +132,10 @@ function setPageSize(next: number): void {
     page: undefined,
     page_size: next === DEFAULT_PAGE_SIZE ? undefined : String(next),
   })
+}
+
+function clearScope(): void {
+  patchQuery({ experiment_id: undefined, game_id: undefined, page: undefined })
 }
 
 async function fetchStats() {
@@ -327,14 +331,26 @@ onMounted(() => {
           </div>
 
           <div class="relative max-h-[600px] overflow-y-auto">
-            <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
+            <UiSkeletonList v-if="loading" :rows="6" />
             <UiEmpty
-              v-if="!loading && decisionPoints.length === 0"
+              v-else-if="decisionPoints.length === 0"
               :title="experimentId || gameId ? t('decision.emptyFiltered') : t('decision.empty')"
               :description="
                 experimentId || gameId ? t('decision.emptyFilteredHint') : t('decision.emptyHint')
               "
-            />
+            >
+              <UiButton
+                v-if="experimentId || gameId"
+                size="sm"
+                variant="secondary"
+                @click="clearScope"
+              >
+                {{ t('filter.clearScope') }}
+              </UiButton>
+              <UiButton v-else size="sm" @click="router.push('/')">
+                {{ t('decision.emptyAction') }}
+              </UiButton>
+            </UiEmpty>
 
             <div v-else-if="!loading" class="space-y-2">
               <button

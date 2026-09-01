@@ -23,8 +23,10 @@ const kindIcon: Record<ToastKind, string> = {
 </script>
 
 <template>
-  <div
-    class="pointer-events-none fixed bottom-4 left-1/2 z-[100] flex w-[min(92vw,360px)] -translate-x-1/2 flex-col gap-2"
+  <TransitionGroup
+    name="ink-toast"
+    tag="div"
+    class="pointer-events-none fixed top-4 left-1/2 z-[100] flex w-[min(92vw,360px)] -translate-x-1/2 flex-col gap-2"
     aria-live="polite"
   >
     <div
@@ -48,5 +50,5 @@ const kindIcon: Record<ToastKind, string> = {
         <Icon icon="lucide:x" class="h-3.5 w-3.5" />
       </button>
     </div>
-  </div>
+  </TransitionGroup>
 </template>

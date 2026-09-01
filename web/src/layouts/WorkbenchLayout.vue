@@ -209,7 +209,11 @@ function go(path: string): void {
       </header>
 
       <main class="flex-1">
-        <RouterView />
+        <RouterView v-slot="{ Component, route: viewRoute }">
+          <Transition name="ink-page">
+            <component :is="Component" :key="viewRoute.path" />
+          </Transition>
+        </RouterView>
       </main>
     </div>
   </div>

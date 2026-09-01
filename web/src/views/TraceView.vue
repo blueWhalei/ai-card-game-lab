@@ -10,9 +10,10 @@ import TraceDetail from '@/components/trace/TraceDetail.vue'
 import ResponseTimeChart from '@/components/trace/ResponseTimeChart.vue'
 import TraceMetrics from '@/components/trace/TraceMetrics.vue'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
-import UiSpinner from '@/components/ui/Spinner.vue'
 import UiBadge from '@/components/ui/Badge.vue'
+import UiButton from '@/components/ui/Button.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
+import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 import UiTabs from '@/components/ui/Tabs.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize } from '@/utils/pagination'
@@ -160,6 +161,10 @@ function setPane(next: string): void {
   patchQuery({ view: paneNext === 'records' ? undefined : paneNext })
 }
 
+function clearScope(): void {
+  patchQuery({ experiment_id: undefined, game_id: undefined, page: undefined })
+}
+
 function patchQuery(updates: Record<string, string | undefined>): void {
   const q: Record<string, string> = {}
   for (const [k, v] of Object.entries(route.query)) {
@@ -217,14 +222,26 @@ onMounted(fetchTraces)
             </div>
 
             <div class="relative max-h-[min(70vh,640px)] overflow-y-auto">
-              <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
+              <UiSkeletonList v-if="loading" :rows="6" />
               <UiEmpty
-                v-if="!loading && traces.length === 0"
+                v-else-if="traces.length === 0"
                 :title="experimentId || gameId ? t('trace.emptyFiltered') : t('trace.empty')"
                 :description="
                   experimentId || gameId ? t('trace.emptyFilteredHint') : t('trace.emptyHint')
                 "
-              />
+              >
+                <UiButton
+                  v-if="experimentId || gameId"
+                  size="sm"
+                  variant="secondary"
+                  @click="clearScope"
+                >
+                  {{ t('filter.clearScope') }}
+                </UiButton>
+                <UiButton v-else size="sm" @click="router.push('/')">
+                  {{ t('trace.emptyAction') }}
+                </UiButton>
+              </UiEmpty>
 
               <div v-else-if="!loading" class="divide-y divide-ink-border">
                 <button

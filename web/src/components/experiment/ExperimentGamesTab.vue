@@ -55,6 +55,10 @@ const { t } = useI18n()
               v-for="g in activeGames"
               :key="g.id"
               class="border-t border-ink-border hover:bg-ink-surface-muted"
+              :class="
+                g.status === 'running' &&
+                'bg-ink-primary-muted/50 shadow-[inset_2px_0_0_0_var(--ink-primary)]'
+              "
             >
               <td class="px-3 py-2">
                 <button

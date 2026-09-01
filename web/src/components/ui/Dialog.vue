@@ -34,11 +34,11 @@ const { t } = useI18n()
 <template>
   <DialogRoot :open="open" @update:open="emit('update:open', $event)">
     <DialogPortal>
-      <DialogOverlay class="fixed inset-0 z-50 bg-black/40 data-[state=open]:animate-in" />
+      <DialogOverlay class="ink-dialog-overlay fixed inset-0 z-50 bg-black/40" />
       <DialogContent
         :class="
           cn(
-            'fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-ink-md border border-ink-border bg-ink-surface p-5 shadow-[var(--ink-shadow-md)] focus:outline-none',
+            'ink-dialog-content fixed top-1/2 left-1/2 z-50 max-h-[85vh] w-[min(92vw,520px)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-ink-md border border-ink-border bg-ink-surface p-5 shadow-[var(--ink-shadow-md)] focus:outline-none',
             props.class,
           )
         "

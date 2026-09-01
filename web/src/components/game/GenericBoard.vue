@@ -90,7 +90,7 @@ function slotDisplayLabel(key: string, label: string): string {
           cn(
             'rounded-ink-md border border-ink-obs-border bg-ink-obs-surface px-4 py-3 transition-shadow duration-300',
             player.is_active && 'border-ink-obs-accent/50',
-            thinkingPlayerId === player.id && 'animate-pulse shadow-[0_0_0_1px_var(--ink-obs-pulse)]',
+            thinkingPlayerId === player.id && 'ink-obs-glow',
           )
         "
       >

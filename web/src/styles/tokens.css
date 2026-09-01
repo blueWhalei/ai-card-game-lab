@@ -43,6 +43,11 @@
   /* 16px root so Tailwind rem scale stays readable (14px root made text-sm ≈ 12px) */
   --ink-font-size: 16px;
 
+  --ink-duration-fast: 120ms;
+  --ink-duration-panel: 200ms;
+  --ink-duration-content: 280ms;
+  --ink-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
   /* ── Observer shell (dark charcoal / ink) ── */
   --ink-obs-bg: #121816;
   --ink-obs-surface: #1c2421;

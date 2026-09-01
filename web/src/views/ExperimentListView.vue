@@ -28,7 +28,7 @@ import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
-import UiSpinner from '@/components/ui/Spinner.vue'
+import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import UiTextarea from '@/components/ui/Textarea.vue'
@@ -193,8 +193,8 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="loading" class="flex justify-center py-16">
-      <UiSpinner />
+    <div v-if="loading" class="py-2">
+      <UiSkeletonList :rows="6" />
     </div>
 
     <EmptyState

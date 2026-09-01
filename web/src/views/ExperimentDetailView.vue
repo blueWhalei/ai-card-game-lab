@@ -32,7 +32,9 @@ import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
-import UiSpinner from '@/components/ui/Spinner.vue'
+import UiProgress from '@/components/ui/Progress.vue'
+import UiSkeletonList from '@/components/ui/SkeletonList.vue'
+import { useTweenNumber } from '@/composables/useTweenNumber'
 import { cn } from '@/lib/cn'
 
 const { t } = useI18n()
@@ -85,6 +87,17 @@ function configLabel(id: string): string {
 }
 
 const summary = computed(() => experiment.value?.summary)
+const finishedCount = computed(() => summary.value?.finished_games ?? 0)
+const targetCount = computed(() => summary.value?.target_games ?? 0)
+const usableCount = computed(() => summary.value?.train_usable_decisions ?? 0)
+const winnerCount = computed(() => summary.value?.games_with_winner ?? 0)
+const progressPct = computed(() => {
+  if (targetCount.value <= 0) return 0
+  return Math.min(100, (finishedCount.value / targetCount.value) * 100)
+})
+const finishedDisplay = useTweenNumber(finishedCount)
+const usableDisplay = useTweenNumber(usableCount)
+const winnerDisplay = useTweenNumber(winnerCount)
 
 const canRegisterTrain = computed(
   () => (summary.value?.train_usable_decisions ?? 0) > 0 && !registeringTrain.value,
@@ -575,8 +588,8 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container space-y-6">
-    <div v-if="loading" class="flex justify-center py-16">
-      <UiSpinner />
+    <div v-if="loading">
+      <UiSkeletonList :rows="6" />
     </div>
 
     <template v-else-if="experiment && summary">
@@ -679,20 +692,20 @@ onUnmounted(() => {
             <span>
               {{
                 t('experiment.completed', {
-                  finished: summary.finished_games,
-                  target: summary.target_games,
+                  finished: Math.round(finishedDisplay),
+                  target: targetCount,
                 })
               }}
             </span>
             <span class="text-ink-text-muted">
-              {{ t('experiment.winnersCount', { n: summary.games_with_winner }) }}
+              {{ t('experiment.winnersCount', { n: Math.round(winnerDisplay) }) }}
             </span>
             <button
               type="button"
               class="text-ink-primary hover:underline"
               @click="goDecisions"
             >
-              {{ t('experiment.trainUsableCount', { n: summary.train_usable_decisions }) }}
+              {{ t('experiment.trainUsableCount', { n: Math.round(usableDisplay) }) }}
             </button>
             <span class="text-ink-text-muted">
               {{ t('experiment.avgRounds', { n: summary.avg_rounds }) }}
@@ -705,6 +718,8 @@ onUnmounted(() => {
             </span>
           </p>
         </div>
+
+        <UiProgress :value="progressPct" class="h-1.5" />
 
         <div class="flex flex-wrap gap-2">
           <UiButton variant="secondary" size="sm" @click="goDecisions">{{ t('nav.decisions') }}</UiButton>

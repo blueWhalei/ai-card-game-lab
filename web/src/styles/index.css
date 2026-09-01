@@ -5,6 +5,7 @@
 @import '@fontsource/ibm-plex-sans/600.css';
 @import './tokens.css';
 @import './components.css';
+@import './motion.css';
 
 html {
   font-family: var(--ink-font-sans);
