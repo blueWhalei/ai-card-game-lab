@@ -20,9 +20,12 @@ const props = withDefaults(
     class?: string
     emptyText?: string
     density?: TableDensity
+    fixedLayout?: boolean
+    actionsColumnClass?: string
   }>(),
   {
     density: 'compact',
+    fixedLayout: false,
   },
 )
 
@@ -53,6 +56,7 @@ function cell(row: T, col: TableColumn<T>): string {
         cn(
           'w-full min-w-[480px] border-collapse text-left',
           isCompact ? 'text-sm' : 'text-base',
+          fixedLayout && 'table-fixed',
         )
       "
     >
@@ -74,7 +78,14 @@ function cell(row: T, col: TableColumn<T>): string {
           </th>
           <th
             v-if="$slots.actions"
-            :class="cn(cellPad, 'whitespace-nowrap font-semibold', isCompact ? 'text-xs' : 'text-sm')"
+            :class="
+              cn(
+                cellPad,
+                'whitespace-nowrap font-semibold',
+                isCompact ? 'text-xs' : 'text-sm',
+                actionsColumnClass,
+              )
+            "
           >
             {{ t('common.actions') }}
           </th>
@@ -101,7 +112,10 @@ function cell(row: T, col: TableColumn<T>): string {
           >
             <slot :name="`cell-${col.key}`" :row="row">{{ cell(row, col) }}</slot>
           </td>
-          <td v-if="$slots.actions" :class="cn(cellPad, 'whitespace-nowrap')">
+          <td
+            v-if="$slots.actions"
+            :class="cn(cellPad, 'whitespace-nowrap align-top', actionsColumnClass)"
+          >
             <slot name="actions" :row="row" />
           </td>
         </tr>

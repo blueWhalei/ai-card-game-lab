@@ -36,6 +36,9 @@ _DEFAULT_SYSTEM = (
 GGUF_CONVERT_TIMEOUT_S = 1800
 OLLAMA_CREATE_TIMEOUT_S = 600
 
+# Windows defaults to GBK for ``text=True``; llama.cpp / Python child output is UTF-8.
+_SUBPROCESS_CAPTURE = {"capture_output": True, "encoding": "utf-8", "errors": "replace"}
+
 
 def is_lora_adapter(model_path: str | Path) -> bool:
     """Return True if path looks like a PEFT adapter directory."""
@@ -69,7 +72,9 @@ def merge_lora_to_hf(
     out.mkdir(parents=True, exist_ok=True)
 
     logger.info("lora_merge_start", base_model=base_model, adapter=str(adapter), output=str(out))
-    tokenizer = AutoTokenizer.from_pretrained(str(adapter), trust_remote_code=True)
+    # Load vocab from the base model: adapter tokenizer files from training can be
+    # incompatible with llama.cpp convert_hf_to_gguf (oversized/corrupt tokenizer.json).
+    tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
     base = AutoModelForCausalLM.from_pretrained(
         base_model,
         trust_remote_code=True,
@@ -135,7 +140,13 @@ $Merged = Join-Path $Root "{merged_dirname}"
 $GgufF16 = Join-Path $Root "model-f16.gguf"
 $GgufQ4 = Join-Path $Root "model.gguf"
 python (Join-Path $env:LLAMA_CPP_DIR "convert_hf_to_gguf.py") $Merged --outfile $GgufF16
-& (Join-Path $env:LLAMA_CPP_DIR "llama-quantize.exe") $GgufF16 $GgufQ4 q4_k_m
+$Quantize = @(
+  (Join-Path $env:LLAMA_CPP_DIR "llama-quantize.exe"),
+  (Join-Path $env:LLAMA_CPP_DIR "build\\bin\\Release\\llama-quantize.exe"),
+  (Join-Path $env:LLAMA_CPP_DIR "build\\bin\\llama-quantize.exe")
+) | Where-Object {{ Test-Path $_ }} | Select-Object -First 1
+if (-not $Quantize) {{ throw "llama-quantize not found under LLAMA_CPP_DIR (build llama.cpp first)" }}
+& $Quantize $GgufF16 $GgufQ4 q4_k_m
 Write-Host "GGUF ready: $GgufQ4"
 Write-Host "Next: ollama create <tag> -f $(Join-Path $Root 'Modelfile')"
 """,
@@ -166,20 +177,21 @@ Write-Host "Next: ollama create <tag> -f $(Join-Path $Root 'Modelfile')"
 
 
 def _resolve_quantize_bin(llama_cpp: Path) -> Path:
-    exe = llama_cpp / "llama-quantize.exe"
-    plain = llama_cpp / "llama-quantize"
-    if exe.is_file():
-        return exe
-    if plain.is_file():
-        return plain
     for candidate in (
+        llama_cpp / "llama-quantize.exe",
+        llama_cpp / "llama-quantize",
         llama_cpp / "build" / "bin" / "llama-quantize.exe",
         llama_cpp / "build" / "bin" / "llama-quantize",
+        llama_cpp / "build" / "bin" / "Release" / "llama-quantize.exe",
+        llama_cpp / "build" / "bin" / "Release" / "llama-quantize",
+        llama_cpp / "build" / "bin" / "Debug" / "llama-quantize.exe",
+        llama_cpp / "build" / "bin" / "Debug" / "llama-quantize",
     ):
         if candidate.is_file():
             return candidate
     raise DeployLlamaCppMissingError(
-        f"llama-quantize not found under {llama_cpp}. Build llama.cpp first."
+        f"llama-quantize not found under {llama_cpp}. "
+        "Build llama.cpp first (on Windows, check build/bin/Release/)."
     )
 
 
@@ -219,10 +231,9 @@ def convert_merged_to_gguf(
         convert_proc = subprocess.run(
             [sys.executable, str(convert_py), str(merged), "--outfile", str(gguf_f16)],
             cwd=str(deploy),
-            capture_output=True,
-            text=True,
             timeout=timeout_s,
             check=False,
+            **_SUBPROCESS_CAPTURE,
         )
     except subprocess.TimeoutExpired as exc:
         raise DeployGgufFailedError(
@@ -238,10 +249,9 @@ def convert_merged_to_gguf(
         quant_proc = subprocess.run(
             [str(quantize_bin), str(gguf_f16), str(gguf_q4), quant],
             cwd=str(deploy),
-            capture_output=True,
-            text=True,
             timeout=timeout_s,
             check=False,
+            **_SUBPROCESS_CAPTURE,
         )
     except subprocess.TimeoutExpired as exc:
         raise DeployGgufFailedError(
@@ -288,10 +298,9 @@ def try_ollama_create(
         proc = subprocess.run(
             [ollama_bin, "create", tag, "-f", str(modelfile)],
             cwd=str(deploy_dir),
-            capture_output=True,
-            text=True,
             timeout=timeout_s,
             check=False,
+            **_SUBPROCESS_CAPTURE,
         )
     except FileNotFoundError:
         return {"created": False, "reason": "ollama_cli_not_found"}

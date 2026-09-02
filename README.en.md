@@ -1,14 +1,8 @@
-<p align="center">
-  <img src="web/public/logo.png" alt="CardLab" width="88">
-</p>
-
 # CardLab
 
 [中文](README.md) | English
 
 Local AI card-game research tool: experiments as the unit—watch decisions, collect games, LoRA fine-tune, and validate with controls.
-
-Repo: [`ai-card-game-lab`](https://github.com/blueWhalei/ai-card-game-lab) (GitHub repository name unchanged).
 
 ## Stack
 

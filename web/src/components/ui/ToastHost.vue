@@ -40,7 +40,7 @@ const kindIcon: Record<ToastKind, string> = {
       "
     >
       <Icon :icon="kindIcon[item.kind]" class="mt-0.5 h-4 w-4 shrink-0" />
-      <p class="flex-1 text-ink-text">{{ item.message }}</p>
+      <p class="min-w-0 flex-1 break-words text-ink-text">{{ item.message }}</p>
       <button
         type="button"
         class="rounded p-0.5 text-ink-text-muted hover:text-ink-text"

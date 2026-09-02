@@ -317,6 +317,10 @@ function replayPause() {
 
 onMounted(async () => {
   await fetchGame()
+  if (game.value?.status === 'created') {
+    await handleStart()
+    await fetchGame()
+  }
   if (isFinished.value) {
     await loadReplay()
   } else {

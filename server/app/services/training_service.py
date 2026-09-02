@@ -20,7 +20,7 @@ from app.config import Settings
 from app.core.training.deploy import export_deploy_bundle, push_lora_to_ollama
 from app.core.training.exporter import export_sft_dataset
 from app.core.training.sft import run_sft_training
-from app.core.training.verify import ollama_list_tags, ollama_smoke_decision
+from app.core.training.verify import ollama_list_tags, ollama_smoke_decision, ollama_unreachable_error
 from app.database import open_db_connection
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.experiment_repo import ExperimentRepository
@@ -403,17 +403,15 @@ class TrainingService:
             tags = await ollama_list_tags(self._ollama_base_url)
         except Exception as exc:
             result["ok"] = False
-            result["error"] = f"Cannot reach Ollama: {exc}"
+            result.update(ollama_unreachable_error(self._ollama_base_url, exc))
             return result
 
         result["available_tags"] = tags
         tag_matched = any(t == tag or t.startswith(f"{tag}:") for t in tags)
         if not tag_matched:
             result["ok"] = False
-            result["error"] = (
-                f"Ollama tag '{tag}' not found. Export GGUF then: "
-                f"ollama create {tag} -f models/{model_id}/deploy/Modelfile"
-            )
+            result["error_code"] = "OLLAMA_TAG_NOT_FOUND"
+            result["error_params"] = {"tag": tag, "model_id": model_id}
             return result
 
         smoke = await ollama_smoke_decision(

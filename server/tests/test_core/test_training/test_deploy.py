@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from app.core.training.deploy import (
+    _resolve_quantize_bin,
     convert_merged_to_gguf,
     export_deploy_bundle,
     is_lora_adapter,
@@ -91,6 +92,15 @@ def test_extract_action_json_variants() -> None:
     nested = _extract_action_json('note {"action":{"type":"SINGLE","cards":["C3"]}}')
     assert nested == {"action_type": "SINGLE", "cards": ["C3"]}
     assert _extract_action_json("no json here") is None
+
+
+def test_resolve_quantize_bin_windows_release(tmp_path: Path) -> None:
+    llama = tmp_path / "llama.cpp"
+    release = llama / "build" / "bin" / "Release"
+    release.mkdir(parents=True)
+    quant = release / "llama-quantize.exe"
+    quant.write_text("stub", encoding="utf-8")
+    assert _resolve_quantize_bin(llama) == quant
 
 
 def test_convert_merged_to_gguf_missing_llama_dir(tmp_path: Path) -> None:

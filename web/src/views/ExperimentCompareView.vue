@@ -8,6 +8,7 @@ import {
   isBenchmarkExperiment,
   type Experiment,
   type ExperimentCompareRow,
+  type ExperimentPairedSummary,
   type ExperimentProtocol,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
@@ -37,6 +38,8 @@ const configs = ref<ExperimentConfig[]>([])
 const engines = ref<EngineInfo[]>([])
 const selectedIds = ref<string[]>([])
 const rows = ref<ExperimentCompareRow[]>([])
+const pairedSummary = ref<ExperimentPairedSummary | null>(null)
+const playerMatrixMode = ref<'win_rate' | 'paired_wins'>('win_rate')
 
 const activeEngine = computed(() => {
   const gt = rows.value[0]?.game_type ?? experiments.value[0]?.game_type
@@ -74,15 +77,18 @@ function idsFromQuery(): string[] {
 async function runCompare(ids: string[]): Promise<void> {
   if (ids.length < 2) {
     rows.value = []
+    pairedSummary.value = null
     return
   }
   comparing.value = true
   try {
     const res = await experimentApi.compare(ids)
     rows.value = res.data.experiments
+    pairedSummary.value = res.data.paired_summary ?? null
   } catch (e: unknown) {
     showApiError(e, t('compare.failed'))
     rows.value = []
+    pairedSummary.value = null
   } finally {
     comparing.value = false
   }
@@ -99,6 +105,7 @@ function metricLabel(id: string): string {
     finished: t('compare.colFinished'),
     landlord: t('compare.colLandlordWinRate'),
     pairedLandlord: t('compare.colPairedLandlord'),
+    pairedN: t('compare.colPaired'),
     p50: t('compare.colP50'),
     p95: t('compare.colP95'),
     tokens: t('compare.colTokensPerGame'),
@@ -129,13 +136,19 @@ function cellFor(row: ExperimentCompareRow, metric: CompareMetricDef): {
         display: parts.join(' · '),
       }
     }
-    case 'pairedLandlord':
-      return (row.paired_n ?? 0) > 0
-        ? {
-            value: row.paired_landlord_win_rate ?? 0,
-            display: formatWinRate(row.paired_landlord_win_rate ?? 0),
-          }
-        : { value: null, display: dash }
+    case 'pairedN':
+      return {
+        value: row.paired_n ?? 0,
+        display: String(row.paired_n ?? 0),
+      }
+    case 'pairedLandlord': {
+      if ((row.paired_n ?? 0) <= 0) return { value: null, display: dash }
+      const rate = formatWinRate(row.paired_landlord_win_rate ?? 0)
+      return {
+        value: row.paired_landlord_win_rate ?? 0,
+        display: `${rate} · n=${row.paired_n}`,
+      }
+    }
     case 'p50':
       return (row.p50_response_ms ?? 0) > 0
         ? {
@@ -222,11 +235,17 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
   return playerIds.value.map((pid) => {
     const rates = rows.value.map((row) => {
       const stat = row.player_stats.find((s) => s.player_id === pid)
-      return stat ? { value: stat.win_rate, display: formatWinRate(stat.win_rate) } : null
+      if (!stat) return null
+      if (playerMatrixMode.value === 'paired_wins') {
+        const wins = stat.paired_wins ?? 0
+        return { value: wins, display: String(wins) }
+      }
+      return { value: stat.win_rate, display: formatWinRate(stat.win_rate) }
     })
+    const kind = playerMatrixMode.value === 'paired_wins' ? 'higher' : 'higher'
     const best = bestIndex(
       rates.map((r) => r?.value ?? null),
-      'higher',
+      kind,
     )
     return {
       playerId: pid,
@@ -239,8 +258,38 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
   })
 })
 
-const showLowPowerHint = computed(() =>
-  rows.value.some((r) => r.credibility?.low_power === true),
+const pairedDiffDisplay = computed((): string | null => {
+  const ps = pairedSummary.value
+  if (!ps || ps.landlord_win_rate_diff == null) return null
+  const sign = ps.landlord_win_rate_diff >= 0 ? '+' : ''
+  const pp = (ps.landlord_win_rate_diff * 100).toFixed(1)
+  return t('compare.pairedDiff', {
+    diff: `${sign}${pp}`,
+    n: ps.shared_seeds,
+  })
+})
+
+async function resolveInitialIds(): Promise<string[]> {
+  const fromQuery = idsFromQuery()
+  if (fromQuery.length >= 2) return fromQuery
+
+  const fromExpId = route.query.from
+  if (typeof fromExpId === 'string' && fromExpId) {
+    try {
+      const res = await experimentApi.get(fromExpId)
+      const suggested = res.data.validation?.suggested_compare_ids ?? []
+      if (suggested.length >= 2) return suggested
+    } catch {
+      /* fall through */
+    }
+  }
+  return experiments.value.slice(0, 2).map((e) => e.id)
+}
+
+const showLowPowerHint = computed(
+  () =>
+    rows.value.some((r) => r.credibility?.low_power === true) ||
+    pairedSummary.value?.low_power === true,
 )
 
 function protocolFingerprintKey(p: ExperimentProtocol | null | undefined): string {
@@ -277,9 +326,7 @@ onMounted(async () => {
     experiments.value = expRes.data ?? []
     configs.value = cfgRes.data ?? []
     engines.value = engineRes?.data ?? []
-    const fromQuery = idsFromQuery()
-    selectedIds.value =
-      fromQuery.length >= 2 ? fromQuery : experiments.value.slice(0, 2).map((e) => e.id)
+    selectedIds.value = await resolveInitialIds()
     if (selectedIds.value.length >= 2) {
       await runCompare(selectedIds.value)
     }
@@ -362,6 +409,15 @@ watch(
       </div>
 
       <section v-else-if="rows.length > 0" class="space-y-4">
+        <div
+          v-if="pairedDiffDisplay"
+          class="rounded-ink-md border border-ink-primary/25 bg-ink-primary-muted/30 px-3 py-2.5 text-sm text-ink-text"
+        >
+          {{ pairedDiffDisplay }}
+          <UiBadge v-if="pairedSummary?.low_power" variant="muted" class="ml-2">
+            {{ t('experiment.lowPowerShort') }}
+          </UiBadge>
+        </div>
         <div
           v-if="showProtocolMismatch"
           class="rounded-ink-md border border-ink-accent/30 bg-ink-accent-muted/40 px-3 py-2.5 text-sm text-ink-text-secondary"
@@ -460,6 +516,32 @@ watch(
             />
             {{ t('compare.playerMatrix') }}
           </summary>
+          <div class="flex gap-2 border-t border-ink-border px-3 py-2">
+            <button
+              type="button"
+              class="rounded-[6px] px-2.5 py-1 text-xs font-medium"
+              :class="
+                playerMatrixMode === 'win_rate'
+                  ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
+                  : 'text-ink-text-secondary hover:text-ink-text'
+              "
+              @click="playerMatrixMode = 'win_rate'"
+            >
+              {{ t('compare.colWinRate') }}
+            </button>
+            <button
+              type="button"
+              class="rounded-[6px] px-2.5 py-1 text-xs font-medium"
+              :class="
+                playerMatrixMode === 'paired_wins'
+                  ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
+                  : 'text-ink-text-secondary hover:text-ink-text'
+              "
+              @click="playerMatrixMode = 'paired_wins'"
+            >
+              {{ t('compare.colPairedWins') }}
+            </button>
+          </div>
           <div class="overflow-x-auto border-t border-ink-border">
             <table class="w-full text-left text-sm">
               <thead class="text-ink-text">

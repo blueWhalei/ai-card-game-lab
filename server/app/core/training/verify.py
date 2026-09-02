@@ -18,6 +18,16 @@ _SMOKE_PROMPT = """你是斗地主 AI。当前：首出，手牌有单张 C3。
 """
 
 
+def ollama_unreachable_error(
+    base_url: str,
+    exc: BaseException | None = None,
+) -> dict[str, str]:
+    """Machine-readable verify error when Ollama is not reachable."""
+    root = base_url.rstrip("/")
+    code = "OLLAMA_TIMEOUT" if isinstance(exc, httpx.TimeoutException) else "OLLAMA_UNREACHABLE"
+    return {"error_code": code, "error_params": {"url": root}}
+
+
 async def ollama_list_tags(base_url: str) -> list[str]:
     """Return local Ollama model names."""
     url = f"{base_url.rstrip('/')}/api/tags"

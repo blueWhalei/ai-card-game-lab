@@ -25,6 +25,14 @@ _ACTIVE_STATUSES = frozenset({"created", "running", "paused", "pending"})
 _PROTOCOL_SCHEMA_VERSION = 1
 _CREDIBILITY_MIN_DECISIVE_N = 20
 _CREDIBILITY_MAX_CI_WIDTH = 0.3
+_VALIDATION_MIN_PAIRED_N = 5
+
+
+def _control_experiment_ready(summary: dict[str, Any]) -> bool:
+    paired_n = int(summary.get("paired_games") or 0)
+    finished = int(summary.get("finished_games") or 0)
+    target = int(summary.get("target_games") or 0)
+    return paired_n >= _VALIDATION_MIN_PAIRED_N or finished >= target
 
 
 def build_credibility(
@@ -332,7 +340,11 @@ class ExperimentService:
             await conn.close()
 
         self._attach_paired_compare_metrics(rows, games_by_exp)
-        return {"experiments": rows}
+        payload: dict[str, Any] = {"experiments": rows}
+        paired_summary = self._build_paired_summary(rows, games_by_exp)
+        if paired_summary is not None:
+            payload["paired_summary"] = paired_summary
+        return payload
 
     async def list_experiments(self) -> list[dict[str, Any]]:
         conn = await self._conn()
@@ -649,11 +661,32 @@ class ExperimentService:
         controls = await repo.list_control_experiments(experiment_id)
         control_ids = [c["id"] for c in controls]
         paired_n = int(summary.get("paired_games") or 0)
-        finished = int(summary.get("finished_games") or 0)
-        target = int(summary.get("target_games") or 0)
-        validation_ready = bool(control_ids) and (
-            paired_n >= 5 or finished >= target
+
+        control_progress: list[dict[str, Any]] = []
+        for control in controls:
+            try:
+                control_row = await repo.get_by_id(str(control["id"]))
+            except KeyError:
+                continue
+            control_summary = await self._build_summary(repo, control_row)
+            ready = _control_experiment_ready(control_summary)
+            control_progress.append(
+                {
+                    "id": control_row["id"],
+                    "name": control_row.get("name") or control_row["id"],
+                    "finished_games": int(control_summary.get("finished_games") or 0),
+                    "target_games": int(control_summary.get("target_games") or 0),
+                    "paired_n": int(control_summary.get("paired_games") or 0),
+                    "ready": ready,
+                }
+            )
+
+        first_ready = bool(control_progress) and control_progress[0]["ready"]
+        all_controls_ready = bool(control_progress) and all(
+            item["ready"] for item in control_progress
         )
+        validation_ready = bool(control_ids) and first_ready
+
         suggested = [experiment_id]
         if control_ids:
             suggested.append(control_ids[0])
@@ -662,6 +695,8 @@ class ExperimentService:
             "validation_ready": validation_ready,
             "suggested_compare_ids": suggested,
             "paired_n": paired_n,
+            "control_progress": control_progress,
+            "all_controls_ready": all_controls_ready,
         }
 
     @staticmethod
@@ -675,6 +710,7 @@ class ExperimentService:
         decision_count = int(summary.get("decision_count") or 0)
         not_usable = decision_count - usable
         control_ids = list(validation.get("control_experiment_ids") or [])
+        control_progress = list(validation.get("control_progress") or [])
 
         if status == "pending_collect":
             return {"id": "collect", "action": "collect"}
@@ -687,7 +723,14 @@ class ExperimentService:
         if usable > 0 and control_ids and validation.get("validation_ready"):
             return {"id": "compare", "action": "compare"}
         if usable > 0 and control_ids:
-            return {"id": "open_control", "action": "control"}
+            pending = next((c for c in control_progress if not c.get("ready")), None)
+            target_control = pending or (control_progress[0] if control_progress else None)
+            ref_id = str(target_control["id"]) if target_control else control_ids[0]
+            return {
+                "id": "collect_control",
+                "action": "control_collect",
+                "ref_id": ref_id,
+            }
         if status in ("ready_review", "ready_more") and usable == 0:
             return {"id": "decisions", "action": "decisions"}
         if status == "ready_more":
@@ -825,6 +868,114 @@ class ExperimentService:
             for stat in row.get("player_stats") or []:
                 pid = str(stat.get("player_id") or "")
                 stat["paired_wins"] = wins_by_player.get(pid, 0)
+
+    @staticmethod
+    def _build_paired_summary(
+        rows: list[dict[str, Any]],
+        games_by_exp: dict[str, list[dict[str, Any]]],
+    ) -> dict[str, Any] | None:
+        if len(rows) != 2:
+            return None
+
+        by_id = {str(row["id"]): row for row in rows}
+        source_id: str | None = None
+        control_id: str | None = None
+        for row in rows:
+            protocol = row.get("protocol") or {}
+            src = protocol.get("source_experiment_id")
+            if src and str(src) in by_id:
+                control_id = str(row["id"])
+                source_id = str(src)
+                break
+        if source_id is None or control_id is None:
+            return None
+
+        seed_sets: list[set[int]] = []
+        for row in rows:
+            protocol = row.get("protocol") or {}
+            seed_sets.append({int(s) for s in (protocol.get("deal_seeds") or [])})
+        common = set.intersection(*seed_sets) if seed_sets else set()
+        if not common:
+            return {
+                "shared_seeds": 0,
+                "source_id": source_id,
+                "control_id": control_id,
+                "landlord_win_rate_diff": None,
+                "low_power": True,
+            }
+
+        def landlord_wins_on_common(exp_id: str) -> tuple[int, int]:
+            """Return (landlord_wins, decisive) on seeds where this experiment finished."""
+            games = games_by_exp.get(exp_id, [])
+            by_seed: dict[int, dict[str, Any]] = {}
+            for game in games:
+                meta = game.get("metadata") or {}
+                if not isinstance(meta, dict):
+                    continue
+                raw_seed = meta.get("deal_seed")
+                if raw_seed is None:
+                    continue
+                by_seed[int(raw_seed)] = game
+
+            landlord_wins = 0
+            decisive = 0
+            for seed in common:
+                game = by_seed.get(seed)
+                if game is None:
+                    continue
+                winner = game.get("winner_id")
+                if not winner:
+                    continue
+                role = str(game.get("winner_role") or "")
+                if role in ("landlord", "peasant"):
+                    decisive += 1
+                    if role == "landlord":
+                        landlord_wins += 1
+            return landlord_wins, decisive
+
+        src_ll_wins, src_dec = landlord_wins_on_common(source_id)
+        ctl_ll_wins, ctl_dec = landlord_wins_on_common(control_id)
+        shared_played = 0
+        for seed in common:
+            has_src = has_ctl = False
+            for exp_id in (source_id, control_id):
+                games = games_by_exp.get(exp_id, [])
+                for game in games:
+                    meta = game.get("metadata") or {}
+                    if not isinstance(meta, dict):
+                        continue
+                    if meta.get("deal_seed") != seed:
+                        continue
+                    if game.get("winner_id") and str(game.get("winner_role") or "") in (
+                        "landlord",
+                        "peasant",
+                    ):
+                        if exp_id == source_id:
+                            has_src = True
+                        else:
+                            has_ctl = True
+            if has_src and has_ctl:
+                shared_played += 1
+
+        if shared_played <= 0:
+            return {
+                "shared_seeds": len(common),
+                "source_id": source_id,
+                "control_id": control_id,
+                "landlord_win_rate_diff": None,
+                "low_power": True,
+            }
+
+        src_rate = src_ll_wins / src_dec if src_dec else 0.0
+        ctl_rate = ctl_ll_wins / ctl_dec if ctl_dec else 0.0
+        diff = round(ctl_rate - src_rate, 4)
+        return {
+            "shared_seeds": shared_played,
+            "source_id": source_id,
+            "control_id": control_id,
+            "landlord_win_rate_diff": diff,
+            "low_power": shared_played < _CREDIBILITY_MIN_DECISIVE_N,
+        }
 
 def _normalize_game_row(row: dict[str, Any]) -> dict[str, Any]:
     import json

@@ -27,6 +27,7 @@ import ExperimentControlDialog from '@/components/experiment/ExperimentControlDi
 import ExperimentDetailContextBar from '@/components/experiment/ExperimentDetailContextBar.vue'
 import ExperimentMetaPanel from '@/components/experiment/ExperimentMetaPanel.vue'
 import ExperimentResultsStrip from '@/components/experiment/ExperimentResultsStrip.vue'
+import ExperimentValidationStrip from '@/components/experiment/ExperimentValidationStrip.vue'
 import ExperimentGamesTab from '@/components/experiment/ExperimentGamesTab.vue'
 import ExperimentPlayersTab from '@/components/experiment/ExperimentPlayersTab.vue'
 import PreflightBanner from '@/components/common/PreflightBanner.vue'
@@ -86,10 +87,12 @@ const registerEvalRatio = ref(0.1)
 const creatingControl = ref(false)
 const actionGameId = ref<string | null>(null)
 const pausingAll = ref(false)
+const resumingAll = ref(false)
 const controlName = ref('')
 const controlPlayerIds = ref<string[]>([])
 const controlTarget = ref(5)
 const controlPairDeals = ref(true)
+const controlOpenCollectAfter = ref(true)
 const experiment = ref<Experiment | null>(null)
 const configs = ref<ExperimentConfig[]>([])
 const preflight = ref<PreflightResult | null>(null)
@@ -111,6 +114,13 @@ const summary = computed(() => experiment.value?.summary)
 const validation = computed(() => experiment.value?.validation ?? null)
 const nextStep = computed(() => experiment.value?.next_step ?? null)
 const protocol = computed(() => experiment.value?.protocol ?? null)
+const isControlExperiment = computed(() => !!protocol.value?.source_experiment_id)
+const showValidationStrip = computed(
+  () =>
+    !isControlExperiment.value &&
+    ((summary.value?.train_usable_decisions ?? 0) > 0 ||
+      (validation.value?.control_experiment_ids?.length ?? 0) > 0),
+)
 const protocolPlayers = computed(() => protocol.value?.players ?? [])
 const protocolDrift = computed(() => {
   for (const frozen of protocolPlayers.value) {
@@ -217,6 +227,8 @@ const primaryActionLabel = computed(() => {
       return t('experiment.saveAndTrain')
     case 'control':
       return t('experiment.newRound')
+    case 'control_collect':
+      return t('experiment.nextStep.collect_control')
     case 'compare':
       return t('experiment.compare')
     default:
@@ -274,6 +286,10 @@ const remaining = computed(() => {
 
 const runningGames = computed(() =>
   activeGames.value.filter((g) => g.status === 'running'),
+)
+
+const pausedGames = computed(() =>
+  activeGames.value.filter((g) => g.status === 'paused'),
 )
 
 const primaryActionDisabled = computed(() => {
@@ -388,6 +404,24 @@ async function pauseAllRunning(): Promise<void> {
   }
 }
 
+async function resumeAllPaused(): Promise<void> {
+  const ids = pausedGames.value.map((g) => g.id)
+  if (ids.length === 0) return
+  resumingAll.value = true
+  try {
+    for (const id of ids) {
+      await gameApi.resume(id)
+      patchLocalGameStatus(id, 'running')
+    }
+    toast.success(t('experiment.resumedN', { n: ids.length }))
+  } catch (e: unknown) {
+    showApiError(e, t('experiment.resumeAllFailed'))
+    await refreshQuiet()
+  } finally {
+    resumingAll.value = false
+  }
+}
+
 async function load(): Promise<void> {
   if (!experimentId.value) return
   loading.value = true
@@ -409,11 +443,24 @@ async function load(): Promise<void> {
       (m) => m.model_path && !m.model_path.endsWith('model.bin'),
     ).length
     collectCount.value = Math.min(remaining.value, 5)
+    handlePostLoadQuery()
   } catch (e: unknown) {
     showApiError(e, t('experiment.loadDetailFailed'))
     experiment.value = null
   } finally {
     loading.value = false
+  }
+}
+
+function handlePostLoadQuery(): void {
+  const q = route.query
+  if (q.collect === '1') {
+    openCollect()
+  } else if (q.open_control === '1') {
+    openControlDialog()
+  }
+  if (q.collect === '1' || q.open_control === '1') {
+    void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
   }
 }
 
@@ -494,11 +541,20 @@ function goData(): void {
   })
 }
 
+function goControlCollect(controlId?: string): void {
+  const id =
+    controlId ??
+    validation.value?.control_progress?.find((c) => !c.ready)?.id ??
+    validation.value?.control_experiment_ids?.[0]
+  if (!id) return
+  void router.push({ path: `/experiments/${id}`, query: { collect: '1' } })
+}
+
 function goCompareWithSuggested(): void {
   const ids = validation.value?.suggested_compare_ids ?? [experimentId.value]
   void router.push({
     path: '/experiments/compare',
-    query: { ids: ids.join(',') },
+    query: { ids: ids.join(','), from: experimentId.value },
   })
 }
 
@@ -520,6 +576,9 @@ function handleNextStep(): void {
       break
     case 'control':
       openControlDialog()
+      break
+    case 'control_collect':
+      goControlCollect(step.ref_id)
       break
     case 'compare':
       goCompareWithSuggested()
@@ -675,7 +734,8 @@ async function submitControl(): Promise<void> {
     controlOpen.value = false
     controlCreatedLocal.value = true
     toast.success(t('experiment.controlCreated'))
-    await router.push(`/experiments/${res.data.id}`)
+    const query = controlOpenCollectAfter.value ? { collect: '1' } : {}
+    await router.push({ path: `/experiments/${res.data.id}`, query })
   } catch (e: unknown) {
     showApiError(e, t('experiment.controlFailed'))
   } finally {
@@ -802,6 +862,14 @@ onUnmounted(() => {
           {{ noticeText }}
         </button>
 
+        <ExperimentValidationStrip
+          v-if="showValidationStrip"
+          :validation="validation"
+          :short-experiment-id="shortExperimentId"
+          @open-control="openControlDialog"
+          @compare="goCompareWithSuggested"
+        />
+
         <ExperimentResultsStrip
           v-if="finishedCount > 0"
           :summary="summary"
@@ -851,9 +919,11 @@ onUnmounted(() => {
           v-else
           :active-games="activeGames"
           :running-games="runningGames"
+          :paused-games="pausedGames"
           :finished-games="finishedGames"
           :collect-cta="collectCta"
           :pausing-all="pausingAll"
+          :resuming-all="resumingAll"
           :action-game-id="actionGameId"
           :config-label="configLabel"
           :game-status-label="gameStatusLabel"
@@ -861,6 +931,7 @@ onUnmounted(() => {
           @pause="pauseGame"
           @resume="resumeGame"
           @pause-all="pauseAllRunning"
+          @resume-all="resumeAllPaused"
         />
       </div>
     </template>
@@ -889,10 +960,14 @@ onUnmounted(() => {
       v-model:target="controlTarget"
       v-model:playerIds="controlPlayerIds"
       v-model:pairDeals="controlPairDeals"
+      v-model:openCollectAfter="controlOpenCollectAfter"
       :challenger-options="challengerOptions"
       :baseline-options="configSelectOptions"
       :can-submit="canSubmitControl"
       :loading="creatingControl"
+      :protocol-summary-bits="protocolSummaryBits"
+      :source-experiment-label="shortExperimentId(experimentId)"
+      :seed-count="dealSeedCount"
       @submit="submitControl"
     />
 

@@ -18,6 +18,7 @@ export type ExperimentNextStepId =
   | 'review_decisions'
   | 'register_train'
   | 'open_control'
+  | 'collect_control'
   | 'compare'
   | 'collect_more'
   | 'review'
@@ -28,6 +29,7 @@ export type ExperimentNextStepAction =
   | 'decisions'
   | 'train'
   | 'control'
+  | 'control_collect'
   | 'compare'
 
 export interface ExperimentTimelineEvent {
@@ -36,16 +38,28 @@ export interface ExperimentTimelineEvent {
   ref_id: string | null
 }
 
+export interface ExperimentControlProgress {
+  id: string
+  name: string
+  finished_games: number
+  target_games: number
+  paired_n: number
+  ready: boolean
+}
+
 export interface ExperimentValidation {
   control_experiment_ids: string[]
   validation_ready: boolean
   suggested_compare_ids: string[]
   paired_n: number
+  control_progress?: ExperimentControlProgress[]
+  all_controls_ready?: boolean
 }
 
 export interface ExperimentNextStep {
   id: ExperimentNextStepId
   action: ExperimentNextStepAction
+  ref_id?: string
 }
 
 export interface ExperimentPlayerStat {
@@ -237,8 +251,17 @@ export interface ExperimentCompareRow {
   paired_landlord_win_rate?: number
 }
 
+export interface ExperimentPairedSummary {
+  shared_seeds: number
+  source_id: string
+  control_id: string
+  landlord_win_rate_diff: number | null
+  low_power: boolean
+}
+
 export interface ExperimentCompareResult {
   experiments: ExperimentCompareRow[]
+  paired_summary?: ExperimentPairedSummary
 }
 
 export const experimentApi = {

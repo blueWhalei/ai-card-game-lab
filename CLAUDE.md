@@ -125,11 +125,11 @@ Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experi
 - `games.experiment_id` is nullable (trial games on `/game` stay outside experiments).
 - Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
-- Detail page: `ExperimentDetailContextBar` (`next_step` primary action), games list, optional results strip + players tab after first finished game; **archive** dialog (notebook, protocol, validation, clone/manifest). Collect / pause, watch, register-and-train, control, compare via primary action or ⋯ menu.
+- Detail page: `ExperimentDetailContextBar` (`next_step` primary action), `ExperimentValidationStrip` (control progress), games list, optional results strip + players tab after first finished game; **archive** dialog (notebook, protocol, validation, clone/manifest). Collect / pause, watch, register-and-train, control wizard, compare via primary action or ⋯ menu.
 - `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
 - Detail tabs: **games** / **players** only (`?tab=players`); deep analysis uses Pipeline deep links above.
 - Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, per-seat as-landlord win rate (needs `metadata.landlord_id`), plus `credibility` (decisive_n / CI width / low_power). Collect CTA uses `GET /api/v1/system/preflight` (seat providers); Settings shows the same checks.
-- `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `validation_ready`), and `next_step`.
+- `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `control_progress` + `validation_ready`), and `next_step` (`collect_control` → control experiment collect).
 - Completed training tasks for the experiment appear on `/training?experiment_id=`; model repo can register an Ollama tag as a player config.
 
 Main HTTP:

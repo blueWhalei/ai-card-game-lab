@@ -273,3 +273,10 @@ async def test_compare_eval_fields_and_paired_landlord_win_rate(db_path: str) ->
     base_a = next(s for s in base["player_stats"] if s["player_id"] == "cfg_a")
     assert base_a["games_as_landlord"] == 1
     assert base_a["landlord_win_rate"] == 1.0
+
+    ps = payload.get("paired_summary")
+    assert ps is not None
+    assert ps["source_id"] == "exp-base"
+    assert ps["control_id"] == "exp-ctrl"
+    assert ps["shared_seeds"] == 2
+    assert ps["landlord_win_rate_diff"] == 0.5

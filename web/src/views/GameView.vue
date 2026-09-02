@@ -223,6 +223,7 @@ async function handleCreate() {
       await fetchGames()
     } else {
       const res = await gameApi.create(createForm.value)
+      await gameApi.start(res.data.id)
       toast.success(t('game.createdOne'))
       createDialogVisible.value = false
       await fetchGames()

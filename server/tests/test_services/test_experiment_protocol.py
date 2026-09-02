@@ -359,7 +359,9 @@ async def test_validation_lists_control_experiments(db_path: str) -> None:
         await db.commit()
 
     ready = await service.get_experiment(source["id"], include_games=False)
-    assert ready["validation"]["validation_ready"] is False
+    assert ready["validation"]["validation_ready"] is True
+    assert ready["validation"]["control_progress"][0]["ready"] is True
+    assert ready["validation"]["control_progress"][0]["paired_n"] == 5
 
     async with aiosqlite.connect(db_path) as db:
         for i in range(5):

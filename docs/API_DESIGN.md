@@ -165,8 +165,8 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 `GET /api/v1/experiments/{id}` 附加字段：
 
 - `timeline[]` — `created` / `first_collect` / `first_finished` / `dataset_registered` / `training_completed` / `control_created`
-- `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`
-- `next_step` — `{ id, label_key, action? }` 下一步引导
+- `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`、`control_progress[]`
+- `next_step` — `{ id, action, ref_id? }` 下一步引导（`collect_control` 跳转对照实验采集）
 - `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
 
 创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒采集（无懒升级）。
@@ -175,7 +175,8 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 
 **Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
 
-**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`。
+**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`、`paired_n` / `paired_landlord_win_rate`。  
+2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。
 
 数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 

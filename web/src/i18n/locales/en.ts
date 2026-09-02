@@ -303,6 +303,8 @@ const en: typeof zhCN = {
     pauseFailed: 'Failed to pause',
     resumed: 'Resumed',
     resumeFailed: 'Failed to resume',
+    resumedN: 'Resumed {n} games',
+    resumeAllFailed: 'Failed to resume all',
     pausedN: 'Paused {n} games',
     pauseAllFailed: 'Failed to pause all',
     loadDetailFailed: 'Failed to load experiment',
@@ -409,6 +411,7 @@ const en: typeof zhCN = {
       review_decisions: 'Many non-trainable samples — review reason breakdown first',
       register_train: 'Register dataset and start training',
       open_control: 'Run a control experiment to validate',
+      collect_control: 'Collect on control experiment',
       compare: 'Ready to compare experiments',
       collect_more: 'Run more games toward the target',
       review: 'Review games and summary',
@@ -419,6 +422,11 @@ const en: typeof zhCN = {
     validationPending: 'Control pending',
     validationPaired: 'Paired {n}',
     validationControls: '{n} control experiment(s)',
+    validationStripTitle: 'Control validation',
+    validationNoControl:
+      'No control run yet. After training, open a control experiment to compare challenger vs baseline on the same deals.',
+    validationOpenControl: 'Open control experiment',
+    validationControlProgress: '{finished}/{target} games · paired {paired}',
     downloadManifest: 'Download manifest',
     cloneExperiment: 'Clone experiment',
     cloneTitle: 'Clone experiment',
@@ -461,6 +469,15 @@ const en: typeof zhCN = {
     pairDeals: 'Pair deals (reuse deals already collected on the source)',
     pairDealsHint:
       'Same seats get the same hands and bidding start; landlord still follows bidding. Extra games beyond the source use new deals.',
+    wizardStepConfig: 'Players & target',
+    wizardStepProtocol: 'Protocol & deals',
+    wizardStepConfirm: 'Confirm',
+    wizardNext: 'Next',
+    wizardProtocolIntro: 'Copies protocol fingerprint and deal seeds from source {id}.',
+    wizardSeedCount: '{n} deal seed(s)',
+    wizardConfirmIntro: 'You will land on the control workspace; games do not start automatically.',
+    openCollectAfter: 'Open collect dialog after create',
+    submit: 'Create control',
   },
   compare: {
     back: '← Back to experiments',
@@ -493,6 +510,7 @@ const en: typeof zhCN = {
     colTrainable: 'Trainable',
     failed: 'Compare failed',
     pairedHint: 'Paired games share the same deal_seed; see “Paired wins” by seat.',
+    pairedDiff: 'Paired landlord WR diff (control − source) {diff}pp · n={n}',
     lowPowerHint:
       'Some runs have few decisive games or a wide CI — treat point estimates cautiously.',
     protocolMismatch:
@@ -523,6 +541,7 @@ const en: typeof zhCN = {
   gamesTab: {
     active: 'In play / queued',
     pauseAll: 'Pause all',
+    resumeAll: 'Resume all',
     colGame: 'Game',
     colStatus: 'Status',
     colCreated: 'Created',
@@ -656,6 +675,7 @@ const en: typeof zhCN = {
     viewPrompt: 'View full prompt',
     viewRaw: 'View raw response',
     playerThinking: '{id} thinking...',
+    waitingElapsed: 'waited {sec}s (local models can be slow to first token)',
     noThinking: 'No thinking yet',
     landlord: 'Landlord',
     peasant: 'Peasant',
@@ -938,9 +958,9 @@ const en: typeof zhCN = {
     deleteTask: 'Delete this training task?',
     deleteModel: 'Delete this model?',
     exportedMerged:
-      'Exported to {dir} (includes merged). You can push to Ollama, or convert to GGUF then: ollama create {tag} -f Modelfile',
+      'Deploy pack exported (includes merged). Push to Ollama or see README in that folder.',
     exportedScript:
-      'Exported scripts to {dir}. Install training extras to merge LoRA. See the README in that folder.',
+      'Deploy scripts exported. Install training extras to merge LoRA; see README in that folder.',
     exportFailed: 'Export failed (needs a LoRA adapter directory)',
     notLora: 'This artifact is not a usable LoRA adapter',
     pushed: 'Pushed to Ollama: {tag}',
@@ -958,7 +978,13 @@ const en: typeof zhCN = {
     configFallback: 'Failed to load system config; using local defaults',
     noModels: 'No trained models yet',
     pushAndAdd: 'Also add as a player after a successful push',
-    pushing: 'Pushing…',
+    moreActions: 'More actions',
+    actionPushPending: 'Pushing to Ollama…',
+    actionExportPending: 'Exporting deploy pack…',
+    actionVerifyPending: 'Verifying model…',
+    actionVerifyGamePending: 'Running test game…',
+    actionRegisterPending: 'Registering player…',
+    actionDeletePending: 'Deleting…',
     pushOllama: 'Push to Ollama',
     export: 'Export',
     addAsPlayer: 'Add as player',
@@ -1078,6 +1104,20 @@ const en: typeof zhCN = {
     AI_TIMEOUT: 'AI provider timed out. Try again later.',
     AI_PROVIDER_UNAVAILABLE: 'AI provider unavailable. Try again later.',
     AI_PROVIDER_ERROR: 'AI provider call failed. Try again later.',
+    DEPLOY_LLAMA_CPP_MISSING:
+      'LLAMA_CPP_DIR is missing or invalid. Set it in .env to a llama.cpp checkout with convert_hf_to_gguf.py.',
+    DEPLOY_GGUF_FAILED: 'GGUF conversion failed. Check server logs for details.',
+    DEPLOY_OLLAMA_FAILED:
+      'Failed to push to Ollama. Ensure Ollama is installed and on PATH.',
+    DEPLOY_MERGE_FAILED: 'LoRA merge failed. Check server logs for details.',
+    DEPLOY_NOT_LORA:
+      'This task is not a usable LoRA adapter directory. Finish training first.',
+    TRAINING_GUARD_FAILED: 'Training environment check failed.',
+    OLLAMA_UNREACHABLE:
+      'Cannot reach Ollama at {url}. Ensure Ollama is running and reachable.',
+    OLLAMA_TIMEOUT: 'Timed out connecting to Ollama ({url}). Ensure the service is running.',
+    OLLAMA_TAG_NOT_FOUND:
+      'Model tag "{tag}" not found in Ollama. Push to Ollama or run ollama create first.',
   },
   action: {
     PASS: 'Pass',

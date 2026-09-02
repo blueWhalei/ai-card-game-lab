@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatMs } from '@/utils/card'
 import UiBadge from '@/components/ui/Badge.vue'
@@ -43,6 +43,16 @@ const props = defineProps<{
 const { t } = useI18n()
 const expandedSet = defineModel<Set<number>>('expandedSet', { default: () => new Set<number>() })
 
+const waitElapsedSec = ref(0)
+let waitTimer: ReturnType<typeof setInterval> | null = null
+
+function clearWaitTimer(): void {
+  if (waitTimer) {
+    clearInterval(waitTimer)
+    waitTimer = null
+  }
+}
+
 function toggleExpand(index: number): void {
   const s = new Set(expandedSet.value)
   if (s.has(index)) {
@@ -58,7 +68,33 @@ function formatPromptMessages(messages: Array<{ role: string; content: string }>
 }
 
 const isActivelyStreaming = computed(() => {
-  return props.currentPlayerId && props.isStreaming !== false
+  return Boolean(props.currentPlayerId) && props.isStreaming !== false
+})
+
+const isWaitingForFirstToken = computed(() => {
+  return Boolean(
+    props.currentPlayerId &&
+      !props.currentReasoning &&
+      !props.currentAnswer &&
+      !props.currentThinking,
+  )
+})
+
+watch(
+  () => [props.currentPlayerId, isWaitingForFirstToken.value] as const,
+  ([playerId, waiting]) => {
+    clearWaitTimer()
+    waitElapsedSec.value = 0
+    if (!playerId || !waiting) return
+    waitTimer = setInterval(() => {
+      waitElapsedSec.value += 1
+    }, 1000)
+  },
+  { immediate: true },
+)
+
+onUnmounted(() => {
+  clearWaitTimer()
 })
 </script>
 
@@ -134,16 +170,19 @@ const isActivelyStreaming = computed(() => {
       </details>
     </div>
 
-    <!-- 思考中状态(无内容时) -->
+    <!-- 思考中状态(无内容时：本地模型首 token 前也会长时间停在这里) -->
     <div
       v-else-if="currentPlayerId"
-      class="flex items-center gap-2 border-b border-ink-obs-border p-4"
+      class="flex flex-wrap items-center gap-2 border-b border-ink-obs-border p-4"
     >
       <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
       <span class="text-sm text-ink-obs-accent">{{
         t('game.playerThinking', { id: currentPlayerId })
       }}</span>
       <span class="animate-blink ml-1 inline-block h-3 w-0.5 bg-ink-obs-accent" />
+      <span v-if="waitElapsedSec > 0" class="text-xs text-ink-obs-muted">
+        {{ t('game.waitingElapsed', { sec: waitElapsedSec }) }}
+      </span>
     </div>
 
     <!-- 历史思考链 -->

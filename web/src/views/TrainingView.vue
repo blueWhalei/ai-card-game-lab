@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
-import { showApiError } from '@/utils/error'
+import { showApiError, getVerifyErrorMessage } from '@/utils/error'
 import { useTrainingStore } from '@/stores/useTrainingStore'
 import { dataApi } from '@/api/dataApi'
 import type { DatasetItem } from '@/api/dataApi'
@@ -25,7 +25,10 @@ import {
   ollamaTagForModel,
 } from '@/utils/adapterConfig'
 import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
-import TrainingModelsPanel from '@/components/training/TrainingModelsPanel.vue'
+import TrainingModelsPanel, {
+  type ModelBusyAction,
+  type ModelBusyState,
+} from '@/components/training/TrainingModelsPanel.vue'
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
 import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
 import PreflightBanner from '@/components/common/PreflightBanner.vue'
@@ -38,11 +41,27 @@ const datasets = ref<DatasetItem[]>([])
 const showCreateDialog = ref(false)
 const activeTab = ref<'tasks' | 'models'>('tasks')
 const trainingDepsAvailable = ref(false)
+const trainingEnvLoaded = ref(false)
 const preflight = ref<PreflightResult | null>(null)
 const cancelling = ref(false)
-const pushingModelId = ref<string | null>(null)
+const modelBusy = ref<ModelBusyState | null>(null)
 const registerAfterPush = ref(false)
+let pendingToastId: number | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+function beginModelAction(id: string, action: ModelBusyAction, pendingMessage: string): void {
+  modelBusy.value = { id, action }
+  if (pendingToastId != null) toast.dismiss(pendingToastId)
+  pendingToastId = toast.pending(pendingMessage)
+}
+
+function endModelAction(): void {
+  if (pendingToastId != null) {
+    toast.dismiss(pendingToastId)
+    pendingToastId = null
+  }
+  modelBusy.value = null
+}
 
 const experimentIdFilter = computed(() => {
   const v = route.query.experiment_id
@@ -123,10 +142,10 @@ type ModelRow = ModelItem & Record<string, unknown>
 
 const modelColumns = computed(
   (): TableColumn<ModelRow>[] => [
-    { key: 'name', label: t('common.name') },
-    { key: 'base_model', label: t('training.colBaseShort'), class: 'w-48' },
-    { key: 'model_path', label: t('common.path') },
-    { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
+    { key: 'name', label: t('common.name'), class: 'w-[28%]' },
+    { key: 'base_model', label: t('training.colBaseShort'), class: 'w-[18%]' },
+    { key: 'model_path', label: t('common.path'), class: 'w-[14%]' },
+    { key: 'created_at', label: t('common.createdAt'), class: 'w-[16%]' },
   ],
 )
 
@@ -252,27 +271,30 @@ async function handleDeleteModel(id: string) {
     danger: true,
   })
   if (!ok) return
+  beginModelAction(id, 'delete', t('training.actionDeletePending'))
   try {
     await store.deleteModel(id)
     toast.success(t('error.deleted'))
   } catch (e: unknown) {
     showApiError(e, t('error.deleteFailed'))
+  } finally {
+    endModelAction()
   }
 }
 
 async function handleExportModel(id: string) {
+  beginModelAction(id, 'export', t('training.actionExportPending'))
   try {
     const result = await store.exportModel(id, { merge: true, try_create: false })
-    const deployDir = String(result.deploy_dir ?? '')
-    const tag = String(result.ollama_tag ?? '')
     const merged = result.merged === true
     toast.success(
-      merged
-        ? t('training.exportedMerged', { dir: deployDir, tag })
-        : t('training.exportedScript', { dir: deployDir }),
+      merged ? t('training.exportedMerged') : t('training.exportedScript'),
+      6000,
     )
   } catch (e: unknown) {
     showApiError(e, t('training.exportFailed'))
+  } finally {
+    endModelAction()
   }
 }
 
@@ -285,22 +307,27 @@ async function handlePushToOllama(m: ModelItem) {
     toast.warning(t('training.notLora'))
     return
   }
-  pushingModelId.value = m.id
+  beginModelAction(m.id, 'push', t('training.actionPushPending'))
   try {
     const result = await store.pushToOllama(m.id)
     const tag = String(result.ollama_tag ?? ollamaTagForModel(m.id))
     toast.success(t('training.pushed', { tag }))
     if (registerAfterPush.value) {
-      await handleRegisterAsPlayer(m)
+      await handleRegisterAsPlayer(m, { skipBusy: true, ollamaTag: tag })
     }
   } catch (e: unknown) {
     showApiError(e, t('training.pushFailed'))
   } finally {
-    pushingModelId.value = null
+    endModelAction()
   }
 }
 
 async function handleVerifyModel(id: string, runGame: boolean) {
+  beginModelAction(
+    id,
+    runGame ? 'verify_game' : 'verify',
+    runGame ? t('training.actionVerifyGamePending') : t('training.actionVerifyPending'),
+  )
   try {
     const result = await store.verifyModel(id, { run_game: runGame })
     if (result.ok) {
@@ -311,20 +338,28 @@ async function handleVerifyModel(id: string, runGame: boolean) {
           : t('training.verifiedSmoke'),
       )
     } else {
-      toast.warning(String(result.error || t('training.verifyNeedOllama')))
+      toast.warning(getVerifyErrorMessage(result))
     }
   } catch (e: unknown) {
     showApiError(e, t('training.verifyFailed'))
+  } finally {
+    endModelAction()
   }
 }
 
-async function handleRegisterAsPlayer(m: ModelItem) {
+async function handleRegisterAsPlayer(
+  m: ModelItem,
+  opts?: { skipBusy?: boolean; ollamaTag?: string },
+) {
   if (!m.model_path || m.model_path.endsWith('model.bin')) {
     toast.warning(t('training.notLoraPlayer'))
     return
   }
+  if (!opts?.skipBusy) {
+    beginModelAction(m.id, 'register', t('training.actionRegisterPending'))
+  }
   const configId = configIdForModel(m.id)
-  const tag = ollamaTagForModel(m.id)
+  const tag = opts?.ollamaTag ?? ollamaTagForModel(m.id)
   const name = configNameForModel(m.name)
   const notes = [
     `from training task ${m.id}`,
@@ -361,6 +396,8 @@ async function handleRegisterAsPlayer(m: ModelItem) {
     toast.success(t('training.playerAdded', { name, tag }))
   } catch (e: unknown) {
     showApiError(e, t('training.addPlayerFailed'))
+  } finally {
+    if (!opts?.skipBusy) endModelAction()
   }
 }
 
@@ -394,13 +431,13 @@ onMounted(async () => {
       createForm.value.base_model = models[0] ?? createForm.value.base_model
     }
     createForm.value.max_steps = CPU_SMOKE_MAX_STEPS
-    trainingDepsAvailable.value = cfg.data.training_deps_available === true
     preflight.value = pf?.data ?? null
-    if (preflight.value) {
-      trainingDepsAvailable.value = preflight.value.can_train
-    }
+    trainingDepsAvailable.value =
+      preflight.value?.can_train ?? cfg.data.training_deps_available === true
   } catch (e: unknown) {
     showApiError(e, t('training.configFallback'))
+  } finally {
+    trainingEnvLoaded.value = true
   }
   applyTabFromRoute()
   if (activeTab.value === 'models') {
@@ -436,7 +473,7 @@ onUnmounted(() => {
     <div class="mb-5 flex justify-end">
       <UiButton
         class="shrink-0 whitespace-nowrap"
-        :disabled="!trainingDepsAvailable"
+        :disabled="!trainingEnvLoaded || !trainingDepsAvailable"
         @click="openCreateDialog"
       >
         {{ t('training.createTask') }}
@@ -444,12 +481,12 @@ onUnmounted(() => {
     </div>
 
     <PreflightBanner
-      v-if="preflight?.checks?.length"
+      v-if="trainingEnvLoaded && preflight?.checks?.length"
       class="mb-5"
-      :checks="preflight.checks"
+      :checks="preflight!.checks"
     />
     <div
-      v-else-if="!trainingDepsAvailable"
+      v-else-if="trainingEnvLoaded && !trainingDepsAvailable"
       class="mb-5 rounded-ink-md border border-ink-accent/40 bg-ink-surface px-4 py-3 text-sm text-ink-text-secondary"
     >
       {{ t('training.noDeps') }}
@@ -518,7 +555,7 @@ onUnmounted(() => {
       :rows="modelRows"
       :empty="store.models.length === 0"
       :register-after-push="registerAfterPush"
-      :pushing-model-id="pushingModelId"
+      :model-busy="modelBusy"
       :is-lora-model="isLoraModel"
       @update:register-after-push="registerAfterPush = $event"
       @push="handlePushToOllama"
@@ -651,7 +688,12 @@ onUnmounted(() => {
       </div>
       <template #footer>
         <UiButton variant="secondary" @click="showCreateDialog = false">{{ t('common.cancel') }}</UiButton>
-        <UiButton :disabled="!trainingDepsAvailable" @click="handleCreate">{{ t('common.create') }}</UiButton>
+        <UiButton
+          :disabled="!trainingEnvLoaded || !trainingDepsAvailable"
+          @click="handleCreate"
+        >
+          {{ t('common.create') }}
+        </UiButton>
       </template>
     </UiDialog>
   </div>

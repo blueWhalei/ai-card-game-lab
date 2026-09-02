@@ -7,9 +7,11 @@ import UiButton from '@/components/ui/Button.vue'
 defineProps<{
   activeGames: GameItem[]
   runningGames: GameItem[]
+  pausedGames: GameItem[]
   finishedGames: GameItem[]
   collectCta: string
   pausingAll: boolean
+  resumingAll: boolean
   actionGameId: string | null
   configLabel: (id: string) => string
   gameStatusLabel: (status: string) => string
@@ -20,6 +22,7 @@ const emit = defineEmits<{
   pause: [gameId: string]
   resume: [gameId: string]
   pauseAll: []
+  resumeAll: []
 }>()
 
 const { t } = useI18n()
@@ -30,15 +33,28 @@ const { t } = useI18n()
     <section v-if="activeGames.length > 0" class="space-y-2">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <h2 class="text-sm font-semibold text-ink-text">{{ t('gamesTab.active') }}</h2>
-        <UiButton
-          v-if="runningGames.length > 0"
-          variant="secondary"
-          size="sm"
-          :loading="pausingAll"
-          @click="emit('pauseAll')"
-        >
-          {{ t('gamesTab.pauseAll') }}
-        </UiButton>
+        <div v-if="runningGames.length > 0 || pausedGames.length > 0" class="flex flex-wrap gap-2">
+          <UiButton
+            v-if="runningGames.length > 0"
+            variant="secondary"
+            size="sm"
+            :loading="pausingAll"
+            :disabled="resumingAll"
+            @click="emit('pauseAll')"
+          >
+            {{ t('gamesTab.pauseAll') }}
+          </UiButton>
+          <UiButton
+            v-if="pausedGames.length > 0"
+            variant="secondary"
+            size="sm"
+            :loading="resumingAll"
+            :disabled="pausingAll"
+            @click="emit('resumeAll')"
+          >
+            {{ t('gamesTab.resumeAll') }}
+          </UiButton>
+        </div>
       </div>
       <div class="overflow-x-auto rounded-ink-md border border-ink-border">
         <table class="w-full min-w-[36rem] text-left text-sm">

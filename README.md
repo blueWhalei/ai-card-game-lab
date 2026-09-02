@@ -1,14 +1,9 @@
-<p align="center">
-  <img src="web/public/logo.png" alt="CardLab" width="88">
-</p>
-
 # CardLab
 
 [English](README.en.md) | 中文
 
 本地 AI 卡牌研究工具：以「实验」为主线，观战模型决策、采集对局数据、LoRA 微调与对照验证。
 
-仓库：[`ai-card-game-lab`](https://github.com/blueWhalei/ai-card-game-lab)（GitHub 仓库名保持不变）
 
 ## 技术栈
 

@@ -10,7 +10,8 @@ export type CompareMetricDef = {
 export const COMPARE_METRICS: CompareMetricDef[] = [
   { id: 'finished', kind: 'higher', core: true },
   { id: 'landlord', kind: 'higher', core: true },
-  { id: 'pairedLandlord', kind: 'higher' },
+  { id: 'pairedN', kind: 'higher', core: true },
+  { id: 'pairedLandlord', kind: 'higher', core: true },
   { id: 'p50', kind: 'lower' },
   { id: 'p95', kind: 'lower' },
   { id: 'tokens', kind: 'lower' },
@@ -22,6 +23,7 @@ export const COMPARE_METRICS: CompareMetricDef[] = [
 const METRIC_CAPABILITY_REQUIREMENT: Partial<Record<string, string>> = {
   landlord: 'role:landlord',
   pairedLandlord: 'role:landlord',
+  pairedN: 'role:landlord',
   parser: 'parser_success',
   train: 'train_usable',
   p50: 'latency_p50_p95',
