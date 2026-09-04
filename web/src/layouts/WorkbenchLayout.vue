@@ -8,7 +8,6 @@ import HeaderToggles from '@/components/common/HeaderToggles.vue'
 import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
 
 type NavItem = { path: string; label: string; icon: string }
-type NavGroup = { id: string; label: string; items: NavItem[] }
 
 const { t } = useI18n()
 const route = useRoute()
@@ -16,44 +15,32 @@ const router = useRouter()
 const mobileOpen = ref(false)
 const { isCollapsed, toggleCollapsed } = useSidebarCollapse()
 
-const groups = computed((): NavGroup[] => [
-  {
-    id: 'lab',
-    label: t('nav.groupLab'),
-    items: [
-      { path: '/', label: t('nav.experiments'), icon: 'lucide:beaker' },
-      { path: '/experiment-configs', label: t('nav.playerConfigs'), icon: 'lucide:flask-conical' },
-      { path: '/game', label: t('nav.games'), icon: 'lucide:swords' },
-    ],
-  },
-  {
-    id: 'pipeline',
-    label: t('nav.groupPipeline'),
-    items: [
-      { path: '/data', label: t('nav.data'), icon: 'lucide:database' },
-      { path: '/decisions', label: t('nav.decisions'), icon: 'lucide:crosshair' },
-      { path: '/training', label: t('nav.training'), icon: 'lucide:brain' },
-    ],
-  },
-  {
-    id: 'tune',
-    label: t('nav.groupTune'),
-    items: [
-      { path: '/prompt', label: t('nav.prompts'), icon: 'lucide:file-text' },
-      { path: '/traces', label: t('nav.traces'), icon: 'lucide:activity' },
-      { path: '/settings', label: t('nav.settings'), icon: 'lucide:settings' },
-    ],
-  },
+const items = computed((): NavItem[] => [
+  { path: '/', label: t('nav.experiments'), icon: 'lucide:beaker' },
+  { path: '/experiment-configs', label: t('nav.playerConfigs'), icon: 'lucide:flask-conical' },
+  { path: '/game', label: t('nav.games'), icon: 'lucide:swords' },
+  { path: '/pipeline', label: t('nav.analyze'), icon: 'lucide:layers' },
+  { path: '/settings', label: t('nav.settings'), icon: 'lucide:settings' },
 ])
 
-const flatItems = computed(() => groups.value.flatMap((g) => g.items))
+const pipelineTitle = computed(() => {
+  const map: Record<string, string> = {
+    data: t('nav.data'),
+    decisions: t('nav.decisions'),
+    training: t('nav.training'),
+    traces: t('nav.traces'),
+  }
+  const section = route.path.match(/^\/pipeline\/([^/]+)/)?.[1]
+  return (section && map[section]) || t('nav.analyze')
+})
 
 const activePath = computed(() => {
   const p = route.path
   if (p === '/' || p === '') return '/'
   if (p.startsWith('/experiments/compare')) return '/'
   if (p.startsWith('/experiments/')) return '/'
-  const match = flatItems.value
+  if (p.startsWith('/pipeline')) return '/pipeline'
+  const match = items.value
     .filter((i) => i.path !== '/')
     .find((i) => p === i.path || p.startsWith(`${i.path}/`))
   return match?.path ?? p
@@ -67,9 +54,11 @@ const isExperimentDetail = computed(
 
 const pageTitle = computed(() => {
   if (route.path === '/guide') return t('guide.title')
+  if (route.path === '/prompt') return t('nav.prompts')
   if (route.path.startsWith('/experiments/compare')) return t('nav.experimentCompare')
+  if (route.path.startsWith('/pipeline')) return pipelineTitle.value
   if (isExperimentDetail.value) return ''
-  return flatItems.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
+  return items.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
 })
 
 const showPageChrome = computed(() => Boolean(pageTitle.value))
@@ -125,55 +114,39 @@ function go(path: string): void {
         </span>
       </button>
 
-      <nav class="flex-1 space-y-4 overflow-y-auto px-2 pb-2">
-        <div
-          v-for="(group, groupIndex) in groups"
-          :key="group.id"
+      <nav class="flex-1 space-y-1 overflow-y-auto px-2 pb-2">
+        <RouterLink
+          v-for="item in items"
+          :key="item.path"
+          :to="item.path"
+          :aria-current="activePath === item.path ? 'page' : undefined"
+          :title="isCollapsed ? item.label : undefined"
           :class="
             cn(
-              'space-y-1',
-              groupIndex > 0 && isCollapsed && 'border-t border-ink-border pt-3',
+              'relative flex w-full items-center rounded-[6px] py-2.5 text-base transition-colors duration-150',
+              isCollapsed ? 'justify-center px-2' : 'gap-2.5 px-3',
+              activePath === item.path
+                ? 'bg-ink-primary-muted font-medium text-ink-primary'
+                : 'text-ink-text hover:bg-ink-surface-muted',
             )
           "
         >
-          <p
-            v-if="!isCollapsed"
-            class="px-3 pb-1 text-sm font-semibold tracking-wide text-ink-text-secondary"
-          >
-            {{ group.label }}
-          </p>
-          <RouterLink
-            v-for="item in group.items"
-            :key="item.path"
-            :to="item.path"
-            :title="isCollapsed ? item.label : undefined"
+          <span
+            class="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full bg-ink-primary transition-all duration-200"
+            :class="activePath === item.path ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'"
+          />
+          <Icon :icon="item.icon" class="h-[18px] w-[18px] shrink-0 opacity-80" />
+          <span
             :class="
               cn(
-                'relative flex w-full items-center rounded-[6px] py-2.5 text-base transition-colors duration-150',
-                isCollapsed ? 'justify-center px-2' : 'gap-2.5 px-3',
-                activePath === item.path
-                  ? 'bg-ink-primary-muted font-medium text-ink-primary'
-                  : 'text-ink-text hover:bg-ink-surface-muted',
+                'overflow-hidden whitespace-nowrap transition-[opacity,width] duration-200',
+                isCollapsed ? 'w-0 opacity-0' : 'opacity-100',
               )
             "
           >
-            <span
-              class="absolute top-1/2 left-0 h-5 w-0.5 -translate-y-1/2 rounded-full bg-ink-primary transition-all duration-200"
-              :class="activePath === item.path ? 'opacity-100 scale-y-100' : 'opacity-0 scale-y-50'"
-            />
-            <Icon :icon="item.icon" class="h-[18px] w-[18px] shrink-0 opacity-80" />
-            <span
-              :class="
-                cn(
-                  'overflow-hidden whitespace-nowrap transition-[opacity,width] duration-200',
-                  isCollapsed ? 'w-0 opacity-0' : 'opacity-100',
-                )
-              "
-            >
-              {{ item.label }}
-            </span>
-          </RouterLink>
-        </div>
+            {{ item.label }}
+          </span>
+        </RouterLink>
       </nav>
 
       <div class="border-t border-ink-border p-2">
@@ -242,14 +215,12 @@ function go(path: string): void {
             <img src="/logo.png" :alt="t('app.name')" class="h-8 w-8 shrink-0 rounded-ink object-contain" />
             <p class="text-base font-semibold">{{ t('app.name') }}</p>
           </div>
-          <div v-for="group in groups" :key="group.id" class="mb-4 space-y-1">
-            <p class="px-2 text-sm font-semibold tracking-wide text-ink-text-secondary">
-              {{ group.label }}
-            </p>
+          <div class="space-y-1">
             <RouterLink
-              v-for="item in group.items"
+              v-for="item in items"
               :key="item.path"
               :to="item.path"
+              :aria-current="activePath === item.path ? 'page' : undefined"
               :class="
                 cn(
                   'flex w-full items-center gap-2.5 rounded-[6px] px-3 py-2.5 text-base',
@@ -285,11 +256,7 @@ function go(path: string): void {
       </header>
 
       <main class="flex-1">
-        <RouterView v-slot="{ Component, route: viewRoute }">
-          <Transition name="ink-page">
-            <component :is="Component" :key="viewRoute.path" />
-          </Transition>
-        </RouterView>
+        <RouterView />
       </main>
     </div>
   </div>

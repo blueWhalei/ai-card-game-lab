@@ -103,6 +103,7 @@ POST   /api/v1/games/{game_id}/start         # 开始对局
 POST   /api/v1/games/{game_id}/pause         # 暂停对局
 POST   /api/v1/games/{game_id}/resume        # 恢复对局
 GET    /api/v1/games/{game_id}/replay        # 对局回放数据
+GET    /api/v1/games/{game_id}/highlights    # 局后高光 3–5 步（由决策点派生，非 LLM）
 WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 ```
 
@@ -150,6 +151,32 @@ WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 &sort_order=desc
 ```
 
+#### GET /api/v1/games/{game_id}/highlights — 局后高光
+
+由已存决策点打分，**不调用 LLM**。对局不存在时 404；无决策点时 `items` 为空。
+
+**Response**:
+```json
+{
+  "code": 0,
+  "data": {
+    "items": [
+      {
+        "decision_id": "dp_xxx",
+        "round_number": 12,
+        "player_id": "cfg_a",
+        "reason": "bomb",
+        "action_type": "BOMB",
+        "cards": ["H3", "S3", "C3", "D3"],
+        "parser_ok": true
+      }
+    ]
+  }
+}
+```
+
+`reason`：`last_play` | `bomb` | `fallback` | `endgame` | `branch`，不足 3 条时用普通出牌补 `play`。最多 5 条，按回合升序。
+
 ### 2.1a 实验（run）
 
 ```
@@ -158,25 +185,35 @@ POST   /api/v1/experiments                   # 创建实验（选手人数由引
 PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/conclusion/tags
 POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
 GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率 / credibility）
-GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step
+GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step + delta
+GET    /api/v1/experiments/{id}/export       # 实验包 JSON（选手快照 + protocol + 种子；不含密钥）
+POST   /api/v1/experiments/import            # 导入实验包（缺选手则创建，已有 id 则复用）
 POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座位级 provider 门闩；benchmark 用固定 deal_seed）
 ```
+
+`GET /api/v1/experiments/{id}` 的 `games[]` 带 `progress`：`{ phase, round, player_id }`。`phase` 为 `queued` / `bidding` / `playing` / `endgame`（来自该局最近一条决策点；尚无决策则为 `queued`）。详情进行中列表用它拼一句进度，不加多列 KPI。
 
 `GET /api/v1/experiments/{id}` 附加字段：
 
 - `timeline[]` — `created` / `first_collect` / `first_finished` / `dataset_registered` / `training_completed` / `control_created`
 - `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`、`control_progress[]`
-- `next_step` — `{ id, action, ref_id? }` 下一步引导（`collect_control` 跳转对照实验采集）
+- `next_step` — `{ id, action, ref_id? }` 下一步引导。训练完成后若尚无对照则为 `open_control`（开始对照实验）；`collect_control` 跳转对照实验并开始对局。对照已就绪则为 `review` + `action=stay`（留在详情看结论，不去对比页）。
+- `delta` — 相对源实验（`vs_source`）或首个对照（`vs_control`）的一屏结论：`landlord_win_rate_diff`（本实验 − 对照）、`paired_n` / `paired_landlord_win_rate_diff`、双方 CI 与决胜局数、`can_conclude`、`inconclusive_reason`（`no_games` / `peer_not_ready` / `low_power`）、`verdict_key`。无对照时为 `null`。Δ **不以红绿表示好坏**（地主胜率升降取决于假设）。
+- `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，前端渲染为 `stage.verdict.<key>` 那一句人话结论。放在后端计算是为了让评估公式与它的措辞留在同一处；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。`can_conclude` 只决定这句话的视觉重量，不改变方向。
 - `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
 
 创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒采集（无懒升级）。
+
+#### 实验包 / 选手包
+
+`kind` 为 `cardlab.experiment_pack` 或 `cardlab.player_pack`（`schema_version` 目前 `1`）。导出时剥掉 `api_key` / `*_api_key` 等密钥字段；`requirements.providers` 与 `requirements.ollama_tags` 供导入方对照本机环境。导入时已有选手 id **不覆盖**。旧版浏览器下载的 manifest（含 `experiment` + `protocol`、无 `kind`）仍可导入。
 
 #### GET /api/v1/experiments/compare
 
 **Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
 
-**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`、`paired_n` / `paired_landlord_win_rate`。  
-2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。
+**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`、`paired_n` / `paired_landlord_win_rate`、`scenario_scores`（叫分 / 出牌 / 残局 / 炸弹的可训练占比与解析率）。  
+2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。`GET /experiments/{id}` 的 `delta.scenario_diffs` 为相对对照的同场景 Δ。
 
 数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 
@@ -185,6 +222,8 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 ```
 GET    /api/v1/experiment-configs                    # 选手配置列表
 POST   /api/v1/experiment-configs                    # 创建选手配置
+GET    /api/v1/experiment-configs/export             # 选手包 JSON（不含密钥；可选 ?ids=）
+POST   /api/v1/experiment-configs/import             # 导入选手（已有 id 不覆盖）
 GET    /api/v1/experiment-configs/{config_id}        # 配置详情
 PUT    /api/v1/experiment-configs/{config_id}        # 更新配置
 DELETE /api/v1/experiment-configs/{config_id}        # 删除配置
@@ -302,7 +341,8 @@ POST   /api/v1/models/{model_id}/verify      # Ollama 快速验证
     "learning_rate": 2e-5,
     "batch_size": 8,
     "num_epochs": 3,
-    "output_format": "pytorch"
+    "output_format": "pytorch",
+    "qlora": false
   }
 }
 ```
@@ -312,8 +352,7 @@ POST   /api/v1/models/{model_id}/verify      # Ollama 快速验证
 ```
 GET    /api/v1/system/health                 # 健康检查
 GET    /api/v1/system/config                 # 系统配置（脱敏，只读；设置页不提供 PATCH）
-GET    /api/v1/system/preflight              # 开跑前检查（scope=collect|train|all；可选 experiment_id）
-GET    /api/v1/system/startup-check          # 同上（兼容；内部复用 preflight scope=all）
+GET    /api/v1/system/preflight              # 开始前检查（scope=collect|train|all；可选 experiment_id）
 POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎 capability（slots / phases / fingerprint / eval metrics）
@@ -323,7 +362,7 @@ GET    /api/v1/system/storage                # 存储路径与空间信息
 GET    /api/v1/system/runtime-stats          # 运行时资源快照
 ```
 
-`GET /preflight` 返回 `ok` / `can_collect` / `can_train` / `checks[]`（`block`|`warn`）/ `providers` / `warnings`。有 `experiment_id` 时按协议座位校验 provider；设置页与实验详情采集 CTA 共用此接口。
+`GET /preflight` 返回 `ok` / `can_collect` / `can_train` / `checks[]`（`id` + `severity` + `ok` + `message` + 可选 `params`）/ `providers` / `warnings`。UI 按 `checks[].id` 做 i18n（`params` 用于插值，如未配置的供应商列表）；`message` 为中文回退，给 curl / 非 UI 客户端。有 `experiment_id` 时按协议座位校验 provider；设置页与实验详情采集 CTA 共用此接口。
 
 设置页为只读展示。归档天数等通过归档/清理接口传入，不经 `PATCH /system/config`。
 
@@ -656,7 +695,10 @@ WS /api/v1/games/ws/{game_id}
     "completion_tokens": 80,
     "total_tokens": 230,
     "model_provider": "deepseek",
-    "model_name": "deepseek-chat"
+    "model_name": "deepseek-chat",
+    "legal_actions": [{"action_type": "PAIR", "cards": ["HK", "SK"]}, {"action_type": "PASS", "cards": []}],
+    "used_langchain_parser": true,
+    "win_probability": {"probability": 0.62, "confidence": "中", "reasoning": "局势均衡"}
   }
 }
 ```
@@ -808,6 +850,8 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
         "thinking": "对手牌数较少，用中等对子压制...",
         "outcome": "win",
         "quality_score": 0.8,
+        "parser_ok": true,
+        "win_probability": {"probability": 0.62, "confidence": "中"}
         "train_usable": true,
         "train_usable_reason": "ok",
         "created_at": "2024-01-01T10:00:00Z"

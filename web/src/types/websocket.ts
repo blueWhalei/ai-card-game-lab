@@ -79,6 +79,7 @@ export interface StateUpdatePayload extends GameStartedPayload {}
 export interface ThinkingPayload {
   player_id: string
   player_name?: string
+  legal_actions?: Array<{ action_type?: string; cards?: string[] }>
 }
 
 /** Streaming chunk payload - sent for each LLM output chunk */
@@ -107,6 +108,10 @@ export interface ThinkingHistoryEntry {
   rawResponsePreview?: string
   promptMessages?: Array<{ role: string; content: string }>
   rawResponseFull?: string
+  legalActions?: Array<{ action_type?: string; cards?: string[] }>
+  parserOk?: boolean | null
+  winProbability?: ThinkingCompletePayload['win_probability']
+  handAnalysis?: ThinkingCompletePayload['hand_analysis']
 }
 
 /** Complete thinking payload - sent when LLM finishes */
@@ -129,6 +134,19 @@ export interface ThinkingCompletePayload {
   raw_response_preview?: string
   prompt_messages?: Array<{ role: string; content: string }>
   raw_response_full?: string
+  legal_actions?: Array<{ action_type?: string; cards?: string[] }>
+  used_langchain_parser?: boolean
+  win_probability?: {
+    probability?: number
+    confidence?: string
+    reasoning?: string
+    factors?: string[]
+  }
+  hand_analysis?: {
+    bomb_count?: number
+    rocket?: boolean
+    strength_score?: number
+  }
 }
 
 /** @deprecated Use ThinkingCompletePayload instead */

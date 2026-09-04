@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
+import GameHighlightList from '@/components/game/GameHighlightList.vue'
+import type { GameHighlight } from '@/api/gameApi'
 
 const props = defineProps<{
   modelValue: boolean
@@ -14,11 +16,14 @@ const props = defineProps<{
     role?: string
     totalRounds?: number
   } | null
+  highlights?: GameHighlight[]
+  playerNames?: Record<string, string>
 }>()
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   back: []
+  jump: [item: GameHighlight]
 }>()
 
 const { t } = useI18n()
@@ -32,6 +37,11 @@ function onBack(): void {
 function goDecisions(): void {
   emit('update:modelValue', false)
   void router.push({ path: '/decisions', query: { game_id: props.gameId } })
+}
+
+function onJump(item: GameHighlight): void {
+  emit('update:modelValue', false)
+  emit('jump', item)
 }
 </script>
 
@@ -54,6 +64,15 @@ function goDecisions(): void {
       <p class="mt-2 text-sm text-ink-text-secondary">
         {{ t('game.resultNextStep') }}
       </p>
+    </div>
+    <div v-if="highlights?.length" class="mt-4 border-t border-ink-border pt-3">
+      <p class="mb-2 text-sm font-medium text-ink-text">{{ t('game.highlightsTitle') }}</p>
+      <GameHighlightList
+        :items="highlights"
+        :game-id="gameId"
+        :player-names="playerNames"
+        @jump="onJump"
+      />
     </div>
     <template #footer>
       <div class="flex w-full flex-wrap justify-end gap-2">

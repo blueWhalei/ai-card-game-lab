@@ -14,9 +14,9 @@ export interface DecisionPoint {
     cards: string[]
   } | null
   game_phase: string
-  legal_actions: Array<{
+  legal_actions?: Array<{
     action_type: string
-    cards: string[]
+    cards?: string[]
   }>
   chosen_action: {
     action_type: string
@@ -27,6 +27,18 @@ export interface DecisionPoint {
   quality_score: number
   train_usable: boolean
   train_usable_reason?: string
+  parser_ok?: boolean | null
+  win_probability?: {
+    probability: number
+    confidence: string
+    reasoning?: string
+    factors?: string[]
+  } | null
+  hand_analysis?: {
+    bomb_count: number
+    rocket: boolean
+    strength_score: number
+  } | null
   created_at: string
 }
 

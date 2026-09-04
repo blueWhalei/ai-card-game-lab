@@ -26,22 +26,12 @@ export type SystemConfig = {
   default_base_models?: string[]
 }
 
-export type StartupCheck = {
-  data_dirs_ready: boolean
-  can_collect: boolean
-  seed_provider: string
-  providers: ProviderInfo[]
-  warnings: string[]
-  ok?: boolean
-  can_train?: boolean
-  checks?: PreflightCheck[]
-}
-
 export type PreflightCheck = {
   id: string
   severity: 'block' | 'warn'
   ok: boolean
   message: string
+  params?: Record<string, string | number | boolean>
 }
 
 export type PreflightResult = {
@@ -51,8 +41,6 @@ export type PreflightResult = {
   checks: PreflightCheck[]
   providers: ProviderInfo[]
   warnings: string[]
-  data_dirs_ready?: boolean
-  seed_provider?: string
 }
 
 export type RuntimeStats = {
@@ -105,9 +93,6 @@ export const systemApi = {
 
   getRuntimeStats: () =>
     apiClient.get<never, ApiResponse<RuntimeStats>>('/api/v1/system/runtime-stats'),
-
-  getStartupCheck: () =>
-    apiClient.get<never, ApiResponse<StartupCheck>>('/api/v1/system/startup-check'),
 
   preflight: (params?: { scope?: 'collect' | 'train' | 'all'; experiment_id?: string }) =>
     apiClient.get<never, ApiResponse<PreflightResult>>('/api/v1/system/preflight', {

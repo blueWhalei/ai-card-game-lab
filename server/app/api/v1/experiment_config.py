@@ -6,6 +6,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
+from app.core.pack import parse_pack
 from app.dependencies import get_experiment_config_service
 from app.schemas.common import ApiResponse
 from app.schemas.experiment_config import (
@@ -36,6 +37,15 @@ class ExperimentConfigConflictError(AppError):
         )
 
 
+class ExperimentConfigValidationError(AppError):
+    def __init__(self, message: str) -> None:
+        super().__init__(
+            message=message,
+            code="EXPERIMENT_CONFIG_VALIDATION_FAILED",
+            status_code=400,
+        )
+
+
 @router.get("")
 async def list_experiment_configs(
     service: ExperimentConfigService = Depends(get_experiment_config_service),
@@ -60,6 +70,35 @@ async def create_experiment_config(
     except ValueError as e:
         raise ExperimentConfigConflictError(body.id) from e
     return ApiResponse(data=config)
+
+
+@router.get("/export")
+async def export_experiment_configs(
+    ids: str = "",
+    service: ExperimentConfigService = Depends(get_experiment_config_service),
+) -> ApiResponse[dict[str, Any]]:
+    wanted = [part.strip() for part in ids.split(",") if part.strip()] or None
+    return ApiResponse(data=service.export_pack(wanted))
+
+
+@router.post("/import")
+async def import_experiment_configs(
+    body: dict[str, Any],
+    service: ExperimentConfigService = Depends(get_experiment_config_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        pack = parse_pack(body)
+    except ValueError as exc:
+        raise ExperimentConfigValidationError(str(exc)) from exc
+    result = await service.import_players(list(pack.get("players") or []))
+    return ApiResponse(
+        data={
+            "kind": pack["kind"],
+            "players_created": result["created"],
+            "players_reused": result["reused"],
+            "requirements": pack.get("requirements") or {},
+        }
+    )
 
 
 @router.get("/{config_id}")

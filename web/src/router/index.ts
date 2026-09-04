@@ -24,8 +24,46 @@ const router = createRouter({
         },
         {
           path: 'pipeline',
-          name: 'pipeline',
-          redirect: '/',
+          component: () => import('@/views/PipelineView.vue'),
+          redirect: (to) => ({ path: '/pipeline/data', query: to.query }),
+          children: [
+            {
+              path: 'data',
+              name: 'data',
+              component: () => import('@/views/DataView.vue'),
+            },
+            {
+              path: 'decisions',
+              name: 'decisions',
+              component: () => import('@/views/DecisionView.vue'),
+            },
+            {
+              path: 'training',
+              name: 'training',
+              component: () => import('@/views/TrainingView.vue'),
+            },
+            {
+              path: 'traces',
+              name: 'traces',
+              component: () => import('@/views/TraceView.vue'),
+            },
+          ],
+        },
+        {
+          path: 'data',
+          redirect: (to) => ({ path: '/pipeline/data', query: to.query }),
+        },
+        {
+          path: 'decisions',
+          redirect: (to) => ({ path: '/pipeline/decisions', query: to.query }),
+        },
+        {
+          path: 'training',
+          redirect: (to) => ({ path: '/pipeline/training', query: to.query }),
+        },
+        {
+          path: 'traces',
+          redirect: (to) => ({ path: '/pipeline/traces', query: to.query }),
         },
         {
           path: 'game',
@@ -42,29 +80,9 @@ const router = createRouter({
           redirect: '/experiment-configs',
         },
         {
-          path: 'data',
-          name: 'data',
-          component: () => import('@/views/DataView.vue'),
-        },
-        {
-          path: 'training',
-          name: 'training',
-          component: () => import('@/views/TrainingView.vue'),
-        },
-        {
           path: 'prompt',
           name: 'prompt',
           component: () => import('@/views/PromptView.vue'),
-        },
-        {
-          path: 'traces',
-          name: 'traces',
-          component: () => import('@/views/TraceView.vue'),
-        },
-        {
-          path: 'decisions',
-          name: 'decisions',
-          component: () => import('@/views/DecisionView.vue'),
         },
         {
           path: 'settings',

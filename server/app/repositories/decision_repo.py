@@ -7,6 +7,30 @@ from typing import Any
 
 import aiosqlite
 
+_TRACE_EXPLAIN_SQL = """
+json_extract((
+    SELECT t.metrics FROM traces t
+    WHERE t.game_id = decision_points.game_id
+      AND t.round_number = decision_points.round_number
+      AND t.player_id = decision_points.player_id
+    ORDER BY t.created_at DESC LIMIT 1
+), '$.used_langchain_parser') AS parser_ok,
+json_extract((
+    SELECT t.input_snapshot FROM traces t
+    WHERE t.game_id = decision_points.game_id
+      AND t.round_number = decision_points.round_number
+      AND t.player_id = decision_points.player_id
+    ORDER BY t.created_at DESC LIMIT 1
+), '$.win_probability') AS win_probability_json,
+json_extract((
+    SELECT t.input_snapshot FROM traces t
+    WHERE t.game_id = decision_points.game_id
+      AND t.round_number = decision_points.round_number
+      AND t.player_id = decision_points.player_id
+    ORDER BY t.created_at DESC LIMIT 1
+), '$.hand_analysis') AS hand_analysis_json
+"""
+
 
 class DecisionRepository:
     """CRUD operations for the ``decision_points`` table."""
@@ -202,7 +226,8 @@ class DecisionRepository:
 
         cursor = await self._db.execute(
             f"""
-            SELECT * FROM decision_points
+            SELECT decision_points.*, {_TRACE_EXPLAIN_SQL}
+            FROM decision_points
             {where_clause}
             ORDER BY created_at DESC
             LIMIT ? OFFSET ?
@@ -215,7 +240,11 @@ class DecisionRepository:
     async def get_by_id(self, decision_id: str) -> dict[str, Any] | None:
         """Get a single decision point by ID."""
         cursor = await self._db.execute(
-            "SELECT * FROM decision_points WHERE id = ?",
+            f"""
+            SELECT decision_points.*, {_TRACE_EXPLAIN_SQL}
+            FROM decision_points
+            WHERE id = ?
+            """,
             (decision_id,),
         )
         row = await cursor.fetchone()
@@ -286,6 +315,44 @@ class DecisionRepository:
         rows = await cursor.fetchall()
         return {row["outcome"]: row["count"] for row in rows}
 
+    async def latest_progress_by_game_ids(
+        self,
+        game_ids: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        """Latest decision snapshot per game (phase / round / player)."""
+        if not game_ids:
+            return {}
+        placeholders = ",".join("?" * len(game_ids))
+        cursor = await self._db.execute(
+            f"""
+            SELECT game_id, game_phase, player_id, round_number
+            FROM (
+                SELECT
+                    game_id,
+                    game_phase,
+                    player_id,
+                    round_number,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY game_id
+                        ORDER BY created_at DESC, round_number DESC
+                    ) AS rn
+                FROM decision_points
+                WHERE game_id IN ({placeholders})
+            )
+            WHERE rn = 1
+            """,
+            game_ids,
+        )
+        rows = await cursor.fetchall()
+        return {
+            str(row["game_id"]): {
+                "game_phase": row["game_phase"],
+                "player_id": row["player_id"],
+                "round_number": int(row["round_number"]),
+            }
+            for row in rows
+        }
+
     async def get_phase_counts(self, experiment_id: str | None = None) -> dict[str, int]:
         """Return counts grouped by game_phase."""
         where, params = self._experiment_where(experiment_id)
@@ -346,10 +413,27 @@ class DecisionRepository:
         return row[0] if row else 0
 
 
+def _parse_json_object(raw: Any) -> dict[str, Any] | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, dict):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, dict) else None
+    return None
+
+
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     """Convert a decision_points row to a dictionary with JSON fields parsed."""
     keys = set(row.keys())
     train_usable_raw = row["train_usable"] if "train_usable" in keys else 1
+    parser_ok: bool | None = None
+    if "parser_ok" in keys and row["parser_ok"] is not None:
+        parser_ok = bool(int(row["parser_ok"]))
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -369,4 +453,11 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         if "train_usable_reason" in keys
         else "",
         "created_at": row["created_at"],
+        "parser_ok": parser_ok,
+        "win_probability": _parse_json_object(
+            row["win_probability_json"] if "win_probability_json" in keys else None
+        ),
+        "hand_analysis": _parse_json_object(
+            row["hand_analysis_json"] if "hand_analysis_json" in keys else None
+        ),
     }

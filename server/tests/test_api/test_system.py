@@ -47,20 +47,6 @@ async def test_seed_demo_is_idempotent(client: AsyncClient) -> None:
     assert second_body["data"]["game_id"] == "game_demo_doudizhu"
 
 
-async def test_startup_check(client: AsyncClient) -> None:
-    response = await client.get("/api/v1/system/startup-check")
-    assert response.status_code == 200
-    body = response.json()
-    assert body["code"] == 0
-    data = body["data"]
-    assert data["data_dirs_ready"] is True
-    assert "can_collect" in data
-    assert "warnings" in data
-    assert isinstance(data["providers"], list)
-    assert "checks" in data
-    assert "ok" in data
-
-
 async def test_preflight_all_scope(client: AsyncClient) -> None:
     response = await client.get("/api/v1/system/preflight", params={"scope": "all"})
     assert response.status_code == 200
@@ -71,6 +57,8 @@ async def test_preflight_all_scope(client: AsyncClient) -> None:
     assert "memory_smoke" in ids
     assert isinstance(data["can_collect"], bool)
     assert isinstance(data["can_train"], bool)
+    assert "data_dirs_ready" not in data
+    assert "seed_provider" not in data
 
 
 async def test_preflight_collect_with_experiment(client: AsyncClient) -> None:
@@ -94,3 +82,10 @@ async def test_preflight_collect_with_experiment(client: AsyncClient) -> None:
     assert "protocol" in ids
     assert "providers_seats" in ids
     assert "providers_any" not in ids
+    for item in data["checks"]:
+        assert item["id"]
+        assert item["message"]
+    seats = next(c for c in data["checks"] if c["id"] == "providers_seats")
+    if not seats["ok"]:
+        params = seats.get("params") or {}
+        assert params.get("providers") or params.get("incomplete") is True

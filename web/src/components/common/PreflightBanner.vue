@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import type { PreflightCheck } from '@/api/systemApi'
 import { cn } from '@/lib/cn'
+import { preflightCheckMessage } from '@/utils/systemLabels'
 
 const props = defineProps<{
   checks: PreflightCheck[]
@@ -32,7 +33,7 @@ const failed = computed(() => props.checks.filter((c) => !c.ok))
         item.severity === 'block' ? 'text-ink-danger' : 'text-ink-text-secondary'
       "
     >
-      {{ item.message }}
+      {{ preflightCheckMessage(item) }}
     </p>
   </div>
 </template>

@@ -18,6 +18,7 @@ from app.core.ai.stream_chunk import StreamChunk
 from app.core.ai.tools.hand_analyzer import HandAnalyzerTool
 from app.core.ai.tools.win_probability import WinProbabilityTool
 from app.core.engine.base import GameAction, GameEngine, GameState
+from app.core.stats.scenarios import classify_game_phase
 from app.database import get_db_connection
 from app.utils.exceptions import (
     AIProviderError,
@@ -603,14 +604,23 @@ class AIService:
         return None
 
     def _determine_game_phase(self, state: GameState) -> str:
-        """Determine the game phase from state."""
-        if hasattr(state, "phase"):
-            return str(state.phase)
+        """Label bidding / playing / endgame for stored decision points."""
+        engine_phase = str(getattr(state, "phase", "") or "")
+        if engine_phase:
+            hands = getattr(state, "hands", None)
+            sizes: list[int] = []
+            if isinstance(hands, dict):
+                for cards in hands.values():
+                    if isinstance(cards, list):
+                        sizes.append(len(cards))
+                    elif isinstance(cards, int):
+                        sizes.append(int(cards))
+            return classify_game_phase(engine_phase=engine_phase, hand_sizes=sizes)
         if hasattr(state, "round_number"):
             round_num = state.round_number
             if round_num <= 5:
                 return "early"
-            elif round_num <= 15:
+            if round_num <= 15:
                 return "mid"
             return "endgame"
         return "unknown"

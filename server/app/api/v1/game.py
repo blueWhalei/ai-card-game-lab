@@ -10,12 +10,14 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 
 from app.dependencies import (
     get_db,
+    get_decision_service,
     get_engine_registry,
     get_game_orchestration_service,
     get_game_service,
 )
 from app.schemas.common import ApiResponse, PaginatedData
 from app.schemas.game import BatchCreateRequest, CreateGameRequest
+from app.services.decision_service import DecisionService
 from app.services.game_orchestration_service import GameOrchestrationService
 from app.services.game_service import GameService
 from app.websocket.handlers import handle_game_websocket
@@ -128,6 +130,20 @@ async def get_replay(
     if isinstance(game.get("player_ids"), str):
         game["player_ids"] = json.loads(game["player_ids"])
     return ApiResponse(data=data)
+
+
+@router.get("/{game_id}/highlights")
+async def get_highlights(
+    game_id: str,
+    service: GameService = Depends(get_game_service),
+    decisions: DecisionService = Depends(get_decision_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Return 3–5 highlight moves for a game (derived from decision points)."""
+    game = await service.get_game(game_id)
+    winner_id = game.get("winner_id")
+    winner = str(winner_id) if winner_id else None
+    items = await decisions.highlights_for_game(game_id, winner_id=winner)
+    return ApiResponse(data={"items": items})
 
 
 @router.post("/batch", status_code=201)

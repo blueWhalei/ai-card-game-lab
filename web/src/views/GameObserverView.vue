@@ -5,16 +5,21 @@ import { useRoute, useRouter } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { gameApi } from '@/api/gameApi'
+import { experimentApi } from '@/api/experimentApi'
 import { experimentConfigApi } from '@/api/experimentConfigApi'
-import type { GameItem, ReplayData } from '@/api/gameApi'
+import type { GameHighlight, GameItem, ReplayData } from '@/api/gameApi'
 import { useGameWebSocket } from '@/composables/useGameWebSocket'
 import type { HistoryEntry } from '@/composables/useGameWebSocket'
 import { coerceObserverSnapshot } from '@/types/observer'
 import { displayCard, isRedCard } from '@/utils/card'
+import { findReplayIndex } from '@/utils/gameHighlights'
+import { thinkingExcerpt } from '@/utils/thinkingExcerpt'
+import { Icon } from '@iconify/vue'
 import GameHeaderBar from '@/components/game/GameHeaderBar.vue'
 import GenericBoard from '@/components/game/GenericBoard.vue'
 import GameReplayControls from '@/components/game/GameReplayControls.vue'
 import GameResultDialog from '@/components/game/GameResultDialog.vue'
+import GameHighlightList from '@/components/game/GameHighlightList.vue'
 import ThinkingPanel from '@/components/game/ThinkingPanel.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
@@ -27,8 +32,9 @@ const game = ref<GameItem | null>(null)
 const loading = ref(true)
 const replayLoading = ref(false)
 const showResultDialog = ref(false)
-const rightPanelTab = ref<'history' | 'thinking'>('thinking')
+const highlights = ref<GameHighlight[]>([])
 const rightPanelCollapsed = ref(false)
+const experimentName = ref('')
 const thinkingExpandedSet = ref(new Set<number>())
 
 const isReplayMode = ref(false)
@@ -56,6 +62,10 @@ const {
   currentRawResponsePreview,
   currentPromptMessages,
   currentRawResponseFull,
+  currentLegalActions,
+  currentParserOk,
+  currentWinProbability,
+  currentHandAnalysis,
   reasoningContent,
   answerContent,
   playerTokenTotals,
@@ -79,6 +89,33 @@ const playerNames = computed<Record<string, string>>(() => {
   }
   return names
 })
+
+const watchTitle = computed(() => {
+  if (experimentName.value) return experimentName.value
+  if (game.value?.experiment_id) return t('game.watchExperiment')
+  return t('game.watchTrial')
+})
+
+const liveExcerpt = computed(() =>
+  thinkingExcerpt(reasoningContent.value || answerContent.value || thinkingContent.value),
+)
+
+const isStreaming = computed(
+  () => Boolean(thinkingPlayer.value) && !isFinished.value && !isReplayMode.value,
+)
+
+async function loadWatchTitle(experimentId?: string | null): Promise<void> {
+  if (!experimentId) {
+    experimentName.value = ''
+    return
+  }
+  try {
+    const res = await experimentApi.get(experimentId)
+    experimentName.value = res.data?.name ?? ''
+  } catch {
+    experimentName.value = ''
+  }
+}
 
 async function fetchConfigNames(ids: string[]) {
   if (ids.length === 0) return
@@ -105,8 +142,38 @@ const latestModelName = computed(() => {
   return latest?.modelName || undefined
 })
 
-watch(winner, (newWinner) => {
-  if (newWinner) showResultDialog.value = true
+async function fetchHighlights(): Promise<void> {
+  try {
+    const res = await gameApi.highlights(gameId.value)
+    highlights.value = res.data.items ?? []
+  } catch {
+    highlights.value = []
+  }
+}
+
+async function jumpToHighlight(item: GameHighlight): Promise<void> {
+  showResultDialog.value = false
+  replayPause()
+  if (!replayData.value) {
+    await loadReplay()
+  }
+  const rounds = replayData.value?.rounds ?? []
+  const idx = findReplayIndex(rounds, item)
+  if (idx >= 0) {
+    isReplayMode.value = true
+    replayStepTo(idx)
+  }
+  rightPanelCollapsed.value = false
+}
+
+watch(winner, async (newWinner) => {
+  if (!newWinner) return
+  await fetchHighlights()
+  if (highlights.value.length === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 1500))
+    await fetchHighlights()
+  }
+  showResultDialog.value = true
 })
 
 watch(lastError, (msg) => {
@@ -118,7 +185,10 @@ async function fetchGame() {
   try {
     const res = await gameApi.get(gameId.value)
     game.value = res.data
-    await fetchConfigNames(res.data.player_ids)
+    await Promise.all([
+      fetchConfigNames(res.data.player_ids),
+      loadWatchTitle(res.data.experiment_id),
+    ])
     isStarted.value = ['running', 'paused', 'finished'].includes(res.data.status)
     isPaused.value = res.data.status === 'paused'
     isFinished.value = res.data.status === 'finished'
@@ -323,6 +393,7 @@ onMounted(async () => {
   }
   if (isFinished.value) {
     await loadReplay()
+    await fetchHighlights()
   } else {
     connectWs()
   }
@@ -338,6 +409,9 @@ watch(gameId, async (next, prev) => {
   if (isFinished.value) {
     disconnectWs()
     await loadReplay()
+    await fetchHighlights()
+  } else {
+    highlights.value = []
   }
 })
 
@@ -355,6 +429,7 @@ onUnmounted(() => {
 
     <GameHeaderBar
       :game="game"
+      :title="watchTitle"
       :is-connected="isConnected"
       :is-started="isStarted"
       :is-paused="isPaused"
@@ -388,6 +463,7 @@ onUnmounted(() => {
         <GenericBoard
           :snapshot="snapshot"
           :thinking-player-id="thinkingPlayer"
+          :thinking-excerpt="liveExcerpt"
           :player-names="playerNames"
           :loading="replayLoading"
           :empty-hint="t('game.waitPush')"
@@ -399,88 +475,20 @@ onUnmounted(() => {
           v-if="!rightPanelCollapsed"
           class="flex max-h-[42vh] w-full shrink-0 flex-col border-t border-ink-obs-border bg-ink-obs-surface lg:max-h-none lg:w-96 lg:border-t-0 lg:border-l"
         >
-          <div class="flex shrink-0 items-center justify-between border-b border-ink-obs-border px-4 py-3">
-            <div class="inline-flex flex-1 rounded-ink bg-ink-obs-bg p-0.5">
-              <button
-                type="button"
-                class="flex-1 rounded-[6px] px-3 py-1.5 text-sm"
-                :class="
-                  rightPanelTab === 'history'
-                    ? 'bg-ink-obs-surface text-ink-obs-text shadow-[var(--ink-shadow)]'
-                    : 'text-ink-obs-muted'
-                "
-                @click="rightPanelTab = 'history'"
-              >
-                {{ t('game.actionLog') }}
-              </button>
-              <button
-                type="button"
-                class="flex-1 rounded-[6px] px-3 py-1.5 text-sm"
-                :class="
-                  rightPanelTab === 'thinking'
-                    ? 'bg-ink-obs-surface text-ink-obs-text shadow-[var(--ink-shadow)]'
-                    : 'text-ink-obs-muted'
-                "
-                @click="rightPanelTab = 'thinking'"
-              >
-                {{ t('game.aiThinking') }}
-              </button>
-            </div>
+          <div class="flex shrink-0 items-center justify-between px-ink-4 py-ink-3">
+            <p class="text-caption text-ink-obs-muted">{{ t('game.aiThinking') }}</p>
             <button
               type="button"
-              class="ml-2 rounded-ink p-1.5 text-ink-obs-muted hover:bg-ink-obs-bg"
+              class="rounded-ink p-1.5 text-ink-obs-muted hover:bg-ink-obs-bg"
               :title="t('game.collapsePanel')"
               :aria-label="t('game.collapseSidebar')"
               @click="rightPanelCollapsed = true"
             >
-              ›
+              <Icon icon="lucide:panel-right-close" class="h-4 w-4" />
             </button>
           </div>
 
-          <div
-            v-show="rightPanelTab === 'history'"
-            ref="historyPanel"
-            class="flex-1 overflow-y-auto p-4"
-          >
-            <div v-if="actionHistory.length === 0" class="py-12 text-center text-sm text-ink-obs-muted">
-              {{ t('game.noRecords') }}
-            </div>
-            <div
-              v-for="(entry, i) in actionHistory"
-              :key="i"
-              class="mb-2 rounded-ink bg-ink-obs-bg px-3 py-2.5"
-            >
-              <div class="mb-1 flex items-center gap-2 text-xs text-ink-obs-muted">
-                <span class="font-mono">R{{ entry.round }}</span>
-                <span class="font-medium text-ink-obs-text">{{ entry.playerId }}</span>
-                <span v-if="entry.responseTimeMs" class="rounded px-2 py-0.5 text-ink-obs-muted">
-                  {{
-                    entry.responseTimeMs >= 1000
-                      ? `${(entry.responseTimeMs / 1000).toFixed(1)}s`
-                      : `${entry.responseTimeMs}ms`
-                  }}
-                </span>
-              </div>
-              <div v-if="entry.actionType === 'PASS'" class="text-sm text-ink-obs-muted">{{
-                t('action.PASS')
-              }}</div>
-              <div v-else class="flex flex-wrap gap-1">
-                <span
-                  v-for="(card, j) in entry.cards"
-                  :key="j"
-                  class="inline-block text-sm font-bold"
-                  :class="isRedCard(card) ? 'text-red-400' : 'text-ink-obs-text'"
-                >
-                  {{ displayCard(card) }}
-                </span>
-                <span v-if="entry.cards.length === 0" class="text-xs text-ink-obs-muted">
-                  {{ entry.actionType }}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          <div v-show="rightPanelTab === 'thinking'" class="min-h-0 flex-1 overflow-hidden">
+          <div class="min-h-0 flex-1 overflow-hidden">
             <ThinkingPanel
               :current-player-id="thinkingPlayer"
               :current-thinking="thinkingContent"
@@ -491,11 +499,77 @@ onUnmounted(() => {
               :current-raw-response-preview="currentRawResponsePreview"
               :current-prompt-messages="currentPromptMessages"
               :current-raw-response-full="currentRawResponseFull"
+              :current-legal-actions="currentLegalActions"
+              :current-parser-ok="currentParserOk"
+              :current-win-probability="currentWinProbability"
+              :current-hand-analysis="currentHandAnalysis"
               :current-reasoning="reasoningContent"
               :current-answer="answerContent"
+              :is-streaming="isStreaming"
+              :player-names="playerNames"
               :history="thinkingHistory"
               v-model:expanded-set="thinkingExpandedSet"
             />
+          </div>
+
+          <div
+            ref="historyPanel"
+            class="max-h-[36%] shrink-0 overflow-y-auto border-t border-ink-obs-border px-ink-4 py-ink-3"
+          >
+            <p class="mb-ink-2 text-caption text-ink-obs-muted">{{ t('game.actionLog') }}</p>
+            <div v-if="isFinished && highlights.length" class="mb-ink-3">
+              <p class="mb-ink-2 text-caption font-medium text-ink-obs-muted">
+                {{ t('game.highlightsTitle') }}
+              </p>
+              <GameHighlightList
+                :items="highlights"
+                :game-id="gameId"
+                :player-names="playerNames"
+                tone="observer"
+                @jump="jumpToHighlight"
+              />
+            </div>
+            <div
+              v-if="actionHistory.length === 0 && !(isFinished && highlights.length)"
+              class="py-ink-6 text-center text-caption text-ink-obs-muted"
+            >
+              {{ t('game.noRecords') }}
+            </div>
+            <div
+              v-for="(entry, i) in actionHistory"
+              :key="i"
+              class="mb-ink-2 rounded-ink bg-ink-obs-bg px-3 py-ink-2"
+            >
+              <div class="mb-1 flex items-center gap-ink-2 text-caption text-ink-obs-muted">
+                <span class="font-mono">R{{ entry.round }}</span>
+                <span class="font-medium text-ink-obs-text">{{
+                  playerNames[entry.playerId] || entry.playerId
+                }}</span>
+                <span v-if="entry.responseTimeMs" class="text-ink-obs-muted">
+                  {{
+                    entry.responseTimeMs >= 1000
+                      ? `${(entry.responseTimeMs / 1000).toFixed(1)}s`
+                      : `${entry.responseTimeMs}ms`
+                  }}
+                </span>
+              </div>
+              <div v-if="entry.actionType === 'PASS'" class="text-body text-ink-obs-muted">{{
+                t('action.PASS')
+              }}</div>
+              <div v-else class="flex flex-wrap gap-1">
+                <span
+                  v-for="(card, j) in entry.cards"
+                  :key="j"
+                  class="inline-block text-body font-semibold"
+                  :class="isRedCard(card) ? 'text-red-400' : 'text-ink-obs-text'"
+                >
+                  {{ displayCard(card) }}
+                </span>
+                <span v-if="entry.cards.length === 0" class="text-caption text-ink-obs-muted">
+                  {{ entry.actionType }}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
       </Transition>
@@ -511,7 +585,7 @@ onUnmounted(() => {
           :aria-label="t('game.expandSidebar')"
           @click="rightPanelCollapsed = false"
         >
-          ‹
+          <Icon icon="lucide:panel-right-open" class="h-4 w-4" />
         </button>
       </div>
     </div>
@@ -520,7 +594,10 @@ onUnmounted(() => {
       v-model="showResultDialog"
       :game-id="gameId"
       :winner="winner"
+      :highlights="highlights"
+      :player-names="playerNames"
       @back="goBack"
+      @jump="jumpToHighlight"
     />
   </div>
 </template>

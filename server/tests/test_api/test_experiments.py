@@ -132,6 +132,55 @@ async def test_collect_writes_experiment_id(client: AsyncClient) -> None:
     assert summary["total_games"] == 2
     assert summary["status"] == "collecting"
     assert summary["latest_game_id"] in body["game_ids"]
+    assert games[0]["progress"] == {"phase": "queued", "round": None, "player_id": None}
+
+
+async def test_experiment_game_progress_from_latest_decision(client: AsyncClient) -> None:
+    created = await _create_experiment(client, target_games=1)
+    with patch(
+        "app.services.game_service.GameService.start_game",
+        new_callable=AsyncMock,
+        side_effect=lambda game_id, db=None: {"id": game_id, "status": "running"},
+    ):
+        collect = await client.post(
+            f"/api/v1/experiments/{created['id']}/collect",
+            json={"count": 1},
+        )
+    game_id = collect.json()["data"]["game_ids"][0]
+
+    from app.database import open_db_connection
+    from app.dependencies import get_settings
+    from app.repositories.decision_repo import DecisionRepository
+
+    settings = get_settings()
+    conn = await open_db_connection(settings.sqlite_path)
+    try:
+        repo = DecisionRepository(conn)
+        await repo.create(
+            decision_id="dp_progress_1",
+            game_id=game_id,
+            round_number=12,
+            player_id=VALID_PLAYER_IDS[0],
+            hand_cards=[3],
+            opponent_hands={"p2": 8},
+            last_action=None,
+            game_phase="endgame",
+            legal_actions=[{"type": "pass"}],
+            chosen_action={"type": "pass"},
+            thinking="think",
+            train_usable=True,
+            created_at="2026-09-04T00:00:00+00:00",
+        )
+    finally:
+        await conn.close()
+
+    detail = await client.get(f"/api/v1/experiments/{created['id']}")
+    game = detail.json()["data"]["games"][0]
+    assert game["progress"] == {
+        "phase": "endgame",
+        "round": 12,
+        "player_id": VALID_PLAYER_IDS[0],
+    }
 
 
 async def test_decision_filter_by_experiment(client: AsyncClient) -> None:
@@ -394,6 +443,7 @@ async def test_get_experiment_includes_timeline_and_next_step(client: AsyncClien
     assert data["next_step"]["id"] == "collect"
     assert "validation" in data
     assert data["validation"]["control_experiment_ids"] == []
+    assert data.get("delta") is None
 
 
 async def test_clone_experiment(client: AsyncClient) -> None:

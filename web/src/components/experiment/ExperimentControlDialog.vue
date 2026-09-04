@@ -12,7 +12,7 @@ import { controlSlotLabels } from '@/utils/experimentWorkbench'
 
 const { t } = useI18n()
 
-const props = defineProps<{
+defineProps<{
   challengerOptions: SelectOption[]
   baselineOptions: SelectOption[]
   canSubmit: boolean
@@ -69,6 +69,7 @@ function prevStep(): void {
 <template>
   <UiDialog
     :open="open"
+    size="lg"
     :title="t('control.title')"
     :description="stepTitle"
     @update:open="open = $event"

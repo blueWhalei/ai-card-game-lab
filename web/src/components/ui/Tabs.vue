@@ -29,7 +29,7 @@ const emit = defineEmits<{
         v-for="tab in tabs"
         :key="tab.value"
         :value="tab.value"
-        class="rounded-[6px] px-3 py-1.5 text-base font-medium text-ink-text-muted transition-colors data-[state=active]:bg-ink-surface data-[state=active]:text-ink-text data-[state=active]:shadow-[var(--ink-shadow)]"
+        class="rounded-[6px] px-3 py-1.5 text-body font-medium text-ink-text-muted transition-colors data-[state=active]:bg-ink-surface data-[state=active]:text-ink-text data-[state=active]:shadow-[var(--ink-shadow)]"
       >
         {{ tab.label }}
       </TabsTrigger>

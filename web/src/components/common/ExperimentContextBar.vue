@@ -9,13 +9,10 @@ import UiButton from '@/components/ui/Button.vue'
 const props = withDefaults(
   defineProps<{
     experimentId: string
-    /** Tab to open on the experiment detail when returning. */
-    returnTab?: 'decisions' | 'traces' | 'games' | 'training'
     /** Show a control that clears experiment scope on the current tool page. */
     clearable?: boolean
   }>(),
   {
-    returnTab: 'games',
     clearable: false,
   },
 )
@@ -43,11 +40,7 @@ async function loadName(id: string): Promise<void> {
 }
 
 function goBack(): void {
-  const tab = props.returnTab === 'games' ? undefined : props.returnTab
-  void router.push({
-    path: `/experiments/${props.experimentId}`,
-    query: tab ? { tab } : undefined,
-  })
+  void router.push({ path: `/experiments/${props.experimentId}` })
 }
 
 watch(

@@ -13,6 +13,12 @@ export interface BatchCreateRequest {
   count: number
 }
 
+export interface GameProgress {
+  phase: string
+  round: number | null
+  player_id: string | null
+}
+
 export interface GameItem {
   id: string
   game_type: string
@@ -26,6 +32,7 @@ export interface GameItem {
   finished_at: string | null
   metadata: Record<string, unknown> | null
   experiment_id?: string | null
+  progress?: GameProgress | null
 }
 
 export interface ReplayData {
@@ -52,6 +59,24 @@ export interface ReplayData {
   thinking: Record<number, string>
 }
 
+export type HighlightReason =
+  | 'last_play'
+  | 'bomb'
+  | 'fallback'
+  | 'endgame'
+  | 'branch'
+  | 'play'
+
+export interface GameHighlight {
+  decision_id: string
+  round_number: number
+  player_id: string
+  reason: HighlightReason | string
+  action_type: string
+  cards: string[]
+  parser_ok?: boolean | null
+}
+
 export const gameApi = {
   list: (params?: Record<string, string | number>) =>
     apiClient.get<never, ApiResponse<PaginatedData<GameItem>>>('/api/v1/games', { params }),
@@ -71,6 +96,11 @@ export const gameApi = {
 
   replay: (id: string) =>
     apiClient.get<never, ApiResponse<ReplayData>>(`/api/v1/games/${id}/replay`),
+
+  highlights: (id: string) =>
+    apiClient.get<never, ApiResponse<{ items: GameHighlight[] }>>(
+      `/api/v1/games/${id}/highlights`,
+    ),
 
   batch: (data: BatchCreateRequest) =>
     apiClient.post<never, ApiResponse<{ game_ids: string[]; count: number }>>(

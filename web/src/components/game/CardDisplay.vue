@@ -42,12 +42,21 @@ const sortedCards = computed(() => {
 })
 
 const sizeConfig = {
-  default: { width: 60, height: 84, overlap: 24, radius: 6 },
-  table: { width: 48, height: 67, overlap: 20, radius: 5 },
-  mini: { width: 36, height: 50, overlap: 16, radius: 4 },
+  default: { width: 60, height: 84, overlap: 32, radius: 6 },
+  table: { width: 52, height: 72, overlap: 30, radius: 6 },
+  mini: { width: 36, height: 50, overlap: 18, radius: 4 },
 } as const
 
 const currentSize = computed(() => sizeConfig[props.size])
+
+function compactStyle(index: number): Record<string, string | number> {
+  if (!props.compact) return {}
+  const { width, overlap } = currentSize.value
+  return {
+    zIndex: index,
+    marginLeft: index === 0 ? 0 : `-${width - overlap}px`,
+  }
+}
 
 const containerStyle = computed(() => {
   if (!props.compact || sortedCards.value.length === 0) {
@@ -86,7 +95,7 @@ const sizeClass = computed(() =>
           sizeClass,
           playing ? 'playing-card--playing' : '',
         ]"
-        :style="compact ? { zIndex: index } : {}"
+        :style="compactStyle(index)"
         @click="toggleCard(card)"
       >
         <div class="card-corner card-corner--top">
@@ -125,14 +134,6 @@ const sizeClass = computed(() =>
   gap: 0;
 }
 
-.card-container--compact .playing-card--table {
-  margin-left: -20px;
-}
-
-.card-container--compact .playing-card--mini {
-  margin-left: -16px;
-}
-
 .playing-card {
   position: relative;
   width: 60px;
@@ -146,14 +147,6 @@ const sizeClass = computed(() =>
     transform 0.15s ease,
     box-shadow 0.15s ease;
   overflow: hidden;
-}
-
-.card-container--compact .playing-card {
-  margin-left: -24px;
-}
-
-.card-container--compact .playing-card:first-child {
-  margin-left: 0;
 }
 
 .playing-card--black {
@@ -219,25 +212,25 @@ const sizeClass = computed(() =>
 }
 
 .playing-card--table {
-  width: 48px;
-  height: 67px;
-  border-radius: 5px;
+  width: 52px;
+  height: 72px;
+  border-radius: 6px;
 }
 
 .playing-card--table .card-rank {
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .playing-card--table .card-suit {
-  font-size: 8px;
+  font-size: 10px;
 }
 
 .playing-card--table .card-suit-large {
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .playing-card--table .card-joker-text {
-  font-size: 9px;
+  font-size: 10px;
 }
 
 .playing-card--table .card-corner--top {

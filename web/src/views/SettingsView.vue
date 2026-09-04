@@ -7,6 +7,7 @@ import { apiClient } from '@/api/client'
 import type { ApiResponse } from '@/api/types'
 import { showApiError } from '@/utils/error'
 import { formatBytes } from '@/utils/format'
+import { providerDescription, providerName } from '@/utils/systemLabels'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -134,8 +135,10 @@ onMounted(fetchAll)
           class="flex items-center justify-between gap-3 py-2.5"
         >
           <div class="min-w-0">
-            <div class="text-sm font-medium text-ink-text">{{ p.name }}</div>
-            <div class="truncate text-xs text-ink-text-muted">{{ p.description }}</div>
+            <div class="text-sm font-medium text-ink-text">{{ providerName(p.id, p.name) }}</div>
+            <div class="truncate text-xs text-ink-text-muted">
+              {{ providerDescription(p.id, p.description) }}
+            </div>
           </div>
           <UiBadge variant="success">{{ t('settings.configured') }}</UiBadge>
         </li>
@@ -154,7 +157,7 @@ onMounted(fetchAll)
             :key="p.id"
             class="flex items-center justify-between gap-3 py-2"
           >
-            <span class="text-sm text-ink-text-muted">{{ p.name }}</span>
+            <span class="text-sm text-ink-text-muted">{{ providerName(p.id, p.name) }}</span>
             <UiBadge variant="muted">{{ t('settings.unconfigured') }}</UiBadge>
           </li>
         </ul>

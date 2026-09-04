@@ -46,6 +46,18 @@ export interface ThinkingEntry {
   rawResponseFull?: string
   reasoning?: string
   answer?: string
+  legalActions?: Array<{ action_type?: string; cards?: string[] }>
+  parserOk?: boolean | null
+  winProbability?: {
+    probability?: number
+    confidence?: string
+    reasoning?: string
+  }
+  handAnalysis?: {
+    bomb_count?: number
+    rocket?: boolean
+    strength_score?: number
+  }
 }
 
 interface PendingThinkingEntry {
@@ -65,6 +77,10 @@ interface PendingThinkingEntry {
   rawResponseFull?: string
   reasoning?: string
   answer?: string
+  legalActions?: Array<{ action_type?: string; cards?: string[] }>
+  parserOk?: boolean | null
+  winProbability?: ThinkingEntry['winProbability']
+  handAnalysis?: ThinkingEntry['handAnalysis']
 }
 
 export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
@@ -86,6 +102,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
   const currentRawResponsePreview = ref('')
   const currentPromptMessages = ref<Array<{ role: string; content: string }>>([])
   const currentRawResponseFull = ref('')
+  const currentLegalActions = ref<Array<{ action_type?: string; cards?: string[] }>>([])
+  const currentParserOk = ref<boolean | null>(null)
+  const currentWinProbability = ref<ThinkingEntry['winProbability']>(undefined)
+  const currentHandAnalysis = ref<ThinkingEntry['handAnalysis']>(undefined)
   const pendingThinking = ref<Record<string, PendingThinkingEntry>>({})
   const lastResponseTimeMs = ref<Record<string, number>>({})
   const playerTokenTotals = ref<Record<string, number>>({})
@@ -146,6 +166,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponsePreview.value = ''
       currentPromptMessages.value = []
       currentRawResponseFull.value = ''
+      currentLegalActions.value = data.legal_actions || []
+      currentParserOk.value = null
+      currentWinProbability.value = undefined
+      currentHandAnalysis.value = undefined
     })
 
     onMessage('thinking_chunk', (d: unknown) => {
@@ -170,6 +194,11 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponsePreview.value = data.raw_response_preview || ''
       currentPromptMessages.value = data.prompt_messages || []
       currentRawResponseFull.value = data.raw_response_full || ''
+      if (data.legal_actions) currentLegalActions.value = data.legal_actions
+      currentParserOk.value =
+        typeof data.used_langchain_parser === 'boolean' ? data.used_langchain_parser : null
+      currentWinProbability.value = data.win_probability
+      currentHandAnalysis.value = data.hand_analysis
 
       const pid = data.player_id || thinkingPlayer.value
       pendingThinking.value[pid] = {
@@ -189,6 +218,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
         rawResponseFull: data.raw_response_full || '',
         reasoning: reasoningContent.value,
         answer: answerContent.value,
+        legalActions: data.legal_actions || currentLegalActions.value,
+        parserOk: currentParserOk.value,
+        winProbability: data.win_probability,
+        handAnalysis: data.hand_analysis,
       }
       if (data.response_time_ms) {
         lastResponseTimeMs.value[pid] = data.response_time_ms
@@ -265,6 +298,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
           rawResponseFull: pending.rawResponseFull,
           reasoning: pending.reasoning,
           answer: pending.answer,
+          legalActions: pending.legalActions,
+          parserOk: pending.parserOk,
+          winProbability: pending.winProbability,
+          handAnalysis: pending.handAnalysis,
         })
       }
       if (typeof pending?.totalTokens === 'number') {
@@ -282,6 +319,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponsePreview.value = ''
       currentPromptMessages.value = []
       currentRawResponseFull.value = ''
+      currentLegalActions.value = []
+      currentParserOk.value = null
+      currentWinProbability.value = undefined
+      currentHandAnalysis.value = undefined
       nextTick(() => {
         if (historyPanel.value) {
           historyPanel.value.scrollTop = historyPanel.value.scrollHeight
@@ -383,6 +424,10 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
     currentRawResponsePreview,
     currentPromptMessages,
     currentRawResponseFull,
+    currentLegalActions,
+    currentParserOk,
+    currentWinProbability,
+    currentHandAnalysis,
     pendingThinking,
     lastResponseTimeMs,
     playerTokenTotals,

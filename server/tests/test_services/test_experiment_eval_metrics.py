@@ -165,6 +165,12 @@ async def test_summary_eval_metrics_and_seat_landlord_win_rate(db_path: str) -> 
     assert summary["tokens_per_game"] == 150.0  # 300 / 2 finished
     assert summary["status_counts"]["finished"] == 2
     assert summary["status_counts"]["failed"] == 1
+    playing = summary["scenario_scores"]["playing"]
+    assert playing["n"] == 2
+    assert playing["train_usable_n"] == 1
+    assert summary["scenario_scores"]["bidding"]["n"] == 0
+    assert summary["scenario_scores"]["endgame"]["n"] == 0
+    assert summary["scenario_scores"]["bomb"]["n"] == 0
 
     by_pid = {s["player_id"]: s for s in summary["player_stats"]}
     assert by_pid["cfg_a"]["games_as_landlord"] == 1
@@ -280,3 +286,99 @@ async def test_compare_eval_fields_and_paired_landlord_win_rate(db_path: str) ->
     assert ps["control_id"] == "exp-ctrl"
     assert ps["shared_seeds"] == 2
     assert ps["landlord_win_rate_diff"] == 0.5
+    assert "bidding" in base["scenario_scores"]
+    assert "bomb" in ctrl["scenario_scores"]
+
+
+async def test_summary_scenario_scores_split_buckets(db_path: str) -> None:
+    now = datetime.now(tz=UTC).isoformat()
+    players = '["cfg_a","cfg_b","cfg_c"]'
+    mid_hand = json.dumps(["S3"] * 12)
+    short_hand = json.dumps(["S3"] * 4)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute(
+            """
+            INSERT INTO experiments (
+                id, name, notes, game_type, player_ids, target_games, created_at, updated_at
+            ) VALUES (?, ?, '', 'doudizhu', ?, 5, ?, ?)
+            """,
+            ("exp-scene", "scene", players, now, now),
+        )
+        await db.execute(
+            """
+            INSERT INTO games (
+                id, game_type, status, player_ids, winner_id, winner_role,
+                total_rounds, data_file, created_at, experiment_id, metadata
+            ) VALUES
+                ('gs1', 'doudizhu', 'finished', ?, 'cfg_a', 'landlord', 10, 'a.jsonl', ?,
+                 'exp-scene', ?)
+            """,
+            (players, now, json.dumps({"landlord_id": "cfg_a"})),
+        )
+        await db.execute(
+            """
+            INSERT INTO decision_points (
+                id, game_id, round_number, player_id, hand_cards, game_phase,
+                legal_actions, chosen_action, train_usable, created_at
+            ) VALUES
+                ('d-bid', 'gs1', 1, 'cfg_a', ?, 'bidding', '[]', ?, 1, ?),
+                ('d-play', 'gs1', 2, 'cfg_a', ?, 'playing', '[]', ?, 1, ?),
+                ('d-end', 'gs1', 3, 'cfg_a', ?, 'playing', '[]', ?, 0, ?),
+                ('d-bomb', 'gs1', 4, 'cfg_a', ?, 'playing', '[]', ?, 1, ?)
+            """,
+            (
+                mid_hand,
+                json.dumps({"action_type": "BID", "cards": []}),
+                now,
+                mid_hand,
+                json.dumps({"action_type": "SINGLE", "cards": ["S3"]}),
+                now,
+                short_hand,
+                json.dumps({"action_type": "PASS", "cards": []}),
+                now,
+                mid_hand,
+                json.dumps({"action_type": "BOMB", "cards": []}),
+                now,
+            ),
+        )
+        await db.commit()
+        db.row_factory = aiosqlite.Row
+        traces = TraceRepository(db)
+        await traces.create_trace(
+            trace_id="tr-bid",
+            game_id="gs1",
+            round_number=1,
+            player_id="cfg_a",
+            model="m",
+            prompt_version="v1",
+            input_snapshot={},
+            output_data={},
+            metrics={"used_langchain_parser": 1},
+            created_at=now,
+        )
+        await traces.create_trace(
+            trace_id="tr-end",
+            game_id="gs1",
+            round_number=3,
+            player_id="cfg_a",
+            model="m",
+            prompt_version="v1",
+            input_snapshot={},
+            output_data={},
+            metrics={"used_langchain_parser": 0},
+            created_at=now,
+        )
+
+    service = ExperimentService(sqlite_path=db_path, game_service=_FakeGameService())  # type: ignore[arg-type]
+    detail = await service.get_experiment("exp-scene")
+    scores = detail["summary"]["scenario_scores"]
+    assert scores["bidding"]["n"] == 1
+    assert scores["bidding"]["train_usable_rate"] == 1.0
+    assert scores["bidding"]["parser_success_rate"] == 1.0
+    assert scores["playing"]["n"] == 1
+    assert scores["endgame"]["n"] == 1
+    assert scores["endgame"]["train_usable_rate"] == 0.0
+    assert scores["endgame"]["parser_success_rate"] == 0.0
+    assert scores["bomb"]["n"] == 1
+    assert scores["bomb"]["train_usable_n"] == 1
+

@@ -79,7 +79,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
   - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`.
   - `collector/` — JSONL writer.
-  - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
+  - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
   - `events/` — in-process `EventBus` + game lifecycle events.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
@@ -92,44 +92,63 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
 - `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.
 - Dual shells:
-  - `WorkbenchLayout.vue` — grouped nav: Lab / Data & training / Tune (zh: 研究 / 数据与训练 / 调试). Page enter fade only (`ink-page`); do not wrap the observer shell. Layout owns the page title; list pages should not repeat an in-page subtitle. Brand logo at `/logo.png` in sidebar header. **Usage guide** (`/guide`) is header-only via `HeaderToggles` (book icon), not in the sidebar.
+  - `WorkbenchLayout.vue` — five destinations: Experiments / Players / Trial games / Analyze / Settings (zh: 实验 / 选手 / 试玩 / 分析 / 设置). Analyze is a hub (`/pipeline/{data,decisions,training,traces}`); old `/data` `/decisions` `/training` `/traces` redirect and keep query. Prompts stay at `/prompt`, linked from Settings. Route swap is immediate (no page `Transition`; it raced with overlay unmount). Do not wrap the observer shell. Layout owns the page title; list pages should not repeat an in-page subtitle. Brand logo at `/logo.png` in sidebar header. **Usage guide** (`/guide`) is header-only via `HeaderToggles` (book icon), not in the sidebar.
   - `ObserverLayout.vue` — fullscreen watch / replay.
-- UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Density helpers: `KpiStrip`, `NameChips`, `CompactRecordList`, `UiTable` compact mode. Charts: ECharts.
-- Experiment detail is a **stage workbench** (collect, watch, next-step primary CTA); decisions/traces/training live on Pipeline pages with `?experiment_id=`. Legacy `/experiments/:id?tab=decisions|traces|training` redirects to those pages.
+- UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Density helpers: `KpiStrip`, `NameChips`, `CompactRecordList`. Charts: ECharts.
+- Design baseline (`styles/tokens.css`): font sizes come **only** from the six-step
+  scale (`--ink-text-caption/body/lead/title/headline/verdict`, exposed as
+  `text-caption` … `text-verdict`); spacing from `--ink-space-*` (`p-ink-4`, `gap-ink-3`).
+  Hierarchy is expressed with size and weight, not with extra borders and fills:
+  `.ink-card` has no shadow, `.ink-layer` is for floating layers only, and `.ink-section`
+  groups with whitespace. There is a single row density — `UiTable` has no `density` prop.
+  `--ink-evidence-*` renders a claim's confidence (weak claims look weak); it is never
+  a good/bad hue.
+- Experiment detail is a **five-act stage**: `resolveStageId()` (`utils/experimentStage.ts`) picks
+  one of `empty` / `collecting` / `harvest` / `control` / `verdict`, and `ExperimentStage.vue`
+  renders exactly one act — a single claim sentence plus a single action (`StageAction.vue`,
+  or `StageVerdict.vue` for the verdict). Do **not** reintroduce stacked strips or a games/players
+  segmented control; the games list and player table are quiet sections under
+  `ExperimentTimeline.vue`. Decisions/traces/training live on Pipeline pages with
+  `?experiment_id=`. Legacy `/experiments/:id?tab=decisions|traces|training` redirects there.
+- A blocking preflight check **replaces** the act's claim and action rather than sitting in a
+  banner above a button that only warns. Only `severity: warn` renders as a notice.
 - Observation uses **one** `GenericBoard` list board. Do not add `components/game/boards/<Game>Board.vue` or branch `GameObserverView` by `game_type`.
 
 ### Routes
 
 | Path | View |
 |------|------|
-| `/` | `ExperimentListView` (home) |
+| `/` | `ExperimentListView` (home; first-run checklist until provider + players + experiment) |
 | `/experiments/:id` | `ExperimentDetailView` (detail page; stage workbench with primary CTA) |
 | `/experiments/compare` | `ExperimentCompareView` |
-| `/pipeline` | redirect to `/` |
+| `/pipeline` | `PipelineView` (Analyze hub; redirects to `/pipeline/data`) |
+| `/pipeline/data` | `DataView` |
+| `/pipeline/decisions` | `DecisionView` |
+| `/pipeline/training` | `TrainingView` |
+| `/pipeline/traces` | `TraceView` |
 | `/game` | `GameView` (trial games — zh: 试玩对局) |
 | `/game/:id` | `GameObserverView` (Observer shell) |
 | `/experiment-configs` | `ExperimentConfigView` (`/ai-players` redirects here) |
-| `/data` | `DataView` |
-| `/decisions` | `DecisionView` |
-| `/training` | `TrainingView` |
-| `/prompt` | `PromptView` |
-| `/traces` | `TraceView` |
+| `/prompt` | `PromptView` (linked from Settings; not in the sidebar) |
 | `/settings` | `SettingsView` (read-only: providers, paths, storage; preflight via `GET /api/v1/system/preflight`) |
 | `/guide` | `GuideView` (usage guide: modules, flow diagrams; TOC on the right on desktop) |
 
-Deep links: `/decisions?experiment_id=`, `/traces?experiment_id=`, `/data?experiment_id=`, `/training?experiment_id=`. Tool pages with `experiment_id` show a context bar back to the experiment detail.
+Legacy `/data`, `/decisions`, `/training`, `/traces` redirect to the matching `/pipeline/…` path and keep the query. Deep links (`?experiment_id=`, `?game_id=&decision_id=`) still work. The Analyze hub owns the experiment context bar.
 
 ## Experiments
 
 - Table `experiments` includes `hypothesis`, `conclusion`, `tags` (JSON array), plus existing `notes` and frozen `protocol`.
 - `games.experiment_id` is nullable (trial games on `/game` stay outside experiments).
-- Creating an experiment does **not** start games (avoids accidental API spend). Collect from the detail page.
+- Creating an experiment does **not** start games (avoids accidental API spend). Start the experiment from the detail page.
+- Home (`/`): first-run checklist (configured provider → enough player configs → an experiment) until complete; **Load demo** remains a skip path. Experiment list can **import** a JSON pack; detail ⋯ **export** is the same format (legacy client manifests still import).
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
-- Detail page: `ExperimentDetailContextBar` (`next_step` primary action), `ExperimentValidationStrip` (control progress), games list, optional results strip + players tab after first finished game; **archive** dialog (notebook, protocol, validation, clone/manifest). Collect / pause, watch, register-and-train, control wizard, compare via primary action or ⋯ menu.
+- Detail page acts, in the order `resolveStageId()` checks them: `empty` (no games — Start experiment, and say it costs API usage), `collecting` (progress number + watch), `harvest` (trainable-decision count + Start training, or review exclusions when `next_step.id=review_decisions`), `control` (explain same-deal validation; register the `lora_*` player first when none exists; Start control experiment), `verdict` (`StageVerdict`). Identity bar (back / name / status / ⋯) and the **archive** dialog (notebook, protocol, validation, clone/manifest) stay on every act. The ⋯ menu carries the experiment-scoped Pipeline entries (decisions / data / training / traces); acts only link out when that *is* the next step (e.g. `review_decisions`), so pruning an act must not prune a deep link. Home list keeps **Compare several experiments**.
+- The verdict act shows: one claim sentence from `delta.verdict_key`, the Δ number, a support line (paired n + CI), and an evidence line that turns "not enough" into a number of games to run. `can_conclude=false` renders the claim and number through `--ink-evidence-weak` (lighter, not bold) — confidence is legible without reading the text. Scenario subscores are a `ExperimentScenarioBars` small-multiples row that only annotates the one notable gap, not four equal KPI cells.
+- Δ cells have a `?` (`MetricHint`) linking to `/guide#metrics`. Formulas live in `metricHint.*` i18n and `guide.sections.metrics`. Changing an eval formula or verdict copy requires updating both. Δ is **not** colored good/bad.
 - `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
-- Detail tabs: **games** / **players** only (`?tab=players`); deep analysis uses Pipeline deep links above.
-- Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, per-seat as-landlord win rate (needs `metadata.landlord_id`), plus `credibility` (decisive_n / CI width / low_power). Collect CTA uses `GET /api/v1/system/preflight` (seat providers); Settings shows the same checks.
-- `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `control_progress` + `validation_ready`), and `next_step` (`collect_control` → control experiment collect).
+- Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, per-seat as-landlord win rate (needs `metadata.landlord_id`), plus `credibility` (decisive_n / CI width / low_power) and `scenario_scores` (bidding / playing / endgame / bomb: train_usable + parser). Collect CTA uses `GET /api/v1/system/preflight` (seat providers); Settings shows the same checks. UI copy comes from `preflight.*` by check `id` (not the backend `message`).
+- `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `control_progress` + `validation_ready`), `next_step` (`open_control` after training completes with no control yet; `collect_control` → control experiment collect; `review` + `action=stay` when a control is ready — stay on the detail verdict, do not jump to compare), and `delta` (vs source or first control: landlord win-rate Δ, paired n, CI, `can_conclude` / `inconclusive_reason`, `verdict_key`, plus per-scenario train/parser Δ). New decisions store `game_phase=endgame` when any remaining hand has ≤8 cards.
+- `verdict_key` (`stronger` / `weaker` / `even` / `peer_pending` / `no_data`, from `_verdict_key()`) is the plain-language claim the UI renders as `stage.verdict.<key>`. It is computed server-side on purpose: an eval-formula change and its wording live in one place. `VERDICT_EVEN_THRESHOLD` decides when a gap is a tie. `verdictKeyOf()` mirrors it for payloads that predate the field.
 - Completed training tasks for the experiment appear on `/training?experiment_id=`; model repo can register an Ollama tag as a player config.
 
 Main HTTP:
@@ -140,18 +159,20 @@ PATCH    /api/v1/experiments/{id}
 POST     /api/v1/experiments/{id}/clone
 GET      /api/v1/experiments/compare?ids=a,b
 GET      /api/v1/experiments/{id}
+GET      /api/v1/experiments/{id}/export
+POST     /api/v1/experiments/import
 POST     /api/v1/experiments/{id}/collect
 GET      /api/v1/system/benchmark-seeds
 GET      /api/v1/system/preflight
 ```
 
-Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`.
+Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`. Player configs and experiments can be shared as JSON packs (`cardlab.player_pack` / `cardlab.experiment_pack`): secrets are stripped; existing player ids are reused, not overwritten; import lists unconfigured providers and Ollama tags.
 
 ## Game observer
 
 - WebSocket: `WS /api/v1/games/ws/{game_id}`.
-- Live: `GenericBoard` + action history / thinking panel. Thinking seat uses `ink-obs-glow` (not a full-card pulse).
-- Finished games: step replay (play/pause, prev/next, speed).
+- Live: `GenericBoard` + thinking rail. Thinking seat uses `ink-obs-glow` (not a full-card pulse) and shows a live thought excerpt on the seat. The right rail is thinking above a quiet action log — do not bring back a history/thinking segmented control. The thinking panel shows legal moves, tool win-rate / hand strength, and whether parse fell back to a rule action.
+- Finished games: step replay (play/pause, prev/next, speed). Post-game **highlights** (3–5 moves from stored decision points: last play, bomb, parse fallback, endgame, high-branch) on the result dialog and observer history panel; jump seeks replay and links to `/decisions?game_id=&decision_id=`.
 - Demo game (no experiment): homepage “load demo” → `POST /api/v1/system/seed-demo`.
 
 ## Database (SQLite)
@@ -176,7 +197,7 @@ POST /api/v1/decision-points/export   # writes JSONL only; does not register a d
 POST /api/v1/datasets/from-decisions  # register ChatML for the training page
 ```
 
-UI: `DecisionView.vue`. Empty-file export does **not** appear on Training.
+UI: `DecisionView.vue`. Detail shows legal moves (chosen highlighted), tool win-rate, and parse fallback from the matching trace. Empty-file export does **not** appear on Training.
 
 ## Traces
 
@@ -201,7 +222,7 @@ UI: `TraceView.vue`, `TraceDetail.vue`, `TraceMetrics.vue`.
 
 ## Training / deploy
 
-- Create task: `POST /api/v1/training/tasks` (refuses if training extra missing).
+- Create task: `POST /api/v1/training/tasks` (refuses if training extra missing). Optional `config.qlora` (4-bit NF4; needs CUDA + `bitsandbytes`, not in the poetry training group). Default remains PEFT LoRA.
 - Models: `GET/DELETE /api/v1/models`, `POST .../export`, `POST .../push-ollama`, `POST .../verify`.
 - Push-to-Ollama needs `LLAMA_CPP_DIR` in `.env`. Optional register-as-player after push.
 

@@ -11,8 +11,17 @@ import aiosqlite
 import structlog
 
 from app.core.engine.base import EngineCapability
+from app.core.pack import (
+    KIND_EXPERIMENT_PACK,
+    KIND_PLAYER_PACK,
+    build_experiment_pack,
+    parse_pack,
+)
+from app.core.stats.game_progress import build_game_progress
 from app.core.stats.proportion import wilson_interval
+from app.core.stats.scenarios import fill_scenario_scores, scenario_rate_diffs
 from app.database import open_db_connection
+from app.repositories.decision_repo import DecisionRepository
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.game_service import GameService
 from app.utils.exceptions import AppError, ProviderNotConfiguredError
@@ -51,6 +60,117 @@ def build_credibility(
         "decisive_n": decisive_n,
         "landlord_ci_width": width,
         "low_power": low_power,
+    }
+
+
+def _ci_pair(raw: Any) -> list[float] | None:
+    if not isinstance(raw, (list, tuple)) or len(raw) < 2:
+        return None
+    return [round(float(raw[0]), 4), round(float(raw[1]), 4)]
+
+
+def _resolve_delta_peer(
+    experiment: dict[str, Any],
+    validation: dict[str, Any],
+) -> tuple[str | None, str | None]:
+    """Pick the experiment to diff against: source (if this is a control) or first control."""
+    protocol = experiment.get("protocol") or {}
+    source_id = protocol.get("source_experiment_id") if isinstance(protocol, dict) else None
+    if source_id:
+        return str(source_id), "vs_source"
+    progress = list(validation.get("control_progress") or [])
+    if progress:
+        ready = next((item for item in progress if item.get("ready")), None)
+        chosen = ready or progress[0]
+        return str(chosen["id"]), "vs_control"
+    control_ids = list(validation.get("control_experiment_ids") or [])
+    if control_ids:
+        return str(control_ids[0]), "vs_control"
+    return None, None
+
+
+"""Below this absolute landlord win-rate gap the two runs are called a tie."""
+VERDICT_EVEN_THRESHOLD = 0.02
+
+
+def _verdict_key(
+    *,
+    overall_diff: float | None,
+    inconclusive_reason: str | None,
+) -> str:
+    """
+    Plain-language claim the UI renders as one sentence (`stage.verdict.<key>`).
+
+    Returned here rather than assembled in the frontend so an eval-formula
+    change and its wording stay in one place.
+    """
+    if inconclusive_reason == "no_games":
+        return "no_data"
+    if inconclusive_reason == "peer_not_ready":
+        return "peer_pending"
+    if overall_diff is None:
+        return "no_data"
+    if abs(overall_diff) < VERDICT_EVEN_THRESHOLD:
+        return "even"
+    return "stronger" if overall_diff > 0 else "weaker"
+
+
+def build_experiment_delta(
+    *,
+    peer_id: str,
+    peer_name: str,
+    relation: str,
+    peer_ready: bool,
+    this_landlord_win_rate: float,
+    peer_landlord_win_rate: float,
+    this_landlord_win_rate_ci: list[float] | None,
+    peer_landlord_win_rate_ci: list[float] | None,
+    this_decisive_n: int,
+    peer_decisive_n: int,
+    this_low_power: bool,
+    peer_low_power: bool,
+    paired_n: int,
+    paired_landlord_win_rate_diff: float | None,
+    paired_low_power: bool,
+    scenario_diffs: dict[str, dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """One-screen verdict vs a source or control experiment (this minus peer)."""
+    overall_diff: float | None = None
+    if this_decisive_n > 0 and peer_decisive_n > 0:
+        overall_diff = round(this_landlord_win_rate - peer_landlord_win_rate, 4)
+
+    low_power = this_low_power or peer_low_power or paired_low_power
+    if this_decisive_n <= 0 or peer_decisive_n <= 0:
+        inconclusive_reason: str | None = "no_games"
+    elif not peer_ready:
+        inconclusive_reason = "peer_not_ready"
+    elif low_power:
+        inconclusive_reason = "low_power"
+    else:
+        inconclusive_reason = None
+
+    return {
+        "peer_id": peer_id,
+        "peer_name": peer_name,
+        "relation": relation,
+        "peer_ready": peer_ready,
+        "this_landlord_win_rate": round(this_landlord_win_rate, 4),
+        "peer_landlord_win_rate": round(peer_landlord_win_rate, 4),
+        "landlord_win_rate_diff": overall_diff,
+        "this_landlord_win_rate_ci": this_landlord_win_rate_ci,
+        "peer_landlord_win_rate_ci": peer_landlord_win_rate_ci,
+        "this_decisive_n": this_decisive_n,
+        "peer_decisive_n": peer_decisive_n,
+        "paired_n": paired_n,
+        "paired_landlord_win_rate_diff": paired_landlord_win_rate_diff,
+        "low_power": low_power,
+        "can_conclude": inconclusive_reason is None and overall_diff is not None,
+        "inconclusive_reason": inconclusive_reason,
+        "verdict_key": _verdict_key(
+            overall_diff=overall_diff,
+            inconclusive_reason=inconclusive_reason,
+        ),
+        "scenario_diffs": scenario_diffs or scenario_rate_diffs(None, None),
     }
 
 
@@ -315,6 +435,85 @@ class ExperimentService:
             preset_deal_seeds=deal_seeds,
         )
 
+    async def export_pack(self, experiment_id: str) -> dict[str, Any]:
+        experiment = await self.get_experiment(experiment_id, include_games=False)
+        raw_protocol = experiment.get("protocol")
+        protocol = raw_protocol if isinstance(raw_protocol, dict) else {}
+        cfg_svc = self._game_service._experiment_config_service
+        players: list[dict[str, Any]] = []
+        frozen = list(protocol.get("players") or [])
+        frozen_by_id = {
+            str(item.get("id")): item
+            for item in frozen
+            if isinstance(item, dict) and item.get("id")
+        }
+        for pid in list(experiment.get("player_ids") or []):
+            live = cfg_svc.get_config(str(pid))
+            if live is not None:
+                players.append(live)
+            elif str(pid) in frozen_by_id:
+                players.append(frozen_by_id[str(pid)])
+        if not players:
+            players = [item for item in frozen if isinstance(item, dict)]
+        return build_experiment_pack(
+            experiment=experiment,
+            protocol=protocol if isinstance(protocol, dict) else None,
+            players=players,
+            exported_at=datetime.now(tz=UTC).isoformat(),
+        )
+
+    async def import_pack(
+        self,
+        raw: dict[str, Any],
+        *,
+        include_experiment: bool,
+    ) -> dict[str, Any]:
+        try:
+            pack = parse_pack(raw)
+        except ValueError as exc:
+            raise ExperimentValidationError(str(exc)) from exc
+
+        cfg_svc = self._game_service._experiment_config_service
+        player_result = await cfg_svc.import_players(list(pack.get("players") or []))
+        requirements = pack.get("requirements") or {}
+        settings = getattr(self._game_service, "_settings", None)
+        unconfigured: list[str] = []
+        if settings is not None:
+            unconfigured = unconfigured_providers_from_players(
+                settings, list(pack.get("players") or [])
+            )
+
+        payload: dict[str, Any] = {
+            "kind": pack["kind"],
+            "experiment": None,
+            "players_created": player_result["created"],
+            "players_reused": player_result["reused"],
+            "requirements": requirements,
+            "unconfigured_providers": unconfigured,
+        }
+        if pack["kind"] != KIND_EXPERIMENT_PACK or not include_experiment:
+            payload["kind"] = KIND_PLAYER_PACK if not include_experiment else pack["kind"]
+            return payload
+
+        spec = pack["experiment"]
+        collect_mode = str(spec.get("collect_mode") or "free")
+        if collect_mode not in ("free", "benchmark"):
+            collect_mode = "free"
+        deal_seeds = [int(s) for s in (pack.get("deal_seeds") or [])]
+        created = await self.create_experiment(
+            name=str(spec.get("name") or "imported"),
+            notes=str(spec.get("notes") or ""),
+            hypothesis=str(spec.get("hypothesis") or ""),
+            tags=list(spec.get("tags") or []),
+            game_type=str(spec.get("game_type") or "doudizhu"),
+            player_ids=list(spec.get("player_ids") or []),
+            target_games=int(spec.get("target_games") or 1),
+            collect_mode=collect_mode,
+            preset_deal_seeds=deal_seeds or None,
+        )
+        payload["experiment"] = created
+        return payload
+
     async def compare_experiments(self, experiment_ids: list[str]) -> dict[str, Any]:
         """Side-by-side metrics for 2–5 experiments, including Wilson CIs."""
         unique_ids = list(dict.fromkeys(experiment_ids))
@@ -376,10 +575,21 @@ class ExperimentService:
             payload: dict[str, Any] = {**row, "summary": summary}
             if include_games:
                 games = await repo.list_games(experiment_id)
-                payload["games"] = [_normalize_game_row(g) for g in games]
+                payload["games"] = await _games_with_progress(conn, games)
             payload["timeline"] = await self._build_timeline(repo, row)
             payload["validation"] = await self._build_validation(repo, row, summary)
-            payload["next_step"] = self._build_next_step(row, summary, payload["validation"])
+            training_completed = any(
+                event.get("id") == "training_completed" for event in payload["timeline"]
+            )
+            payload["next_step"] = self._build_next_step(
+                row,
+                summary,
+                payload["validation"],
+                training_completed=training_completed,
+            )
+            payload["delta"] = await self._build_delta(
+                repo, row, summary, payload["validation"]
+            )
             return payload
         finally:
             await conn.close()
@@ -601,6 +811,8 @@ class ExperimentService:
             "credibility": build_credibility(
                 decisive_n=decisive, landlord_win_rate_ci=landlord_ci
             ),
+            "scenario_scores": eval_metrics.get("scenario_scores")
+            or fill_scenario_scores({}),
         }
 
     async def _build_timeline(
@@ -699,11 +911,86 @@ class ExperimentService:
             "all_controls_ready": all_controls_ready,
         }
 
+    async def _build_delta(
+        self,
+        repo: ExperimentRepository,
+        experiment: dict[str, Any],
+        summary: dict[str, Any],
+        validation: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        peer_id, relation = _resolve_delta_peer(experiment, validation)
+        if peer_id is None or relation is None:
+            return None
+        try:
+            peer_row = await repo.get_by_id(peer_id)
+        except KeyError:
+            return None
+        peer_summary = await self._build_summary(repo, peer_row)
+        if relation == "vs_control":
+            peer_ready = _control_experiment_ready(peer_summary)
+        else:
+            peer_ready = int(peer_summary.get("finished_games") or 0) > 0
+
+        this_id = str(experiment["id"])
+        this_games = [_normalize_game_row(g) for g in await repo.list_games(this_id)]
+        peer_games = [_normalize_game_row(g) for g in await repo.list_games(peer_id)]
+        paired = self._build_paired_summary(
+            [
+                {"id": this_id, "protocol": experiment.get("protocol")},
+                {"id": peer_id, "protocol": peer_row.get("protocol")},
+            ],
+            {this_id: this_games, peer_id: peer_games},
+        )
+
+        paired_n = 0
+        paired_diff: float | None = None
+        paired_low_power = False
+        if paired is not None:
+            paired_n = int(paired.get("shared_seeds") or 0)
+            raw_diff = paired.get("landlord_win_rate_diff")
+            if raw_diff is not None:
+                ctl_minus_src = float(raw_diff)
+                if relation == "vs_source":
+                    paired_diff = round(ctl_minus_src, 4)
+                else:
+                    paired_diff = round(-ctl_minus_src, 4)
+            paired_low_power = bool(paired.get("low_power"))
+
+        this_cred = summary.get("credibility") or {}
+        peer_cred = peer_summary.get("credibility") or {}
+        return build_experiment_delta(
+            peer_id=peer_id,
+            peer_name=str(peer_row.get("name") or peer_id),
+            relation=relation,
+            peer_ready=peer_ready,
+            this_landlord_win_rate=float(summary.get("landlord_win_rate") or 0.0),
+            peer_landlord_win_rate=float(peer_summary.get("landlord_win_rate") or 0.0),
+            this_landlord_win_rate_ci=_ci_pair(summary.get("landlord_win_rate_ci")),
+            peer_landlord_win_rate_ci=_ci_pair(peer_summary.get("landlord_win_rate_ci")),
+            this_decisive_n=int(summary.get("decisive_games") or 0),
+            peer_decisive_n=int(peer_summary.get("decisive_games") or 0),
+            this_low_power=bool(this_cred.get("low_power")),
+            peer_low_power=bool(peer_cred.get("low_power")),
+            paired_n=paired_n,
+            paired_landlord_win_rate_diff=paired_diff,
+            paired_low_power=paired_low_power,
+            scenario_diffs=scenario_rate_diffs(
+                summary.get("scenario_scores")
+                if isinstance(summary.get("scenario_scores"), dict)
+                else None,
+                peer_summary.get("scenario_scores")
+                if isinstance(peer_summary.get("scenario_scores"), dict)
+                else None,
+            ),
+        )
+
     @staticmethod
     def _build_next_step(
         experiment: dict[str, Any],
         summary: dict[str, Any],
         validation: dict[str, Any],
+        *,
+        training_completed: bool = False,
     ) -> dict[str, Any]:
         status = str(summary.get("status") or "pending_collect")
         usable = int(summary.get("train_usable_decisions") or 0)
@@ -719,9 +1006,11 @@ class ExperimentService:
         if usable > 0 and decision_count > 0 and not_usable / decision_count > 0.2:
             return {"id": "review_decisions", "action": "decisions"}
         if usable > 0 and not control_ids:
+            if training_completed:
+                return {"id": "open_control", "action": "control"}
             return {"id": "register_train", "action": "train"}
         if usable > 0 and control_ids and validation.get("validation_ready"):
-            return {"id": "compare", "action": "compare"}
+            return {"id": "review", "action": "stay"}
         if usable > 0 and control_ids:
             pending = next((c for c in control_progress if not c.get("ready")), None)
             target_control = pending or (control_progress[0] if control_progress else None)
@@ -797,6 +1086,7 @@ class ExperimentService:
             "paired_n": 0,
             "paired_seat_wins": [0] * len(row.get("player_ids") or []),
             "paired_landlord_win_rate": 0.0,
+            "scenario_scores": extras.get("scenario_scores") or fill_scenario_scores({}),
         }
 
     @staticmethod
@@ -986,3 +1276,21 @@ def _normalize_game_row(row: dict[str, Any]) -> dict[str, Any]:
     if isinstance(out.get("metadata"), str):
         out["metadata"] = json.loads(out["metadata"])
     return out
+
+
+async def _games_with_progress(
+    conn: aiosqlite.Connection,
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    games = [_normalize_game_row(row) for row in rows]
+    latest = await DecisionRepository(conn).latest_progress_by_game_ids(
+        [str(game["id"]) for game in games]
+    )
+    for game in games:
+        snap = latest.get(str(game["id"]))
+        game["progress"] = build_game_progress(
+            game_phase=str(snap["game_phase"]) if snap else None,
+            round_number=int(snap["round_number"]) if snap else None,
+            player_id=str(snap["player_id"]) if snap else None,
+        )
+    return games

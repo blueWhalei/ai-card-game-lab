@@ -19,6 +19,8 @@ class TrainingConfig(BaseModel):
     # None = follow server default; True forces CPU smoke clamps; False disables.
     cpu_smoke: bool | None = None
     gradient_checkpointing: bool | None = None
+    # 4-bit QLoRA. Requires CUDA + bitsandbytes (not in the poetry training extra).
+    qlora: bool = False
 
 
 class CreateTrainingTaskRequest(BaseModel):

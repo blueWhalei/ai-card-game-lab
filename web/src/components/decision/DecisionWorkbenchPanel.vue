@@ -12,6 +12,7 @@ import { formatDateTime } from '@/utils/format'
 import { defaultEngineId } from '@/utils/engineSlots'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
 import type { WorkbenchLocalFilters } from '@/components/common/WorkbenchFilterBar.vue'
+import MetricHint from '@/components/common/MetricHint.vue'
 import CompactRecordList from '@/components/common/CompactRecordList.vue'
 import type { CompactRecord } from '@/components/common/CompactRecordList.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -23,6 +24,7 @@ import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
+import MoveExplainStrip from '@/components/common/MoveExplainStrip.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize, type PageSizeOption } from '@/utils/pagination'
 
 const props = withDefaults(
@@ -79,6 +81,10 @@ const routeGamePhase = computed(() => {
   const v = route.query.game_phase
   return typeof v === 'string' && v ? v : undefined
 })
+const routeDecisionId = computed(() => {
+  const v = route.query.decision_id
+  return typeof v === 'string' && v ? v : ''
+})
 const routeTrainUsable = computed(() => {
   const v = route.query.train_usable
   if (v === 'true') return true
@@ -122,6 +128,8 @@ const trainUsableFilter = computed(() => {
     if (v === 'false') return false
     return undefined
   }
+  // Deep-link from highlights must not hide parse-fallback rows.
+  if (routeDecisionId.value) return undefined
   return routeTrainUsable.value
 })
 const minQuality = computed(() => {
@@ -175,10 +183,28 @@ async function fetchDecisionPoints() {
     const res = await decisionApi.list(params)
     decisionPoints.value = res.data.items
     listTotal.value = res.data.total
-    selectedPoint.value =
-      decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
-      decisionPoints.value[0] ??
-      null
+    const wanted = routeDecisionId.value
+    if (wanted) {
+      const found = decisionPoints.value.find((p) => p.id === wanted)
+      if (found) {
+        selectedPoint.value = found
+      } else {
+        try {
+          const one = await decisionApi.get(wanted)
+          selectedPoint.value = one.data
+        } catch {
+          selectedPoint.value =
+            decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
+            decisionPoints.value[0] ??
+            null
+        }
+      }
+    } else {
+      selectedPoint.value =
+        decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
+        decisionPoints.value[0] ??
+        null
+    }
   } catch (e: unknown) {
     showApiError(e, t('decision.loadFailed'))
   } finally {
@@ -385,6 +411,7 @@ watch(
     trainUsableFilter,
     page,
     pageSize,
+    routeDecisionId,
   ],
   () => {
     void fetchDecisionPoints()
@@ -670,11 +697,12 @@ onMounted(async () => {
                   >
                     {{ outcomeLabel(selectedPoint.outcome) }}
                   </UiBadge>
-                  <span
-                    class="text-xs text-ink-text-muted"
-                    :title="t('decision.qualityTitle')"
-                  >
+                  <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
                     {{ t('decision.qualityLabel', { n: selectedPoint.quality_score.toFixed(2) }) }}
+                    <MetricHint
+                      :plain="t('metricHint.quality.plain')"
+                      :formula="t('metricHint.quality.formula')"
+                    />
                   </span>
                 </div>
               </div>
@@ -704,24 +732,19 @@ onMounted(async () => {
             </div>
 
             <div>
-              <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.legal') }}</div>
-              <div class="mt-1 flex flex-wrap gap-2">
-                <span
-                  v-for="(action, idx) in selectedPoint.legal_actions"
-                  :key="idx"
-                  class="rounded-ink bg-ink-surface-muted px-2 py-1 text-xs text-ink-text-secondary"
-                >
-                  {{ formatAction(action) }}
-                </span>
-              </div>
-            </div>
-
-            <div>
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.chosen') }}</div>
               <div class="mt-1 rounded-ink bg-ink-primary-muted p-2 font-medium text-ink-text">
                 {{ formatAction(selectedPoint.chosen_action) }}
               </div>
             </div>
+
+            <MoveExplainStrip
+              :legal-actions="selectedPoint.legal_actions"
+              :chosen="selectedPoint.chosen_action"
+              :parser-ok="selectedPoint.parser_ok"
+              :win-probability="selectedPoint.win_probability"
+              :hand-analysis="selectedPoint.hand_analysis"
+            />
 
             <div v-if="selectedPoint.thinking">
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.thinking') }}</div>

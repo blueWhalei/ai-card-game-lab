@@ -2,10 +2,10 @@
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
+import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   experimentStatusLabel,
-  experimentNextStepLabel,
   isBenchmarkExperiment,
   EXPERIMENT_STATUS_VARIANT,
   type Experiment,
@@ -17,32 +17,34 @@ import { dataApi } from '@/api/dataApi'
 import { trainingApi } from '@/api/trainingApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
+import { preflightCheckMessage } from '@/utils/systemLabels'
+import { downloadJson } from '@/utils/jsonFile'
 import {
   initialControlPlayerIds,
   remainingCollectCount,
   sanitizeNamePart,
   uniqueFilledIds,
 } from '@/utils/experimentWorkbench'
+import type { ExperimentStageAction } from '@/utils/experimentStage'
+import { pipelinePath } from '@/utils/pipeline'
 import ExperimentControlDialog from '@/components/experiment/ExperimentControlDialog.vue'
-import ExperimentDetailContextBar from '@/components/experiment/ExperimentDetailContextBar.vue'
 import ExperimentMetaPanel from '@/components/experiment/ExperimentMetaPanel.vue'
-import ExperimentResultsStrip from '@/components/experiment/ExperimentResultsStrip.vue'
-import ExperimentValidationStrip from '@/components/experiment/ExperimentValidationStrip.vue'
+import ExperimentStage from '@/components/experiment/ExperimentStage.vue'
+import ExperimentTimeline from '@/components/experiment/ExperimentTimeline.vue'
 import ExperimentGamesTab from '@/components/experiment/ExperimentGamesTab.vue'
 import ExperimentPlayersTab from '@/components/experiment/ExperimentPlayersTab.vue'
-import PreflightBanner from '@/components/common/PreflightBanner.vue'
 import type { GameItem } from '@/api/gameApi'
 import { gameApi } from '@/api/gameApi'
+import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
-import type { DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
+import UiDropdownMenu, { type DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 
 const { t } = useI18n()
 
-type ContentTab = 'games' | 'players'
 const LEGACY_TABS = new Set(['decisions', 'traces', 'training'])
 
 const route = useRoute()
@@ -56,7 +58,6 @@ const trainStartedLocal = ref(false)
 const controlCreatedLocal = ref(false)
 const trainingDepsAvailable = ref(false)
 const completedModelCount = ref(0)
-const contentTab = ref<ContentTab>('games')
 
 function stripTabQuery(query: Record<string, unknown>): Record<string, string> {
   const q: Record<string, string> = {}
@@ -64,17 +65,6 @@ function stripTabQuery(query: Record<string, unknown>): Record<string, string> {
     if (typeof v === 'string' && v && k !== 'tab') q[k] = v
   }
   return q
-}
-
-function parseContentTab(raw: unknown): ContentTab {
-  return raw === 'players' ? 'players' : 'games'
-}
-
-function setContentTab(tab: ContentTab): void {
-  contentTab.value = tab
-  const q = stripTabQuery(route.query as Record<string, unknown>)
-  if (tab === 'players') q.tab = 'players'
-  void router.replace({ query: q })
 }
 
 const archiveOpen = ref(false)
@@ -114,13 +104,6 @@ const summary = computed(() => experiment.value?.summary)
 const validation = computed(() => experiment.value?.validation ?? null)
 const nextStep = computed(() => experiment.value?.next_step ?? null)
 const protocol = computed(() => experiment.value?.protocol ?? null)
-const isControlExperiment = computed(() => !!protocol.value?.source_experiment_id)
-const showValidationStrip = computed(
-  () =>
-    !isControlExperiment.value &&
-    ((summary.value?.train_usable_decisions ?? 0) > 0 ||
-      (validation.value?.control_experiment_ids?.length ?? 0) > 0),
-)
 const protocolPlayers = computed(() => protocol.value?.players ?? [])
 const protocolDrift = computed(() => {
   for (const frozen of protocolPlayers.value) {
@@ -143,8 +126,6 @@ const protocolDrift = computed(() => {
 const pairedGamesCount = computed(() => summary.value?.paired_games ?? 0)
 const dealSeedCount = computed(() => protocol.value?.deal_seeds?.length ?? 0)
 const finishedCount = computed(() => summary.value?.finished_games ?? 0)
-const targetCount = computed(() => summary.value?.target_games ?? 0)
-const usableCount = computed(() => summary.value?.train_usable_decisions ?? 0)
 
 const protocolSummaryBits = computed(() => {
   const bits: string[] = []
@@ -181,13 +162,23 @@ const collectBlocked = computed(() => {
   return checks.some((c) => c.severity === 'block' && !c.ok)
 })
 
-const noticeText = computed(() => {
-  const checks = preflight.value?.checks ?? []
-  const block = checks.find((c) => c.severity === 'block' && !c.ok)
-  if (block) return block.message
-  const warn = checks.find((c) => c.severity === 'warn' && !c.ok)
-  return warn?.message ?? ''
+/**
+ * A blocking check takes over the act's own claim and action, so the user is
+ * never offered a button that only produces a warning toast.
+ */
+const blockedMessage = computed(() => {
+  const block = (preflight.value?.checks ?? []).find((c) => c.severity === 'block' && !c.ok)
+  return block ? preflightCheckMessage(block) : ''
 })
+
+const noticeText = computed(() => {
+  const warn = (preflight.value?.checks ?? []).find((c) => c.severity === 'warn' && !c.ok)
+  return warn ? preflightCheckMessage(warn) : ''
+})
+
+const hasChallenger = computed(() => configs.value.some((c) => c.id.startsWith('lora_')))
+
+const stageBusy = computed(() => collecting.value || registeringTrain.value)
 
 const canRegisterTrain = computed(
   () => (summary.value?.train_usable_decisions ?? 0) > 0 && !registeringTrain.value,
@@ -206,34 +197,6 @@ const collectCta = computed(() => {
   if (status === 'pending_collect') return t('experiment.startGames')
   if (status === 'ready_more' || status === 'ready_review') return t('experiment.runMore')
   return t('experiment.runMore')
-})
-
-const nextStepHint = computed(() => {
-  if (experiment.value?.hypothesis?.trim()) return ''
-  return nextStep.value ? experimentNextStepLabel(nextStep.value.id) : ''
-})
-
-const primaryActionLabel = computed(() => {
-  const step = nextStep.value
-  if (!step) return collectCta.value
-  switch (step.action) {
-    case 'collect':
-      return collectCta.value
-    case 'games':
-      return t('experiment.openLatest')
-    case 'decisions':
-      return t('nav.decisions')
-    case 'train':
-      return t('experiment.saveAndTrain')
-    case 'control':
-      return t('experiment.newRound')
-    case 'control_collect':
-      return t('experiment.nextStep.collect_control')
-    case 'compare':
-      return t('experiment.compare')
-    default:
-      return t('experiment.nextStepAction')
-  }
 })
 
 function stampSuffix(): string {
@@ -292,16 +255,6 @@ const pausedGames = computed(() =>
   activeGames.value.filter((g) => g.status === 'paused'),
 )
 
-const primaryActionDisabled = computed(() => {
-  const step = nextStep.value
-  if (step?.action === 'games') return !summary.value?.latest_game_id
-  if (!step || step.action === 'collect') {
-    return remaining.value <= 0 || collectBlocked.value
-  }
-  if (step.action === 'train') return !canRegisterTrain.value || registeringTrain.value
-  return false
-})
-
 const openMenuItems = computed((): DropdownMenuItemDef[] => [
   { id: 'archive', label: t('experiment.metaPanelTitle') },
   {
@@ -314,6 +267,9 @@ const openMenuItems = computed((): DropdownMenuItemDef[] => [
     label: t('experiment.saveAndTrain'),
     disabled: !canRegisterTrain.value || registeringTrain.value,
   },
+  { id: 'decisions', label: t('nav.decisions') },
+  { id: 'data', label: t('nav.data') },
+  { id: 'training', label: t('nav.training') },
   { id: 'traces', label: t('nav.traces') },
   { id: 'control', label: t('experiment.newRound') },
   { id: 'manifest', label: t('experiment.downloadManifest') },
@@ -330,6 +286,15 @@ function onOpenMenuSelect(id: string): void {
       break
     case 'train':
       openRegisterDialog()
+      break
+    case 'decisions':
+      goDecisions()
+      break
+    case 'data':
+      goData()
+      break
+    case 'training':
+      goTraining()
       break
     case 'traces':
       goTraces()
@@ -456,11 +421,14 @@ function handlePostLoadQuery(): void {
   const q = route.query
   if (q.collect === '1') {
     openCollect()
-  } else if (q.open_control === '1') {
-    openControlDialog()
-  }
-  if (q.collect === '1' || q.open_control === '1') {
     void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
+    return
+  }
+  if (q.open_control === '1') {
+    const redirected = openControlDialog({ requireChallenger: true })
+    if (!redirected) {
+      void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
+    }
   }
 }
 
@@ -513,30 +481,32 @@ function openGame(game: GameItem): void {
   void router.push(`/game/${game.id}`)
 }
 
-function goDecisions(): void {
+function goDecisions(gamePhase?: string): void {
+  const query: Record<string, string> = { experiment_id: experimentId.value }
+  if (gamePhase) query.game_phase = gamePhase
   void router.push({
-    path: '/decisions',
+    path: pipelinePath('decisions'),
+    query,
+  })
+}
+
+function goData(): void {
+  void router.push({
+    path: pipelinePath('data'),
     query: { experiment_id: experimentId.value },
   })
 }
 
 function goTraces(): void {
   void router.push({
-    path: '/traces',
+    path: pipelinePath('traces'),
     query: { experiment_id: experimentId.value },
   })
 }
 
 function goTraining(): void {
   void router.push({
-    path: '/training',
-    query: { experiment_id: experimentId.value },
-  })
-}
-
-function goData(): void {
-  void router.push({
-    path: '/data',
+    path: pipelinePath('training'),
     query: { experiment_id: experimentId.value },
   })
 }
@@ -558,63 +528,58 @@ function goCompareWithSuggested(): void {
   })
 }
 
-function handleNextStep(): void {
-  const step = nextStep.value
-  if (!step) return
-  switch (step.action) {
+function goModelRepo(): void {
+  void router.push({
+    path: pipelinePath('training'),
+    query: { experiment_id: experimentId.value, tab: 'models', return_control: '1' },
+  })
+}
+
+function onStageAction(action: ExperimentStageAction): void {
+  switch (action) {
     case 'collect':
       openCollect()
       break
-    case 'games':
+    case 'watch':
       openLatest()
       break
-    case 'decisions':
+    case 'review-decisions':
       goDecisions()
       break
     case 'train':
       openRegisterDialog()
       break
-    case 'control':
-      openControlDialog()
+    case 'register-player':
+      goModelRepo()
       break
-    case 'control_collect':
-      goControlCollect(step.ref_id)
+    case 'open-control':
+      openControlDialog({ requireChallenger: true })
+      break
+    case 'collect-control':
+      goControlCollect(nextStep.value?.ref_id)
       break
     case 'compare':
       goCompareWithSuggested()
       break
-    default:
+    case 'settings':
+      void router.push('/settings')
       break
   }
 }
 
-function downloadManifest(): void {
+function openExperiment(id: string): void {
+  void router.push(`/experiments/${id}`)
+}
+
+async function downloadManifest(): Promise<void> {
   if (!experiment.value) return
-  const payload = {
-    experiment: {
-      id: experiment.value.id,
-      name: experiment.value.name,
-      hypothesis: experiment.value.hypothesis,
-      notes: experiment.value.notes,
-      conclusion: experiment.value.conclusion,
-      tags: experiment.value.tags,
-      game_type: experiment.value.game_type,
-      player_ids: experiment.value.player_ids,
-      target_games: experiment.value.target_games,
-      created_at: experiment.value.created_at,
-    },
-    protocol: experiment.value.protocol,
-    summary: experiment.value.summary,
-    timeline: experiment.value.timeline,
-    validation: experiment.value.validation,
+  try {
+    const res = await experimentApi.exportPack(experiment.value.id)
+    downloadJson(`${experiment.value.id}-pack.json`, res.data)
+    toast.success(t('experiment.exportedPack'))
+  } catch (e: unknown) {
+    showApiError(e, t('experiment.exportFailed'))
   }
-  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = `${experiment.value.id}-manifest.json`
-  a.click()
-  URL.revokeObjectURL(url)
 }
 
 function openCloneDialog(): void {
@@ -700,9 +665,17 @@ async function registerAndTrain(evalRatio = 0): Promise<void> {
   }
 }
 
-function openControlDialog(): void {
-  if (!experiment.value) return
+function openControlDialog(opts?: { requireChallenger?: boolean }): boolean {
+  if (!experiment.value) return false
   const loras = configs.value.filter((c) => c.id.startsWith('lora_'))
+  if (opts?.requireChallenger && loras.length === 0) {
+    toast.info(t('experiment.registerPlayerFirst'))
+    void router.push({
+      path: pipelinePath('training'),
+      query: { experiment_id: experimentId.value, tab: 'models', return_control: '1' },
+    })
+    return true
+  }
   const challenger = loras[0]?.id ?? ''
   controlName.value = `${sanitizeNamePart(experiment.value.name)}${t('experiment.controlNameSuffix')}`
   controlPlayerIds.value = initialControlPlayerIds(
@@ -712,7 +685,9 @@ function openControlDialog(): void {
   )
   controlTarget.value = experiment.value.target_games || 5
   controlPairDeals.value = true
+  controlOpenCollectAfter.value = true
   controlOpen.value = true
+  return false
 }
 
 async function submitControl(): Promise<void> {
@@ -733,7 +708,11 @@ async function submitControl(): Promise<void> {
     })
     controlOpen.value = false
     controlCreatedLocal.value = true
-    toast.success(t('experiment.controlCreated'))
+    toast.success(
+      controlOpenCollectAfter.value
+        ? t('experiment.controlCreatedCollect')
+        : t('experiment.controlCreated'),
+    )
     const query = controlOpenCollectAfter.value ? { collect: '1' } : {}
     await router.push({ path: `/experiments/${res.data.id}`, query })
   } catch (e: unknown) {
@@ -782,9 +761,7 @@ function redirectLegacyTab(tab: unknown): boolean {
 watch(
   () => route.query.tab,
   (tab) => {
-    if (redirectLegacyTab(tab)) return
-    const next = parseContentTab(tab)
-    if (contentTab.value !== next) contentTab.value = next
+    redirectLegacyTab(tab)
   },
   { immediate: true },
 )
@@ -821,129 +798,98 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="page-container space-y-6">
+  <div class="page-container space-y-ink-8">
     <div v-if="loading">
       <UiSkeletonList :rows="6" />
     </div>
 
     <template v-else-if="experiment && summary">
-      <div class="space-y-3">
-        <ExperimentDetailContextBar
-          :name="experiment.name"
-          :status-label="statusOf(summary.status).label"
-          :status-variant="statusOf(summary.status).variant"
-          :benchmark="isBenchmarkExperiment(experiment)"
-          :finished="summary.finished_games"
-          :target="summary.target_games"
-          :usable-decisions="usableCount"
-          :subtitle="experiment.hypothesis ?? ''"
-          :next-step="nextStep"
-          :next-step-hint="nextStepHint"
-          :primary-label="primaryActionLabel"
-          :primary-disabled="primaryActionDisabled"
-          :latest-game-id="summary.latest_game_id"
-          :open-menu-items="openMenuItems"
-          @back="router.push('/')"
-          @primary="handleNextStep"
-          @open-latest="openLatest"
-          @menu-select="onOpenMenuSelect"
-        />
-
-        <PreflightBanner
-          v-if="preflight?.checks?.length"
-          :checks="preflight.checks"
-        />
-        <button
-          v-else-if="noticeText"
-          type="button"
-          class="w-full rounded-ink border border-ink-warning/40 bg-ink-warning/10 px-3 py-2 text-left text-sm text-ink-text-secondary hover:bg-ink-warning/15"
-          @click="router.push('/settings')"
-        >
-          {{ noticeText }}
-        </button>
-
-        <ExperimentValidationStrip
-          v-if="showValidationStrip"
-          :validation="validation"
-          :short-experiment-id="shortExperimentId"
-          @open-control="openControlDialog"
-          @compare="goCompareWithSuggested"
-        />
-
-        <ExperimentResultsStrip
-          v-if="finishedCount > 0"
-          :summary="summary"
-          @decisions="goDecisions"
-          @training="goTraining"
-          @data="goData"
-          @compare="goCompareWithSuggested"
-        />
-
-        <div
-          v-if="finishedCount > 0"
-          class="flex w-fit gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1"
-        >
-          <button
-            type="button"
-            class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
-            :class="
-              contentTab === 'games'
-                ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
-                : 'text-ink-text-secondary hover:text-ink-text'
-            "
-            @click="setContentTab('games')"
-          >
-            {{ t('experiment.tabGames') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-[6px] px-3 py-1.5 text-sm font-medium transition-colors"
-            :class="
-              contentTab === 'players'
-                ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
-                : 'text-ink-text-secondary hover:text-ink-text'
-            "
-            @click="setContentTab('players')"
-          >
-            {{ t('experiment.tabPlayers') }}
-          </button>
+      <header class="flex flex-wrap items-center justify-between gap-ink-3">
+        <div class="flex min-w-0 items-center gap-ink-3">
+          <UiButton variant="ghost" size="sm" @click="router.push('/')">
+            {{ t('common.back') }}
+          </UiButton>
+          <h1 class="min-w-0 truncate text-title font-semibold tracking-tight text-ink-text">
+            {{ experiment.name }}
+          </h1>
+          <UiBadge :variant="statusOf(summary.status).variant" size="xs">
+            {{ statusOf(summary.status).label }}
+          </UiBadge>
+          <UiBadge v-if="isBenchmarkExperiment(experiment)" variant="muted" size="xs">
+            {{ t('experiment.modeBenchmark') }}
+          </UiBadge>
         </div>
+        <UiDropdownMenu :items="openMenuItems" @select="onOpenMenuSelect">
+          <UiButton variant="ghost" size="icon" :aria-label="t('common.more')">
+            <Icon icon="lucide:ellipsis" class="h-4 w-4" />
+          </UiButton>
+        </UiDropdownMenu>
+      </header>
 
-        <ExperimentPlayersTab
-          v-if="contentTab === 'players' && finishedCount > 0"
-          :summary="summary"
-          :config-label="configLabel"
-        />
+      <p v-if="experiment.hypothesis?.trim()" class="max-w-2xl text-body text-ink-text-secondary">
+        {{ experiment.hypothesis }}
+      </p>
 
-        <ExperimentGamesTab
-          v-else
-          :active-games="activeGames"
-          :running-games="runningGames"
-          :paused-games="pausedGames"
-          :finished-games="finishedGames"
-          :collect-cta="collectCta"
-          :pausing-all="pausingAll"
-          :resuming-all="resumingAll"
-          :action-game-id="actionGameId"
-          :config-label="configLabel"
-          :game-status-label="gameStatusLabel"
-          @open-game="openGame"
-          @pause="pauseGame"
-          @resume="resumeGame"
-          @pause-all="pauseAllRunning"
-          @resume-all="resumeAllPaused"
-        />
-      </div>
+      <ExperimentStage
+        :experiment="experiment"
+        :blocked-message="blockedMessage"
+        :has-challenger="hasChallenger"
+        :busy="stageBusy"
+        @action="onStageAction"
+        @compare="goCompareWithSuggested"
+        @open-experiment="openExperiment"
+      />
+
+      <button
+        v-if="noticeText && !blockedMessage"
+        type="button"
+        class="w-full rounded-ink border border-ink-border bg-ink-surface-muted/60 px-3 py-2 text-left text-caption text-ink-text-secondary hover:bg-ink-surface-muted"
+        @click="router.push('/settings')"
+      >
+        {{ noticeText }}
+      </button>
+
+      <ExperimentTimeline
+        :events="experiment.timeline"
+        :control-progress="validation?.control_progress"
+        @open-experiment="openExperiment"
+      />
+
+      <ExperimentGamesTab
+        v-if="finishedCount > 0 || activeGames.length > 0"
+        :active-games="activeGames"
+        :running-games="runningGames"
+        :paused-games="pausedGames"
+        :finished-games="finishedGames"
+        :collect-cta="collectCta"
+        :pausing-all="pausingAll"
+        :resuming-all="resumingAll"
+        :action-game-id="actionGameId"
+        :config-label="configLabel"
+        :game-status-label="gameStatusLabel"
+        @open-game="openGame"
+        @pause="pauseGame"
+        @resume="resumeGame"
+        @pause-all="pauseAllRunning"
+        @resume-all="resumeAllPaused"
+      />
+
+      <section v-if="finishedCount > 0" class="ink-section">
+        <h2 class="ink-section-title">{{ t('stage.sectionPlayers') }}</h2>
+        <div class="mt-ink-3">
+          <ExperimentPlayersTab :summary="summary" :config-label="configLabel" />
+        </div>
+      </section>
     </template>
 
     <div v-else class="py-16 text-center text-ink-text-muted">{{ t('experiment.missing') }}</div>
 
     <UiDialog
       v-model:open="collectOpen"
-      :title="t('experiment.collectTitle')"
+      :title="collectCta"
     >
       <div>
-        <label class="mb-1.5 block text-sm font-medium text-ink-text">
+        <label class="mb-1.5 block text-body font-medium text-ink-text">
           {{ t('experiment.batchCount') }}
         </label>
         <UiInputNumber v-model="collectCount" :min="1" :max="50" />
@@ -972,7 +918,7 @@ onUnmounted(() => {
     />
 
     <UiDialog v-model:open="cloneOpen" :title="t('experiment.cloneTitle')">
-      <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.cloneName') }}</label>
+      <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.cloneName') }}</label>
       <UiInput v-model="cloneName" />
       <template #footer>
         <UiButton variant="secondary" @click="cloneOpen = false">{{ t('common.cancel') }}</UiButton>
@@ -985,17 +931,17 @@ onUnmounted(() => {
       :title="t('experiment.registerTitle')"
     >
       <div class="space-y-3">
-        <p class="text-sm text-ink-text-secondary">
+        <p class="text-body text-ink-text-secondary">
           {{ t('experiment.registerUsable', { n: registerPreview.usable }) }} ·
           {{ t('experiment.registerNotUsable', { n: registerPreview.notUsable }) }}
         </p>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+          <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('experiment.registerEvalRatio') }}
           </label>
           <UiInputNumber v-model="registerEvalRatio" :min="0" :max="0.5" :step="0.05" />
         </div>
-        <p class="text-sm text-ink-text-secondary">
+        <p class="text-body text-ink-text-secondary">
           {{ t('experiment.registerTrainCount', { n: registerPreview.train }) }} ·
           {{ t('experiment.registerEvalCount', { n: registerPreview.eval }) }}
         </p>

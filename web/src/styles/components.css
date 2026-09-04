@@ -5,27 +5,48 @@
   }
 
   .page-title {
-    @apply text-[1.75rem] font-semibold tracking-tight text-ink-text;
+    @apply text-headline font-semibold tracking-tight text-ink-text;
   }
 
   .page-subtitle {
-    @apply mt-1 text-base text-ink-text-secondary;
+    @apply mt-1 text-lead text-ink-text-secondary;
   }
 
+  /*
+   * In-page grouping: no shadow. Separation comes from the surface and a
+   * hairline; anything that actually floats uses .ink-layer instead.
+   */
   .ink-card {
-    @apply rounded-ink-md border border-ink-border bg-ink-surface p-5 shadow-[var(--ink-shadow)];
+    @apply rounded-ink-md border border-ink-border bg-ink-surface p-5;
+  }
+
+  /* Floating layers only — dialog, popover, dropdown, drawer. */
+  .ink-layer {
+    @apply rounded-ink-md border border-ink-border bg-ink-surface shadow-[var(--ink-shadow-md)];
+  }
+
+  /*
+   * Quiet grouping — the default for stacked sections inside a page.
+   * Uses whitespace and type weight instead of another box.
+   */
+  .ink-section {
+    @apply min-w-0;
+  }
+
+  .ink-section-title {
+    @apply text-title font-semibold tracking-tight text-ink-text;
   }
 
   .ink-btn {
-    @apply inline-flex items-center justify-center rounded-ink bg-ink-primary px-4 py-2 text-base font-medium text-[var(--ink-primary-fg)] transition-colors duration-150 hover:bg-ink-primary-hover disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-ink bg-ink-primary px-4 py-2 text-body font-medium text-[var(--ink-primary-fg)] transition-colors duration-150 hover:bg-ink-primary-hover disabled:opacity-50;
   }
 
   .ink-btn-secondary {
-    @apply inline-flex items-center justify-center rounded-ink border border-ink-border bg-ink-surface-muted px-4 py-2 text-base font-medium text-ink-text transition-colors duration-150 hover:bg-ink-paper-elevated disabled:opacity-50;
+    @apply inline-flex items-center justify-center rounded-ink border border-ink-border bg-ink-surface-muted px-4 py-2 text-body font-medium text-ink-text transition-colors duration-150 hover:bg-ink-paper-elevated disabled:opacity-50;
   }
 
   .ink-input {
-    @apply box-border h-10 w-full rounded-ink border border-ink-border bg-ink-surface px-3 py-0 text-base leading-none text-ink-text outline-none transition-colors duration-150 placeholder:text-ink-text-muted focus:border-ink-primary focus:ring-2 focus:ring-ink-primary-muted;
+    @apply box-border h-10 w-full rounded-ink border border-ink-border bg-ink-surface px-3 py-0 text-body leading-none text-ink-text outline-none transition-colors duration-150 placeholder:text-ink-text-muted focus:border-ink-primary focus:ring-2 focus:ring-ink-primary-muted;
   }
 
   textarea.ink-input {
@@ -33,15 +54,15 @@
   }
 
   .ink-label {
-    @apply text-sm font-medium text-ink-text;
+    @apply text-body font-medium text-ink-text;
   }
 
   .ink-value {
-    @apply text-base text-ink-text;
+    @apply text-body text-ink-text;
   }
 
   .ink-stat-number {
-    @apply text-3xl font-semibold tracking-tight text-ink-text;
+    @apply text-headline font-semibold tracking-tight tabular-nums text-ink-text;
   }
 
   .ink-divider {
@@ -53,10 +74,39 @@
   }
 
   .ink-kpi-value {
-    @apply text-lg font-semibold tracking-tight tabular-nums text-ink-text;
+    @apply text-title font-semibold tracking-tight tabular-nums text-ink-text;
   }
 
   .ink-kpi-label {
-    @apply mt-0.5 text-xs text-ink-text-muted;
+    @apply mt-0.5 text-caption text-ink-text-muted;
+  }
+
+  /*
+   * Verdict block (experiment stage five). Weight and contrast carry the
+   * confidence of the claim; `.is-weak` is applied when the sample cannot
+   * support a conclusion yet.
+   */
+  .ink-verdict-claim {
+    @apply text-headline tracking-tight text-[var(--ink-evidence-strong)];
+
+    font-weight: var(--ink-evidence-weight-strong);
+  }
+
+  .ink-verdict-claim.is-weak {
+    @apply text-[var(--ink-evidence-weak)];
+
+    font-weight: var(--ink-evidence-weight-weak);
+  }
+
+  .ink-verdict-number {
+    @apply text-verdict tracking-tight tabular-nums text-[var(--ink-evidence-strong)];
+
+    font-weight: var(--ink-evidence-weight-strong);
+  }
+
+  .ink-verdict-number.is-weak {
+    @apply text-[var(--ink-evidence-weak)];
+
+    font-weight: var(--ink-evidence-weight-weak);
   }
 }

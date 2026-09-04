@@ -67,10 +67,10 @@ const caption = computed(() => {
       </template>
     </div>
 
-    <!-- Sidebar: three columns -->
+    <!-- Sidebar: one card per destination -->
     <div
       v-else-if="diagram === 'sidebar'"
-      class="grid gap-3 sm:grid-cols-3"
+      class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
     >
       <div
         v-for="(node, idx) in nodes"
@@ -119,7 +119,7 @@ const caption = computed(() => {
       <div class="flex justify-center">
         <Icon icon="lucide:arrow-down" class="h-4 w-4 text-ink-text-muted" />
       </div>
-      <div class="grid gap-2 sm:grid-cols-3">
+      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
         <div
           v-for="(node, idx) in nodes"
           :key="`${node.label}-${idx}`"

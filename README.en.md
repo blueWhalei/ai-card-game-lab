@@ -4,6 +4,8 @@
 
 Local AI card-game research tool: experiments as the unit—watch decisions, collect games, LoRA fine-tune, and validate with controls.
 
+> **About models**: This project **calls** third-party LLM APIs (or local Ollama) for card-playing decisions—it does **not** distill or replicate any large model. LoRA fine-tuning uses game-play trajectory data (the user's own recorded games), not third-party API outputs for training competing models. All API calls comply with each provider's terms of service. The project itself **does not bundle any model weights**; users configure their own API keys or local models.
+
 ## Stack
 
 | Layer | Choice |
@@ -12,7 +14,7 @@ Local AI card-game research tool: experiments as the unit—watch decisions, col
 | Backend | Python 3.11+ · FastAPI · WebSocket |
 | LLM | OpenAI · Ollama · DashScope · DeepSeek · Kimi · Zhipu · Yi · Baichuan · MiniMax |
 | Storage | SQLite index + JSONL archive |
-| Training | PEFT LoRA (`poetry install --with training`; CPU smoke without GPU) |
+| Training | PEFT LoRA (`poetry install --with training`; CPU smoke without GPU; optional 4-bit QLoRA needs bitsandbytes) |
 
 ## Quick start
 
@@ -33,18 +35,18 @@ Start in two terminals:
 
 Or manually: `cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`.
 
-Open http://localhost:5173 . Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo game** on the home page.
+Open http://localhost:5173 . Home walks you through provider → players → experiment. Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo game** on the home page.
 
 ## Main loop
 
 1. **Player configs** — model and sampling  
 2. **New experiment** — pick players and target games (does not auto-start)  
-3. **Start games** — collect from experiment detail; watch and replay  
-4. **Register & train** — export ChatML when trainable decisions are ready  
+3. **Start experiment** — the detail page's current act offers one button, Start experiment; watch and replay
+4. **Start training** — export ChatML when trainable decisions are ready
 5. **Model repo** — push to Ollama or register as player  
-6. **Control / compare** — control run and compare win rates and latency  
+6. **Control / compare** — after training, the detail page asks you to start a control experiment (same deals); once it is ready the first screen is a one-sentence verdict plus Δ. When the evidence is thin the number reads lighter and the page tells you how many more games it needs. Per-scenario gaps sit below as a small chart; the compare page still has the full matrix  
 
-Benchmark mode uses fixed deal seeds (up to 50 games). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Data & training** (`?experiment_id=`). Usage guide: header book icon → `/guide`.
+Benchmark mode uses fixed deal seeds (up to 50 games). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Analyze** (`/pipeline/…`, `?experiment_id=`). Export an experiment pack from detail (no API keys) and import it on the home page to reproduce on another machine. Usage guide: header book icon → `/guide`.
 
 Script loop: `.\scripts\e2e_pipeline.ps1 all -Count 1` — see [E2E guide](docs/E2E_PIPELINE.md).
 
@@ -72,7 +74,6 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 | http://localhost:5173 | UI |
 | http://localhost:8000/docs | API docs |
 | http://localhost:8000/api/v1/system/preflight | Preflight (run-ready) |
-| http://localhost:8000/api/v1/system/startup-check | Startup check (compat) |
 
 ## Docs
 

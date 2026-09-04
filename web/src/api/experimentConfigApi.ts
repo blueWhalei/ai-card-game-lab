@@ -1,5 +1,6 @@
 import { apiClient } from './client'
 import type { ApiResponse } from './types'
+import type { ExperimentPack } from './experimentApi'
 
 export interface ExperimentConfig {
   id: string
@@ -67,4 +68,21 @@ export const experimentConfigApi = {
 
   getAllStats: () =>
     apiClient.get<never, ApiResponse<ExperimentConfigStats[]>>('/api/v1/experiment-configs/stats'),
+
+  exportPack: (ids?: string[]) =>
+    apiClient.get<never, ApiResponse<ExperimentPack>>(
+      '/api/v1/experiment-configs/export',
+      { params: ids?.length ? { ids: ids.join(',') } : undefined },
+    ),
+
+  importPack: (pack: unknown) =>
+    apiClient.post<
+      never,
+      ApiResponse<{
+        kind: string
+        players_created: string[]
+        players_reused: string[]
+        requirements?: { providers: string[]; ollama_tags: string[] }
+      }>
+    >('/api/v1/experiment-configs/import', pack),
 }

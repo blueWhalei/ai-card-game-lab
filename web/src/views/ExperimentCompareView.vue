@@ -13,7 +13,7 @@ import {
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
-import { formatWinRate, formatWinRateCi } from '@/utils/experimentWorkbench'
+import { formatWinRate, formatWinRateCi, EXPERIMENT_SCENARIO_IDS } from '@/utils/experimentWorkbench'
 import {
   bestIndex,
   compareMetricsForEngine,
@@ -211,6 +211,56 @@ const matrixRows = computed((): MatrixRow[] => {
       cells: raw.map((c, i) => ({
         display: c.display,
         delta: formatDelta(c.value, bestVal, unit),
+        isBest: best === i && c.value != null,
+      })),
+    }
+  })
+})
+
+function scenarioLabel(id: string): string {
+  const map: Record<string, string> = {
+    bidding: t('experiment.scenarioBidding'),
+    playing: t('experiment.scenarioPlaying'),
+    endgame: t('experiment.scenarioEndgame'),
+    bomb: t('experiment.scenarioBomb'),
+  }
+  return map[id] ?? id
+}
+
+const showScenarioMatrix = computed(() =>
+  rows.value.some((row) =>
+    EXPERIMENT_SCENARIO_IDS.some((id) => (row.scenario_scores?.[id]?.n ?? 0) > 0),
+  ),
+)
+
+const scenarioMatrixRows = computed((): MatrixRow[] => {
+  if (!showScenarioMatrix.value) return []
+  return EXPERIMENT_SCENARIO_IDS.map((id) => {
+    const raw = rows.value.map((row) => {
+      const score = row.scenario_scores?.[id]
+      const n = score?.n ?? 0
+      if (n <= 0) return { value: null as number | null, display: t('common.dash') }
+      const train = formatWinRate(score?.train_usable_rate ?? 0)
+      const parser =
+        (score?.parser_n ?? 0) > 0
+          ? formatWinRate(score?.parser_success_rate ?? 0)
+          : t('common.dash')
+      return {
+        value: score?.train_usable_rate ?? 0,
+        display: `${train} · n=${n} · ${t('compare.colParser')} ${parser}`,
+      }
+    })
+    const best = bestIndex(
+      raw.map((c) => c.value),
+      'higher',
+    )
+    const bestVal = best != null ? raw[best]?.value ?? null : null
+    return {
+      metric: { id: `scenario-${id}`, kind: 'higher' as const },
+      label: scenarioLabel(id),
+      cells: raw.map((c, i) => ({
+        display: c.display,
+        delta: formatDelta(c.value, bestVal, 'rate'),
         isBest: best === i && c.value != null,
       })),
     }
@@ -467,6 +517,62 @@ watch(
                 :key="mrow.metric.id"
                 class="border-t border-ink-border bg-ink-surface"
                 :class="mrow.metric.core ? '' : 'hidden xl:table-row'"
+              >
+                <th
+                  class="sticky left-0 z-10 bg-ink-surface px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-ink-text-secondary"
+                >
+                  {{ mrow.label }}
+                </th>
+                <td
+                  v-for="(cell, i) in mrow.cells"
+                  :key="`${mrow.metric.id}-${i}`"
+                  class="px-3 py-1.5 tabular-nums whitespace-nowrap"
+                >
+                  <span
+                    :class="
+                      cn(
+                        cell.isBest ? 'font-semibold text-ink-primary' : 'text-ink-text',
+                      )
+                    "
+                  >
+                    {{ cell.display }}
+                  </span>
+                  <span
+                    v-if="cell.delta"
+                    class="ml-1.5 text-xs text-ink-text-muted"
+                  >
+                    ({{ cell.delta }})
+                  </span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div
+          v-if="showScenarioMatrix"
+          class="overflow-x-auto rounded-ink-md border border-ink-border"
+        >
+          <table class="w-full text-left text-sm">
+            <thead class="bg-ink-surface-muted text-ink-text">
+              <tr>
+                <th class="sticky left-0 z-10 bg-ink-surface-muted px-3 py-2 font-medium">
+                  {{ t('compare.scenarioTitle') }}
+                </th>
+                <th
+                  v-for="row in rows"
+                  :key="`sc-${row.id}`"
+                  class="px-3 py-2 font-medium"
+                >
+                  {{ row.name }}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr
+                v-for="mrow in scenarioMatrixRows"
+                :key="mrow.metric.id"
+                class="border-t border-ink-border bg-ink-surface"
               >
                 <th
                   class="sticky left-0 z-10 bg-ink-surface px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-ink-text-secondary"

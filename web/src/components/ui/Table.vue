@@ -1,5 +1,4 @@
 <script setup lang="ts" generic="T extends Record<string, unknown>">
-import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
@@ -10,8 +9,6 @@ export type TableColumn<T> = {
   render?: (row: T) => string
 }
 
-export type TableDensity = 'comfortable' | 'compact'
-
 const props = withDefaults(
   defineProps<{
     columns: TableColumn<T>[]
@@ -19,21 +16,17 @@ const props = withDefaults(
     rowKey?: string | ((row: T) => string)
     class?: string
     emptyText?: string
-    density?: TableDensity
     fixedLayout?: boolean
     actionsColumnClass?: string
   }>(),
   {
-    density: 'compact',
     fixedLayout: false,
   },
 )
 
 const { t } = useI18n()
 
-const isCompact = computed(() => props.density === 'compact')
-
-const cellPad = computed(() => (isCompact.value ? 'px-3 py-1.5' : 'px-3 py-2.5'))
+const cellPad = 'px-3 py-ink-3'
 
 function keyOf(row: T, index: number): string {
   if (typeof props.rowKey === 'function') return props.rowKey(row)
@@ -53,11 +46,7 @@ function cell(row: T, col: TableColumn<T>): string {
   <div :class="cn('overflow-x-auto rounded-ink-md border border-ink-border', props.class)">
     <table
       :class="
-        cn(
-          'w-full min-w-[480px] border-collapse text-left',
-          isCompact ? 'text-sm' : 'text-base',
-          fixedLayout && 'table-fixed',
-        )
+        cn('w-full min-w-[480px] border-collapse text-left text-body', fixedLayout && 'table-fixed')
       "
     >
       <thead class="bg-ink-surface-muted text-ink-text">
@@ -65,26 +54,14 @@ function cell(row: T, col: TableColumn<T>): string {
           <th
             v-for="col in columns"
             :key="col.key"
-            :class="
-              cn(
-                cellPad,
-                'whitespace-nowrap font-semibold',
-                isCompact ? 'text-xs' : 'text-sm',
-                col.class,
-              )
-            "
+            :class="cn(cellPad, 'whitespace-nowrap text-caption font-semibold', col.class)"
           >
             {{ col.label }}
           </th>
           <th
             v-if="$slots.actions"
             :class="
-              cn(
-                cellPad,
-                'whitespace-nowrap font-semibold',
-                isCompact ? 'text-xs' : 'text-sm',
-                actionsColumnClass,
-              )
+              cn(cellPad, 'whitespace-nowrap text-caption font-semibold', actionsColumnClass)
             "
           >
             {{ t('common.actions') }}

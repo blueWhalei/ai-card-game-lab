@@ -362,6 +362,7 @@ watch(
 
     <UiDialog
       :open="createDialogVisible"
+      size="lg"
       :title="t('game.createTitle')"
       @update:open="createDialogVisible = $event"
     >

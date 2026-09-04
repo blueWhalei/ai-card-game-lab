@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { i18n, isAppLocale, localeRef, tt } from '@/i18n'
+import { isAppLocale, localeRef, tt } from '@/i18n'
 
 describe('i18n', () => {
   it('accepts only zh-CN and en', () => {
@@ -10,7 +10,7 @@ describe('i18n', () => {
 
   it('switches status labels with locale', () => {
     localeRef().value = 'zh-CN'
-    expect(tt('experiment.status.pending_collect')).toBe('待开局')
+    expect(tt('experiment.status.pending_collect')).toBe('待开始')
     localeRef().value = 'en'
     expect(tt('experiment.status.pending_collect')).toBe('Ready to start')
     localeRef().value = 'zh-CN'

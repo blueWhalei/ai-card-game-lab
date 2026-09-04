@@ -401,9 +401,12 @@ export const gameApi = {
 ### 2.7 文案与 i18n
 
 - 所有面向用户的文案走 `web/src/i18n/locales/zh-CN.ts` 与 `en.ts`，组件内禁止硬编码中文/英文（调试日志除外）
-- 中文产品用语与 UI 一致：如 **选手配置**、**试玩对局**、**实验详情页**、**数据与训练**；避免英译腔造词（如「跑表台」）
+- 中文产品用语与 UI 一致：如 **选手配置**、**试玩对局**、**实验详情页**、**分析**；避免英译腔造词（如「跑表台」）
 - 技术专名可保留英文：Ollama、LoRA、ChatML、API 密钥、P50/P95、`.env` 等
 - 新增页面或按钮时同步更新中英两套 locale
+- 界面时间统一 `YYYY-MM-DD HH:mm:ss`（`formatDateTime`，本地时区）；不要再引入短格式
+- 改评测指标、详情结论幕或 KPI 含义时：同步 `metricHint.*`（格子旁 ?）与 `guide.sections.metrics`（`/guide#metrics`）
+- 开始前检查（`GET /preflight` 的 `checks[].id`）文案在 `preflight.*`；供应商名称在 `settings.providerMeta.*`。后端 `message` 仅作 API 回退，界面不要直接展示
 
 ## 3. 通用规范
 

@@ -186,7 +186,7 @@ const modelOptions = computed((): SelectOption[] => {
 })
 
 function patchLocal(patch: WorkbenchLocalFilters): void {
-  const next: WorkbenchLocalFilters = { ...(props.filters ?? {}) }
+  const next: WorkbenchLocalFilters = { ...props.filters }
   for (const [k, v] of Object.entries(patch) as [keyof WorkbenchLocalFilters, string | undefined][]) {
     if (v === undefined || v === '') delete next[k]
     else next[k] = v
@@ -254,6 +254,7 @@ const phaseOptions = computed((): SelectOption[] => [
   { label: t('filter.allPhases'), value: ALL },
   { label: t('game.phaseBidding'), value: 'bidding' },
   { label: t('game.phasePlaying'), value: 'playing' },
+  { label: t('game.phaseEndgame'), value: 'endgame' },
 ])
 
 const minQualityOptions = computed((): SelectOption[] => [
@@ -280,7 +281,9 @@ const activeExtraChips = computed((): ActiveChip[] => {
           ? t('game.phaseBidding')
           : gamePhase.value === 'playing'
             ? t('game.phasePlaying')
-            : gamePhase.value
+            : gamePhase.value === 'endgame'
+              ? t('game.phaseEndgame')
+              : gamePhase.value
       chips.push({
         key: 'phase',
         label: `${t('filter.phase')}: ${phaseLabel}`,
@@ -338,7 +341,12 @@ watch(experimentId, (id) => {
 onMounted(() => {
   void loadConfigs()
   void loadExperimentPlayers(experimentId.value)
-  if (props.mode === 'decision' && !localMode.value && route.query.train_usable === undefined) {
+  if (
+    props.mode === 'decision' &&
+    !localMode.value &&
+    route.query.train_usable === undefined &&
+    !(typeof route.query.decision_id === 'string' && route.query.decision_id)
+  ) {
     patchQuery({ train_usable: 'true' })
   }
   if (

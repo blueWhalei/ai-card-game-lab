@@ -60,3 +60,25 @@ export function formatWinRateCi(ci: [number, number] | undefined): string {
   if (!ci) return '—'
   return `${(ci[0] * 100).toFixed(0)}–${(ci[1] * 100).toFixed(0)}%`
 }
+
+/** Signed percentage-point delta, e.g. 0.04 → "+4.0pp". */
+export function formatDeltaPp(diff: number | null | undefined): string {
+  if (diff == null || Number.isNaN(diff)) return '—'
+  const pp = diff * 100
+  const abs = Math.abs(pp)
+  const body = abs >= 10 ? abs.toFixed(0) : abs.toFixed(1)
+  if (pp > 0) return `+${body}pp`
+  if (pp < 0) return `−${body}pp`
+  return '0pp'
+}
+
+export const EXPERIMENT_SCENARIO_IDS = ['bidding', 'playing', 'endgame', 'bomb'] as const
+
+export type ExperimentScenarioId = (typeof EXPERIMENT_SCENARIO_IDS)[number]
+
+export function scenarioHasDecisions(
+  scores: Record<string, { n?: number }> | undefined,
+): boolean {
+  if (!scores) return false
+  return EXPERIMENT_SCENARIO_IDS.some((id) => (scores[id]?.n ?? 0) > 0)
+}

@@ -13,6 +13,25 @@ from app.utils.providers import is_provider_configured
 from app.utils.runtime_dirs import ensure_runtime_dirs
 
 
+def _preflight_item(
+    check_id: str,
+    *,
+    ok: bool,
+    message: str,
+    severity: str = "block",
+    params: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    item: dict[str, Any] = {
+        "id": check_id,
+        "severity": severity,
+        "ok": ok,
+        "message": message,
+    }
+    if params:
+        item["params"] = params
+    return item
+
+
 @lru_cache(maxsize=1)
 def _cached_training_deps_available() -> bool:
     """Probe training deps once per process; cached to avoid re-importing the
@@ -159,11 +178,6 @@ class SystemService:
             _compute_storage_stats, db_path, data_dir
         )
 
-    def get_startup_check(self) -> dict[str, Any]:
-        """Return first-run readiness (maps from preflight for existing clients)."""
-        # Sync wrapper: no experiment scope — use asyncio-free path
-        return self._preflight_sync(scope="all", experiment_id=None)
-
     async def get_preflight(
         self,
         *,
@@ -190,17 +204,16 @@ class SystemService:
         any_ready = any(bool(item["configured"]) for item in providers)
         if need_collect and experiment_id is None:
             checks.append(
-                {
-                    "id": "providers_any",
-                    "severity": "block",
-                    "ok": any_ready,
-                    "message": (
+                _preflight_item(
+                    "providers_any",
+                    ok=any_ready,
+                    message=(
                         "未配置可用模型供应商。请在项目根目录 .env 填写云厂商 API 密钥，"
                         "或安装 Ollama 并拉取至少一个本地模型（如 ollama pull qwen2.5:7b）。"
                         if not any_ready
                         else "至少有一个模型供应商可用"
                     ),
-                }
+                )
             )
 
         protocol_ok = True
@@ -210,16 +223,15 @@ class SystemService:
             players = list((proto or {}).get("players") or []) if proto else []
             protocol_ok = bool(proto) and bool(players)
             checks.append(
-                {
-                    "id": "protocol",
-                    "severity": "block",
-                    "ok": protocol_ok,
-                    "message": (
+                _preflight_item(
+                    "protocol",
+                    ok=protocol_ok,
+                    message=(
                         "实验协议完整"
                         if protocol_ok
                         else "实验协议缺失或不完整，请重新创建实验后再采集"
                     ),
-                }
+                )
             )
             if protocol_ok:
                 from app.utils.providers import unconfigured_providers_from_players
@@ -227,11 +239,10 @@ class SystemService:
                 missing = unconfigured_providers_from_players(self._settings, players)
                 seats_ok = len(missing) == 0
                 checks.append(
-                    {
-                        "id": "providers_seats",
-                        "severity": "block",
-                        "ok": seats_ok,
-                        "message": (
+                    _preflight_item(
+                        "providers_seats",
+                        ok=seats_ok,
+                        message=(
                             "实验座位所用供应商均已配置"
                             if seats_ok
                             else (
@@ -240,36 +251,37 @@ class SystemService:
                                 + "。请在 .env 配置密钥，或改选手配置。"
                             )
                         ),
-                    }
+                        params=None if seats_ok else {"providers": ", ".join(missing)},
+                    )
                 )
             else:
                 seats_ok = False
                 checks.append(
-                    {
-                        "id": "providers_seats",
-                        "severity": "block",
-                        "ok": False,
-                        "message": "无法校验座位供应商（协议不完整）",
-                    }
+                    _preflight_item(
+                        "providers_seats",
+                        ok=False,
+                        message="无法校验座位供应商（协议不完整）",
+                        params={"incomplete": True},
+                    )
                 )
 
         train_deps = _cached_training_deps_available()
         if need_train:
             checks.append(
-                {
-                    "id": "training_deps",
-                    "severity": "block",
-                    "ok": train_deps,
-                    "message": (
+                _preflight_item(
+                    "training_deps",
+                    ok=train_deps,
+                    message=(
                         "训练依赖已安装"
                         if train_deps
                         else "未安装训练依赖，无法创建训练任务。"
                         "请执行：cd server && poetry install --with training"
                     ),
-                }
+                )
             )
             mem_ok = True
             mem_msg = "可用内存足以做 CPU smoke 训练"
+            mem_params: dict[str, Any] | None = None
             try:
                 from app.core.training.cpu_smoke import MIN_AVAILABLE_MEMORY_MB
                 from app.core.training.runtime_stats import get_runtime_stats as _snap
@@ -277,6 +289,10 @@ class SystemService:
                 available = float(_snap().get("memory_available_mb") or 0)
                 if available < MIN_AVAILABLE_MEMORY_MB:
                     mem_ok = False
+                    mem_params = {
+                        "available_mb": int(available),
+                        "threshold_mb": int(MIN_AVAILABLE_MEMORY_MB),
+                    }
                     mem_msg = (
                         f"可用内存约 {available:.0f}MB，低于 CPU smoke 建议阈值 "
                         f"{MIN_AVAILABLE_MEMORY_MB}MB；创建任务时可能被拒绝。"
@@ -285,12 +301,13 @@ class SystemService:
                 mem_ok = True
                 mem_msg = "未能探测内存，跳过警告"
             checks.append(
-                {
-                    "id": "memory_smoke",
-                    "severity": "warn",
-                    "ok": mem_ok,
-                    "message": mem_msg,
-                }
+                _preflight_item(
+                    "memory_smoke",
+                    ok=mem_ok,
+                    severity="warn",
+                    message=mem_msg,
+                    params=mem_params,
+                )
             )
 
         can_collect = True
@@ -312,9 +329,6 @@ class SystemService:
             "checks": checks,
             "providers": providers,
             "warnings": warnings,
-            # legacy startup-check fields
-            "data_dirs_ready": True,
-            "seed_provider": "deepseek",
         }
 
     async def _preflight_async(

@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.ai.stream_chunk import StreamChunk
+from app.core.ai.tools.serialize import actions_as_dicts, explain_from_tools
 from app.core.events import EventBus, GameEndedEvent
 from app.database import bind_game_connection, connect_sqlite
 from app.repositories.game_repo import GameRepository
@@ -249,6 +250,7 @@ class GameOrchestrationService:
             "data": {
                 "player_id": current_player,
                 "player_name": player_config["name"] if player_config else current_player,
+                "legal_actions": actions_as_dicts(legal_actions),
             },
         })
 
@@ -301,7 +303,7 @@ class GameOrchestrationService:
         # Broadcast updates, persist data, record traces
         await self._broadcast_round_events(
             game_id, current_player, new_state, decision,
-            full_thinking, elapsed_ms, model_cfg, engine,
+            full_thinking, elapsed_ms, model_cfg, engine, legal_actions,
         )
         await self._persist_round(
             game_id, current_player, new_state, decision,
@@ -324,8 +326,10 @@ class GameOrchestrationService:
         elapsed_ms: int,
         model_cfg: dict[str, Any],
         engine: Any,
+        legal_actions: list[Any],
     ) -> None:
         """Broadcast thinking_complete, action, and state_update via WebSocket."""
+        explain = explain_from_tools(getattr(decision, "tool_results", None))
         await ws_manager.broadcast(game_id, {
             "type": "thinking_complete",
             "game_id": game_id,
@@ -348,6 +352,11 @@ class GameOrchestrationService:
                 "total_tokens": decision.usage.get("total_tokens"),
                 "model_provider": model_cfg.get("provider"),
                 "model_name": model_cfg.get("model_name"),
+                "legal_actions": actions_as_dicts(legal_actions),
+                "used_langchain_parser": bool(
+                    getattr(decision, "used_langchain_parser", True)
+                ),
+                **explain,
             },
         })
 
@@ -436,6 +445,11 @@ class GameOrchestrationService:
             return
 
         try:
+            explain = explain_from_tools(getattr(decision, "tool_results", None))
+            legal = [
+                {"action_type": str(a.action_type), "cards": a.cards}
+                for a in legal_actions
+            ]
             trace_id = await self._trace_service.create_trace(
                 game_id=game_id,
                 round_number=new_state.round,
@@ -443,11 +457,9 @@ class GameOrchestrationService:
                 model=model_cfg.get("model_name", "unknown"),
                 prompt_version="default",
                 input_snapshot={
-                    "legal_actions": [
-                        {"action_type": str(a.action_type), "cards": a.cards}
-                        for a in legal_actions
-                    ],
+                    "legal_actions": legal,
                     "hand_snapshot": hand_snapshot,
+                    **explain,
                 },
                 output_data={
                     "action_type": str(decision.action.action_type),
@@ -501,7 +513,7 @@ class GameOrchestrationService:
                 span_type="hand_analysis",
                 start_time=now_iso,
                 end_time=now_iso,
-                data={"analysis": str(tool_results["hand_analysis"])},
+                data=explain_from_tools({"hand_analysis": tool_results["hand_analysis"]}),
             )
         if "win_probability" in tool_results:
             await self._trace_service.create_span(
@@ -509,7 +521,9 @@ class GameOrchestrationService:
                 span_type="win_probability_estimation",
                 start_time=now_iso,
                 end_time=now_iso,
-                data={"estimation": str(tool_results["win_probability"])},
+                data=explain_from_tools(
+                    {"win_probability": tool_results["win_probability"]}
+                ),
             )
 
     async def _finish_game(

@@ -12,6 +12,7 @@ export interface TrainingConfig {
   max_seq_length?: number
   max_steps?: number
   gradient_accumulation_steps?: number
+  qlora?: boolean
 }
 
 export interface CreateTaskRequest {

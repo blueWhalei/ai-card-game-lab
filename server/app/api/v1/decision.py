@@ -31,6 +31,9 @@ class DecisionPointResponse(BaseModel):
     train_usable: bool = True
     train_usable_reason: str = ""
     created_at: str
+    parser_ok: bool | None = None
+    win_probability: dict[str, Any] | None = None
+    hand_analysis: dict[str, Any] | None = None
 
 
 class DecisionStatsResponse(BaseModel):

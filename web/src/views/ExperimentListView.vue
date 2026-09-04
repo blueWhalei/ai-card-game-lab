@@ -21,11 +21,14 @@ import {
   supportsBenchmark,
   type EngineInfo,
 } from '@/utils/engineSlots'
-import { systemApi } from '@/api/systemApi'
+import { firstRunSteps } from '@/utils/firstRun'
+import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { formatDateTime } from '@/utils/format'
+import { pickJsonFile } from '@/utils/jsonFile'
 import EmptyState from '@/components/common/EmptyState.vue'
+import FirstRunStepper from '@/components/common/FirstRunStepper.vue'
 import NameChips from '@/components/common/NameChips.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -58,10 +61,12 @@ const router = useRouter()
 const loading = ref(true)
 const seedingDemo = ref(false)
 const creating = ref(false)
+const importing = ref(false)
 const createOpen = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
 const engines = ref<EngineInfo[]>([])
+const preflight = ref<PreflightResult | null>(null)
 const formGameType = ref('')
 
 const formName = ref('')
@@ -76,6 +81,21 @@ const currentEngine = computed(() => engineById(engines.value, formGameType.valu
 const slotsLabel = computed(() => playerCountLabel(currentEngine.value))
 const maxPlayers = computed(() => maxSelectable(currentEngine.value))
 const canUseBenchmark = computed(() => supportsBenchmark(currentEngine.value))
+
+const requiredPlayers = computed(() => currentEngine.value?.min_players ?? 3)
+const hasConfiguredProvider = computed(
+  () =>
+    (preflight.value?.providers ?? []).some((p) => p.configured) ||
+    preflight.value?.can_collect === true,
+)
+const setupSteps = computed(() =>
+  firstRunSteps({
+    hasConfiguredProvider: hasConfiguredProvider.value,
+    playerCount: configs.value.length,
+    requiredPlayers: requiredPlayers.value,
+    experimentCount: experiments.value.length,
+  }),
+)
 
 const canSubmit = computed(() => {
   const target = Number(formTarget.value)
@@ -100,14 +120,16 @@ function progressText(exp: Experiment): string {
 async function load(): Promise<void> {
   loading.value = true
   try {
-    const [expRes, cfgRes, engineRes] = await Promise.all([
+    const [expRes, cfgRes, engineRes, preflightRes] = await Promise.all([
       experimentApi.list(),
       experimentConfigApi.list(),
       systemApi.listEngines().catch(() => null),
+      systemApi.preflight({ scope: 'all' }).catch(() => null),
     ])
     experiments.value = expRes.data ?? []
     configs.value = cfgRes.data ?? []
     engines.value = engineRes?.data ?? []
+    preflight.value = preflightRes?.data ?? null
     if (!engines.value.some((e) => e.id === formGameType.value)) {
       formGameType.value = defaultEngineId(engines.value)
     }
@@ -190,6 +212,42 @@ function goDetail(id: string): void {
   void router.push(`/experiments/${id}`)
 }
 
+async function importPack(): Promise<void> {
+  importing.value = true
+  try {
+    const raw = await pickJsonFile()
+    if (raw == null) return
+    const res = await experimentApi.importPack(raw)
+    const result = res.data
+    const missing = result.unconfigured_providers ?? []
+    const ollama = result.requirements?.ollama_tags ?? []
+    toast.success(
+      t('experiment.importedPack', {
+        created: result.players_created.length,
+        reused: result.players_reused.length,
+      }),
+    )
+    if (missing.length > 0) {
+      toast.warning(t('experiment.importMissingProviders', { ids: missing.join(', ') }))
+    } else if (ollama.length > 0) {
+      toast.info(t('experiment.importOllamaTags', { tags: ollama.join(', ') }))
+    }
+    if (result.experiment?.id) {
+      await router.push(`/experiments/${result.experiment.id}`)
+      return
+    }
+    await load()
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'invalid json') {
+      toast.error(t('experiment.importInvalidJson'))
+    } else {
+      showApiError(e, t('experiment.importFailed'))
+    }
+  } finally {
+    importing.value = false
+  }
+}
+
 onMounted(() => {
   void load()
 })
@@ -199,7 +257,10 @@ onMounted(() => {
   <div class="page-container space-y-6">
     <div class="flex flex-wrap items-center justify-end gap-2">
       <UiButton variant="secondary" @click="router.push('/experiments/compare')">
-        {{ t('experiment.compare') }}
+        {{ t('experiment.compareMany') }}
+      </UiButton>
+      <UiButton variant="secondary" :loading="importing" @click="importPack">
+        {{ t('experiment.importPack') }}
       </UiButton>
       <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
         {{ t('experiment.loadDemo') }}
@@ -209,6 +270,17 @@ onMounted(() => {
         {{ t('experiment.create') }}
       </UiButton>
     </div>
+
+    <FirstRunStepper
+      v-if="!loading"
+      :steps="setupSteps"
+      :required-players="requiredPlayers"
+      :demo-loading="seedingDemo"
+      @settings="router.push('/settings')"
+      @players="router.push('/experiment-configs')"
+      @create="openCreate"
+      @demo="loadDemo"
+    />
 
     <div v-if="loading" class="py-2">
       <UiSkeletonList :rows="6" />
@@ -221,6 +293,9 @@ onMounted(() => {
       <template #action>
         <div class="flex flex-wrap justify-center gap-2">
           <UiButton @click="openCreate">{{ t('experiment.create') }}</UiButton>
+          <UiButton variant="secondary" :loading="importing" @click="importPack">
+            {{ t('experiment.importPack') }}
+          </UiButton>
           <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
             {{ t('experiment.loadDemo') }}
           </UiButton>
@@ -282,11 +357,12 @@ onMounted(() => {
 
     <UiDialog
       v-model:open="createOpen"
+      size="lg"
       :title="t('experiment.createTitle')"
     >
-      <div class="space-y-4">
+      <div class="grid gap-ink-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.name') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.name') }}</label>
           <UiInput
             v-model="formName"
             :placeholder="t('experiment.namePlaceholder')"
@@ -294,30 +370,36 @@ onMounted(() => {
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">
+            {{ t('experiment.targetGames') }}
+          </label>
+          <UiInputNumber v-model="formTarget" :min="1" :max="50" />
+        </div>
+        <div>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
           <UiTextarea
             v-model="formHypothesis"
-            :rows="2"
+            :rows="3"
             :placeholder="t('experiment.hypothesisPlaceholder')"
             class="w-full"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.notes') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
           <UiTextarea
             v-model="formNotes"
-            :rows="2"
+            :rows="3"
             :placeholder="t('experiment.notesPlaceholder')"
             class="w-full"
           />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.tags') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.tags') }}</label>
           <UiInput v-model="formTags" :placeholder="t('experiment.tagsPlaceholder')" class="w-full" />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('experiment.collectMode') }}</label>
-          <div class="flex flex-wrap gap-2">
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.collectMode') }}</label>
+          <div class="flex flex-wrap gap-ink-2">
             <UiButton
               size="sm"
               :variant="formCollectMode === 'free' ? 'primary' : 'secondary'"
@@ -336,28 +418,30 @@ onMounted(() => {
               {{ t('experiment.collectModeBenchmark') }}
             </UiButton>
           </div>
-          <p v-if="formCollectMode === 'benchmark'" class="mt-1.5 text-xs text-ink-text-secondary">
+          <p v-if="formCollectMode === 'benchmark'" class="mt-1.5 text-caption text-ink-text-secondary">
             {{ t('experiment.collectModeBenchmarkHint') }}
           </p>
         </div>
-        <div>
+        <div class="sm:col-span-2">
           <div class="mb-1.5 flex items-center justify-between">
-            <label class="text-sm font-medium text-ink-text">
+            <label class="text-body font-medium text-ink-text">
               {{ t('experiment.pickPlayers', { n: slotsLabel }) }}
             </label>
-            <span class="text-xs text-ink-text-muted">{{ selectedConfigIds.length }}/{{ maxPlayers }}</span>
+            <span class="text-caption tabular-nums text-ink-text-muted">
+              {{ selectedConfigIds.length }}/{{ maxPlayers }}
+            </span>
           </div>
           <div
             v-if="configs.length === 0"
-            class="rounded-ink border border-dashed border-ink-border p-3 text-sm text-ink-text-muted"
+            class="rounded-ink border border-dashed border-ink-border p-ink-3 text-body text-ink-text-muted"
           >
             {{ t('experiment.noConfigs') }}
           </div>
-          <div v-else class="max-h-48 space-y-2 overflow-y-auto">
+          <div v-else class="grid max-h-56 gap-ink-2 overflow-y-auto sm:grid-cols-2">
             <div
               v-for="cfg in configs"
               :key="cfg.id"
-              class="flex items-start gap-2 rounded-ink border border-ink-border px-3 py-2 hover:bg-ink-surface-muted"
+              class="flex items-start gap-ink-2 rounded-ink border border-ink-border px-ink-3 py-ink-2 hover:bg-ink-surface-muted"
             >
               <UiCheckbox
                 :model-value="selectedConfigIds.includes(cfg.id)"
@@ -365,17 +449,11 @@ onMounted(() => {
                 :label="cfg.name"
                 @update:model-value="(v) => toggleConfig(cfg.id, Boolean(v))"
               />
-              <span class="min-w-0 flex-1 pt-0.5 text-xs text-ink-text-muted">
+              <span class="min-w-0 flex-1 pt-0.5 text-caption text-ink-text-muted">
                 {{ cfg.model_config.provider }} / {{ cfg.model_config.model_name }}
               </span>
             </div>
           </div>
-        </div>
-        <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">
-            {{ t('experiment.targetGames') }}
-          </label>
-          <UiInputNumber v-model="formTarget" :min="1" :max="50" />
         </div>
       </div>
       <template #footer>

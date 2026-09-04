@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.database import connect_or_reuse, init_db
+from app.repositories.trace_repo import TraceRepository
 from app.services.decision_service import DecisionService
 
 
@@ -229,3 +230,41 @@ class TestDecisionServiceUpdateOutcome:
     ) -> None:
         updated = await decision_service.update_outcome("nonexistent-game", "winner-1")
         assert updated == 0
+
+
+class TestDecisionExplainAttach:
+    @pytest.mark.asyncio
+    async def test_list_includes_parser_and_win_probability(
+        self, decision_service: DecisionService
+    ) -> None:
+        await _create_sample(decision_service)
+        async with connect_or_reuse(decision_service._sqlite_path) as db:
+            traces = TraceRepository(db)
+            await traces.create_trace(
+                trace_id="tr-explain",
+                game_id="game-1",
+                round_number=1,
+                player_id="p1",
+                model="m",
+                prompt_version="v1",
+                input_snapshot={
+                    "win_probability": {
+                        "probability": 0.62,
+                        "confidence": "中",
+                        "reasoning": "局势均衡",
+                    },
+                    "hand_analysis": {
+                        "bomb_count": 1,
+                        "rocket": False,
+                        "strength_score": 0.7,
+                    },
+                },
+                output_data={},
+                metrics={"used_langchain_parser": 0},
+                created_at="2026-09-03T00:00:00+00:00",
+            )
+        points, total = await decision_service.list_decision_points(game_id="game-1")
+        assert total == 1
+        assert points[0]["parser_ok"] is False
+        assert points[0]["win_probability"]["probability"] == 0.62
+        assert points[0]["hand_analysis"]["bomb_count"] == 1

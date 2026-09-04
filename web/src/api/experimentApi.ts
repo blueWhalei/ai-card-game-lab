@@ -31,6 +31,7 @@ export type ExperimentNextStepAction =
   | 'control'
   | 'control_collect'
   | 'compare'
+  | 'stay'
 
 export interface ExperimentTimelineEvent {
   id: string
@@ -109,6 +110,50 @@ export interface ExperimentProtocol {
   benchmark_seed_count: number
 }
 
+export type ExperimentDeltaRelation = 'vs_source' | 'vs_control'
+
+export type ExperimentDeltaReason = 'no_games' | 'peer_not_ready' | 'low_power'
+
+/** Plain-language claim the verdict block renders; wording lives in `stage.verdict.*`. */
+export type ExperimentVerdictKey = 'stronger' | 'weaker' | 'even' | 'peer_pending' | 'no_data'
+
+export interface ExperimentScenarioScore {
+  n: number
+  train_usable_n: number
+  train_usable_rate: number
+  parser_n: number
+  parser_ok: number
+  parser_success_rate: number
+}
+
+export interface ExperimentScenarioDiff {
+  this_n: number
+  peer_n: number
+  train_usable_rate_diff: number | null
+  parser_success_rate_diff: number | null
+}
+
+export interface ExperimentDelta {
+  peer_id: string
+  peer_name: string
+  relation: ExperimentDeltaRelation
+  peer_ready: boolean
+  this_landlord_win_rate: number
+  peer_landlord_win_rate: number
+  landlord_win_rate_diff: number | null
+  this_landlord_win_rate_ci: [number, number] | null
+  peer_landlord_win_rate_ci: [number, number] | null
+  this_decisive_n: number
+  peer_decisive_n: number
+  paired_n: number
+  paired_landlord_win_rate_diff: number | null
+  low_power: boolean
+  can_conclude: boolean
+  inconclusive_reason: ExperimentDeltaReason | null
+  verdict_key?: ExperimentVerdictKey
+  scenario_diffs?: Record<string, ExperimentScenarioDiff>
+}
+
 export interface ExperimentCredibility {
   decisive_n: number
   landlord_ci_width: number | null
@@ -146,6 +191,7 @@ export interface ExperimentSummary {
   latest_game_id: string | null
   paired_games?: number
   credibility?: ExperimentCredibility
+  scenario_scores?: Record<string, ExperimentScenarioScore>
 }
 
 export interface Experiment {
@@ -166,6 +212,7 @@ export interface Experiment {
   timeline?: ExperimentTimelineEvent[]
   validation?: ExperimentValidation
   next_step?: ExperimentNextStep
+  delta?: ExperimentDelta | null
 }
 
 export interface CreateExperimentRequest {
@@ -249,6 +296,7 @@ export interface ExperimentCompareRow {
   paired_n?: number
   paired_seat_wins?: number[]
   paired_landlord_win_rate?: number
+  scenario_scores?: Record<string, ExperimentScenarioScore>
 }
 
 export interface ExperimentPairedSummary {
@@ -262,6 +310,47 @@ export interface ExperimentPairedSummary {
 export interface ExperimentCompareResult {
   experiments: ExperimentCompareRow[]
   paired_summary?: ExperimentPairedSummary
+}
+
+export interface ExperimentPackRequirements {
+  providers: string[]
+  ollama_tags: string[]
+}
+
+export interface ExperimentPackPlayer {
+  id: string
+  name: string
+  notes: string
+  model_config: ExperimentProtocolPlayer['model_config']
+}
+
+export interface ExperimentPack {
+  kind: 'cardlab.player_pack' | 'cardlab.experiment_pack'
+  schema_version: number
+  exported_at?: string
+  experiment?: {
+    name: string
+    notes: string
+    hypothesis: string
+    tags: string[]
+    game_type: string
+    player_ids: string[]
+    target_games: number
+    collect_mode: CollectMode
+  }
+  protocol?: ExperimentProtocol | null
+  players: ExperimentPackPlayer[]
+  requirements?: ExperimentPackRequirements
+  deal_seeds?: number[]
+}
+
+export interface ExperimentPackImportResult {
+  kind: ExperimentPack['kind']
+  experiment: Experiment | null
+  players_created: string[]
+  players_reused: string[]
+  requirements?: ExperimentPackRequirements
+  unconfigured_providers?: string[]
 }
 
 export const experimentApi = {
@@ -290,6 +379,15 @@ export const experimentApi = {
       '/api/v1/experiments/compare',
       { params: { ids: ids.join(',') } },
     ),
+
+  exportPack: (id: string) =>
+    apiClient.get<never, ApiResponse<ExperimentPack>>(`/api/v1/experiments/${id}/export`),
+
+  importPack: (pack: unknown) =>
+    apiClient.post<never, ApiResponse<ExperimentPackImportResult>>(
+      '/api/v1/experiments/import',
+      pack,
+    ),
 }
 
 export const EXPERIMENT_STATUS_VARIANT: Record<
@@ -304,10 +402,6 @@ export const EXPERIMENT_STATUS_VARIANT: Record<
 
 export function experimentStatusLabel(status: ExperimentStatus): string {
   return tt(`experiment.status.${status}`)
-}
-
-export function experimentNextStepLabel(id: ExperimentNextStepId): string {
-  return tt(`experiment.nextStep.${id}`)
 }
 
 export function experimentTimelineLabel(id: string): string {

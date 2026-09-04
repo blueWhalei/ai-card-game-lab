@@ -3,6 +3,7 @@ import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { formatMs } from '@/utils/card'
 import UiBadge from '@/components/ui/Badge.vue'
+import MoveExplainStrip from '@/components/common/MoveExplainStrip.vue'
 
 interface ThinkingEntry {
   playerId: string
@@ -22,6 +23,18 @@ interface ThinkingEntry {
   rawResponseFull?: string
   reasoning?: string
   answer?: string
+  legalActions?: Array<{ action_type?: string; cards?: string[] }>
+  parserOk?: boolean | null
+  winProbability?: {
+    probability?: number
+    confidence?: string
+    reasoning?: string
+  }
+  handAnalysis?: {
+    bomb_count?: number
+    rocket?: boolean
+    strength_score?: number
+  }
 }
 
 const props = defineProps<{
@@ -34,14 +47,23 @@ const props = defineProps<{
   currentRawResponsePreview?: string
   currentPromptMessages?: Array<{ role: string; content: string }>
   currentRawResponseFull?: string
+  currentLegalActions?: Array<{ action_type?: string; cards?: string[] }>
+  currentParserOk?: boolean | null
+  currentWinProbability?: ThinkingEntry['winProbability']
+  currentHandAnalysis?: ThinkingEntry['handAnalysis']
   history: ThinkingEntry[]
   isStreaming?: boolean
   currentReasoning?: string
   currentAnswer?: string
+  playerNames?: Record<string, string>
 }>()
 
 const { t } = useI18n()
 const expandedSet = defineModel<Set<number>>('expandedSet', { default: () => new Set<number>() })
+
+function displayName(id: string): string {
+  return props.playerNames?.[id] || id
+}
 
 const waitElapsedSec = ref(0)
 let waitTimer: ReturnType<typeof setInterval> | null = null
@@ -108,16 +130,16 @@ onUnmounted(() => {
       <div v-if="currentReasoning" class="mb-3">
         <div class="mb-2 flex items-center gap-2">
           <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
-          <span class="text-sm font-medium text-ink-obs-accent">{{ t('game.reasoning') }}</span>
+          <span class="text-body font-medium text-ink-obs-accent">{{ t('game.reasoning') }}</span>
           <UiBadge v-if="currentRound" class="!bg-ink-obs-surface !text-ink-obs-muted">
             R{{ currentRound }}
           </UiBadge>
-          <span v-if="isActivelyStreaming && !currentAnswer" class="text-xs text-ink-obs-muted">
+          <span v-if="isActivelyStreaming && !currentAnswer" class="text-caption text-ink-obs-muted">
             {{ t('game.generating') }}
           </span>
         </div>
         <div
-          class="max-h-40 overflow-y-auto rounded-ink bg-ink-obs-surface p-3 text-sm leading-relaxed text-ink-obs-text"
+          class="max-h-64 overflow-y-auto rounded-ink bg-ink-obs-surface p-3 text-lead leading-relaxed text-ink-obs-text"
         >
           {{ currentReasoning
           }}<span
@@ -129,16 +151,16 @@ onUnmounted(() => {
 
       <div v-if="currentAnswer || (!currentReasoning && currentThinking)">
         <div class="mb-2 flex items-center gap-2">
-          <span class="text-sm font-medium text-ink-obs-text">{{ t('game.finalDecision') }}</span>
+          <span class="text-body font-medium text-ink-obs-text">{{ t('game.finalDecision') }}</span>
         </div>
         <div
-          class="rounded-ink border border-ink-obs-border bg-ink-obs-surface/80 p-3 text-sm leading-relaxed text-ink-obs-text"
+          class="rounded-ink border border-ink-obs-border bg-ink-obs-surface/80 p-3 text-body leading-relaxed text-ink-obs-text"
         >
           {{ currentAnswer || currentThinking }}
         </div>
         <div
           v-if="currentActionType || (currentCards && currentCards.length > 0)"
-          class="mt-2 text-xs text-ink-obs-muted"
+          class="mt-2 text-caption text-ink-obs-muted"
         >
           {{ t('game.actionLabel', { type: currentActionType || '-' })
           }}<template v-if="currentCards && currentCards.length > 0">
@@ -147,9 +169,19 @@ onUnmounted(() => {
         </div>
       </div>
 
+      <MoveExplainStrip
+        class="mt-3"
+        tone="observer"
+        :legal-actions="currentLegalActions"
+        :chosen="{ action_type: currentActionType, cards: currentCards }"
+        :parser-ok="currentParserOk"
+        :win-probability="currentWinProbability"
+        :hand-analysis="currentHandAnalysis"
+      />
+
       <details
         v-if="currentPromptMessages && currentPromptMessages.length > 0"
-        class="mt-2 text-xs text-ink-obs-muted"
+        class="mt-2 text-caption text-ink-obs-muted"
       >
         <summary class="cursor-pointer select-none text-ink-obs-muted hover:text-ink-obs-text">
           {{ t('game.viewPrompt') }}
@@ -173,16 +205,25 @@ onUnmounted(() => {
     <!-- 思考中状态(无内容时：本地模型首 token 前也会长时间停在这里) -->
     <div
       v-else-if="currentPlayerId"
-      class="flex flex-wrap items-center gap-2 border-b border-ink-obs-border p-4"
+      class="space-y-2 border-b border-ink-obs-border p-4"
     >
-      <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
-      <span class="text-sm text-ink-obs-accent">{{
-        t('game.playerThinking', { id: currentPlayerId })
-      }}</span>
-      <span class="animate-blink ml-1 inline-block h-3 w-0.5 bg-ink-obs-accent" />
-      <span v-if="waitElapsedSec > 0" class="text-xs text-ink-obs-muted">
-        {{ t('game.waitingElapsed', { sec: waitElapsedSec }) }}
-      </span>
+      <div class="flex flex-wrap items-center gap-2">
+        <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-ink-obs-accent" />
+        <span class="text-body text-ink-obs-accent">{{
+          t('game.playerThinking', { name: displayName(currentPlayerId), id: displayName(currentPlayerId) })
+        }}</span>
+        <span class="animate-blink ml-1 inline-block h-3 w-0.5 bg-ink-obs-accent" />
+        <span v-if="waitElapsedSec > 0" class="text-xs text-ink-obs-muted">
+          {{ t('game.waitingElapsed', { sec: waitElapsedSec }) }}
+        </span>
+      </div>
+      <MoveExplainStrip
+        tone="observer"
+        :legal-actions="currentLegalActions"
+        :parser-ok="currentParserOk"
+        :win-probability="currentWinProbability"
+        :hand-analysis="currentHandAnalysis"
+      />
     </div>
 
     <!-- 历史思考链 -->
@@ -201,7 +242,7 @@ onUnmounted(() => {
         >
           <div class="flex flex-wrap items-center gap-2 text-xs text-ink-obs-muted">
             <span class="font-mono">R{{ entry.round }}</span>
-            <span class="font-medium text-ink-obs-text">{{ entry.playerId }}</span>
+            <span class="font-medium text-ink-obs-text">{{ displayName(entry.playerId) }}</span>
             <span
               v-if="entry.responseTimeMs"
               class="rounded-[6px] bg-ink-obs-bg px-1.5 py-0.5 text-xs text-ink-obs-muted"
@@ -229,6 +270,9 @@ onUnmounted(() => {
         <div v-if="!expandedSet.has(history.length - 1 - i)" class="mt-1 text-xs text-ink-obs-muted">
           {{ t('game.actionLabel', { type: entry.actionType }) }}
           <span v-if="entry.cards && entry.cards.length > 0"> · {{ entry.cards.join(' ') }}</span>
+          <span v-if="entry.parserOk === false" class="ml-1 text-ink-obs-accent">
+            · {{ t('filter.ruleFallback') }}
+          </span>
         </div>
 
         <div v-else class="mt-2 space-y-2">
@@ -257,6 +301,15 @@ onUnmounted(() => {
           >
             {{ entry.thinking }}
           </div>
+
+          <MoveExplainStrip
+            tone="observer"
+            :legal-actions="entry.legalActions"
+            :chosen="{ action_type: entry.actionType, cards: entry.cards }"
+            :parser-ok="entry.parserOk"
+            :win-probability="entry.winProbability"
+            :hand-analysis="entry.handAnalysis"
+          />
 
           <div
             v-if="entry.promptTokens || entry.completionTokens || entry.totalTokens"
@@ -314,5 +367,12 @@ onUnmounted(() => {
 
 .animate-blink {
   animation: blink 1s step-end infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-blink {
+    animation: none;
+    opacity: 1;
+  }
 }
 </style>

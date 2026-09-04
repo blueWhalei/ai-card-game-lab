@@ -27,6 +27,14 @@ async def list_experiments(
     return ApiResponse(data=await service.list_experiments())
 
 
+@router.post("/import")
+async def import_experiment_pack(
+    body: dict[str, Any],
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.import_pack(body, include_experiment=True))
+
+
 @router.post("", status_code=201)
 async def create_experiment(
     body: CreateExperimentRequest,
@@ -66,6 +74,18 @@ async def get_experiment(
     except ExperimentNotFoundError:
         raise
     return ApiResponse(data=experiment)
+
+
+@router.get("/{experiment_id}/export")
+async def export_experiment_pack(
+    experiment_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        pack = await service.export_pack(experiment_id)
+    except ExperimentNotFoundError:
+        raise
+    return ApiResponse(data=pack)
 
 
 @router.patch("/{experiment_id}")

@@ -7,7 +7,6 @@ import AIPerformanceTab from '@/components/data/tabs/AIPerformanceTab.vue'
 import DatasetTab from '@/components/data/tabs/DatasetTab.vue'
 import StorageTab from '@/components/data/tabs/StorageTab.vue'
 import ArchiveTab from '@/components/data/tabs/ArchiveTab.vue'
-import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
 import UiTabs from '@/components/ui/Tabs.vue'
 
 type TabType = 'overview' | 'ai-performance' | 'datasets' | 'storage' | 'archive'
@@ -24,11 +23,6 @@ const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
 const activeTab = ref<TabType>('overview')
-
-const experimentId = computed(() => {
-  const v = route.query.experiment_id
-  return typeof v === 'string' && v ? v : undefined
-})
 
 const tabs = computed((): { value: TabType; label: string }[] => [
   { value: 'overview', label: t('data.tabOverview') },
@@ -60,26 +54,12 @@ function setTab(tab: string): void {
   void router.replace({ query })
 }
 
-function clearExperimentScope(): void {
-  const query = { ...route.query }
-  delete query.experiment_id
-  void router.replace({ query })
-}
-
 onMounted(applyTabFromRoute)
 watch(() => route.query.tab, applyTabFromRoute)
 </script>
 
 <template>
   <div class="page-container">
-    <ExperimentContextBar
-      v-if="experimentId"
-      :experiment-id="experimentId"
-      return-tab="games"
-      clearable
-      @clear="clearExperimentScope"
-    />
-
     <UiTabs
       :model-value="activeTab"
       :tabs="tabs"

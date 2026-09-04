@@ -97,6 +97,15 @@ def training_deps_available() -> bool:
     return True
 
 
+def bitsandbytes_available() -> bool:
+    """Return True when bitsandbytes can be imported (optional QLoRA extra)."""
+    try:
+        import bitsandbytes  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 def _load_chatml_texts(sft_data_path: str, tokenizer: Any) -> list[str]:
     """Load ChatML JSONL and render each sample to a single training string."""
     texts: list[str] = []
@@ -180,6 +189,7 @@ def _run_lora_sft_sync(
         sft_data_path=sft_data_path,
         output_dir=output_dir,
         cpu_smoke=bool(config.get("cpu_smoke")),
+        qlora=bool(config.get("qlora")),
     )
 
     try:
@@ -208,11 +218,41 @@ def _run_lora_sft_sync(
             remove_columns=["text"],
         )
 
-        model = AutoModelForCausalLM.from_pretrained(
-            base_model,
-            trust_remote_code=True,
-            torch_dtype=torch.float16 if torch.cuda.is_available() else torch.float32,
-        )
+        use_qlora = bool(config.get("qlora"))
+        if use_qlora:
+            if config.get("cpu_smoke"):
+                raise ValueError("QLoRA cannot run in CPU smoke mode")
+            if not torch.cuda.is_available():
+                raise ValueError("QLoRA requires an NVIDIA GPU (CUDA)")
+            if not bitsandbytes_available():
+                raise ValueError("QLoRA requires bitsandbytes (pip install bitsandbytes)")
+            from peft import prepare_model_for_kbit_training
+            from transformers import BitsAndBytesConfig
+
+            compute_dtype = (
+                torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            )
+            bnb_config = BitsAndBytesConfig(
+                load_in_4bit=True,
+                bnb_4bit_quant_type="nf4",
+                bnb_4bit_use_double_quant=True,
+                bnb_4bit_compute_dtype=compute_dtype,
+            )
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model,
+                trust_remote_code=True,
+                quantization_config=bnb_config,
+                device_map="auto",
+            )
+            model = prepare_model_for_kbit_training(model)
+        else:
+            model = AutoModelForCausalLM.from_pretrained(
+                base_model,
+                trust_remote_code=True,
+                torch_dtype=(
+                    torch.float16 if torch.cuda.is_available() else torch.float32
+                ),
+            )
         lora = LoraConfig(
             task_type=TaskType.CAUSAL_LM,
             r=int(config.get("lora_r", 8)),
@@ -239,7 +279,8 @@ def _run_lora_sft_sync(
             "save_strategy": "no",
             "report_to": [],
             "remove_unused_columns": False,
-            "fp16": torch.cuda.is_available(),
+            "fp16": torch.cuda.is_available() and not use_qlora,
+            "bf16": use_qlora and torch.cuda.is_bf16_supported(),
             "gradient_checkpointing": bool(config.get("gradient_checkpointing", False)),
         }
         if max_steps > 0:

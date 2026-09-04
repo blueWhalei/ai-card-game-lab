@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import GuideModuleSection from '@/components/guide/GuideModuleSection.vue'
 import type { GuideDiagramId } from '@/components/guide/GuideFlowDiagram.vue'
@@ -12,6 +13,7 @@ type ModuleDef = {
 }
 
 const { t } = useI18n()
+const route = useRoute()
 
 const modules: ModuleDef[] = [
   { id: 'overview', icon: 'lucide:info', diagram: 'sidebar' },
@@ -22,6 +24,7 @@ const modules: ModuleDef[] = [
   { id: 'games', icon: 'lucide:swords' },
   { id: 'pipeline', icon: 'lucide:workflow', diagram: 'pipeline' },
   { id: 'compare', icon: 'lucide:git-compare' },
+  { id: 'metrics', icon: 'lucide:calculator' },
   { id: 'tune', icon: 'lucide:sliders-horizontal' },
   { id: 'prerequisites', icon: 'lucide:plug' },
 ]
@@ -48,7 +51,17 @@ onMounted(() => {
     const el = document.getElementById(mod.id)
     if (el) observer.observe(el)
   }
+  const hash = route.hash.replace('#', '')
+  if (hash) scrollTo(hash)
 })
+
+watch(
+  () => route.hash,
+  (hash) => {
+    const id = hash.replace('#', '')
+    if (id) scrollTo(id)
+  },
+)
 
 onUnmounted(() => {
   observer?.disconnect()

@@ -323,6 +323,97 @@ async def test_cancel_task_refuses_terminal_status(
 
 
 @pytest.mark.asyncio
+async def test_create_task_rejects_qlora_without_cuda(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sqlite_path = str(tmp_path / "guards.db")
+    await init_db(sqlite_path)
+    dataset_id = await _seed_dataset(sqlite_path, tmp_path)
+
+    service = TrainingService(
+        sqlite_path=sqlite_path,
+        data_dir=str(tmp_path),
+        models_dir=str(tmp_path / "models"),
+    )
+    _no_pipeline(service)
+
+    import app.core.training.sft as sft_mod
+    import app.services.training_service as svc_mod
+
+    monkeypatch.setattr(sft_mod, "training_deps_available", lambda: True)
+    monkeypatch.setattr(svc_mod, "_probe_cuda_available", lambda: False)
+
+    request = CreateTrainingTaskRequest(
+        name="qlora-cpu",
+        dataset_id=dataset_id,
+        config=TrainingConfig(qlora=True),
+    )
+    with pytest.raises(ValueError, match="NVIDIA GPU"):
+        await service.create_task(request)
+
+
+@pytest.mark.asyncio
+async def test_create_task_rejects_qlora_without_bitsandbytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sqlite_path = str(tmp_path / "guards.db")
+    await init_db(sqlite_path)
+    dataset_id = await _seed_dataset(sqlite_path, tmp_path)
+
+    service = TrainingService(
+        sqlite_path=sqlite_path,
+        data_dir=str(tmp_path),
+        models_dir=str(tmp_path / "models"),
+    )
+    _no_pipeline(service)
+
+    import app.core.training.sft as sft_mod
+
+    _pass_training_guards(monkeypatch)
+    monkeypatch.setattr(sft_mod, "bitsandbytes_available", lambda: False)
+
+    request = CreateTrainingTaskRequest(
+        name="qlora-no-bnb",
+        dataset_id=dataset_id,
+        config=TrainingConfig(qlora=True),
+    )
+    with pytest.raises(ValueError, match="bitsandbytes"):
+        await service.create_task(request)
+
+
+@pytest.mark.asyncio
+async def test_create_task_persists_qlora_on_cuda(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sqlite_path = str(tmp_path / "guards.db")
+    await init_db(sqlite_path)
+    dataset_id = await _seed_dataset(sqlite_path, tmp_path)
+
+    service = TrainingService(
+        sqlite_path=sqlite_path,
+        data_dir=str(tmp_path),
+        models_dir=str(tmp_path / "models"),
+    )
+    _pass_training_guards(monkeypatch)
+    _no_pipeline(service)
+
+    import app.core.training.sft as sft_mod
+
+    monkeypatch.setattr(sft_mod, "bitsandbytes_available", lambda: True)
+
+    request = CreateTrainingTaskRequest(
+        name="qlora-ok",
+        dataset_id=dataset_id,
+        config=TrainingConfig(qlora=True, batch_size=8),
+    )
+    task = await service.create_task(request)
+    cfg = task["config"]
+    assert cfg["qlora"] is True
+    assert cfg.get("cpu_smoke") is not True
+    assert cfg["batch_size"] == 8
+
+
+@pytest.mark.asyncio
 async def test_apply_cpu_smoke_guards_runs_probes_off_event_loop(
     tmp_path: Path, monkeypatch
 ) -> None:

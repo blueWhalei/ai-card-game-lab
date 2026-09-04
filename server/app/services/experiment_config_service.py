@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from datetime import UTC, datetime
 from typing import Any
 
 import structlog
 
+from app.core.pack import build_player_pack
 from app.database import open_db_connection
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
 
@@ -138,6 +140,37 @@ class ExperimentConfigService:
         finally:
             await db.close()
         del self._configs[config_id]
+
+    async def import_players(
+        self, players: list[dict[str, Any]]
+    ) -> dict[str, list[str]]:
+        """Create missing players; never overwrite an existing id."""
+        created: list[str] = []
+        reused: list[str] = []
+        for player in players:
+            cid = str(player.get("id") or "").strip()
+            if not cid:
+                continue
+            if self.get_config(cid) is not None:
+                reused.append(cid)
+                continue
+            await self.create_config(
+                {
+                    "id": cid,
+                    "name": player.get("name") or cid,
+                    "notes": player.get("notes") or "",
+                    "model_config": player.get("model_config") or {},
+                }
+            )
+            created.append(cid)
+        return {"created": created, "reused": reused}
+
+    def export_pack(self, ids: list[str] | None = None) -> dict[str, Any]:
+        rows = self.list_configs()
+        if ids:
+            wanted = set(ids)
+            rows = [row for row in rows if row["id"] in wanted]
+        return build_player_pack(rows, exported_at=datetime.now(tz=UTC).isoformat())
 
     def _ensure_ready(self) -> None:
         if not self._ready:

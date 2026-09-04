@@ -10,6 +10,7 @@ from typing import Any
 
 import structlog
 
+from app.core.stats.highlights import pick_game_highlights
 from app.core.training.data_quality import evaluate_train_usable
 from app.database import connect_or_reuse
 from app.repositories.decision_repo import DecisionRepository
@@ -167,6 +168,19 @@ class DecisionService:
         async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
             return await repo.get_by_id(decision_id)
+
+    async def highlights_for_game(
+        self,
+        game_id: str,
+        winner_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Pick 3–5 post-game highlight moves from stored decision points."""
+        items, _total = await self.list_decision_points(
+            game_id=game_id,
+            limit=500,
+            offset=0,
+        )
+        return pick_game_highlights(items, winner_id=winner_id)
 
     async def get_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Get aggregate statistics for decision points."""

@@ -15,6 +15,7 @@ import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiSelect from '@/components/ui/Select.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
+import UiCheckbox from '@/components/ui/Checkbox.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { experimentConfigApi } from '@/api/experimentConfigApi'
@@ -30,7 +31,6 @@ import TrainingModelsPanel, {
   type ModelBusyState,
 } from '@/components/training/TrainingModelsPanel.vue'
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
-import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
 import PreflightBanner from '@/components/common/PreflightBanner.vue'
 
 const { t } = useI18n()
@@ -67,6 +67,16 @@ const experimentIdFilter = computed(() => {
   const v = route.query.experiment_id
   return typeof v === 'string' && v ? v : undefined
 })
+
+const returnToControl = computed(
+  () => route.query.return_control === '1' && Boolean(experimentIdFilter.value),
+)
+
+function goBackToControl(): void {
+  const id = experimentIdFilter.value
+  if (!id) return
+  void router.push({ path: `/experiments/${id}`, query: { open_control: '1' } })
+}
 
 function applyTabFromRoute(): void {
   activeTab.value = route.query.tab === 'models' ? 'models' : 'tasks'
@@ -105,6 +115,7 @@ const createForm = ref({
   num_epochs: 1,
   lora_r: 8,
   max_steps: CPU_SMOKE_MAX_STEPS,
+  qlora: false,
 })
 
 const baseModelOptions = ref([
@@ -180,6 +191,7 @@ function openCreateDialog() {
     num_epochs: 1,
     lora_r: 8,
     max_steps: CPU_SMOKE_MAX_STEPS,
+    qlora: false,
   }
   showCreateDialog.value = true
   fetchDatasets()
@@ -211,6 +223,9 @@ async function handleCreate() {
     num_epochs: createForm.value.num_epochs,
     output_format: 'pytorch',
     lora_r: createForm.value.lora_r,
+  }
+  if (createForm.value.qlora) {
+    trainingConfig.qlora = true
   }
   if (createForm.value.max_steps > 0) {
     trainingConfig.max_steps = createForm.value.max_steps
@@ -373,6 +388,10 @@ async function handleRegisterAsPlayer(
     const existing = await experimentConfigApi.get(configId).catch(() => null)
     if (existing?.data) {
       toast.info(t('training.playerExists', { name: existing.data.name, id: configId }))
+      if (returnToControl.value) {
+        goBackToControl()
+        return
+      }
       void router.push('/experiment-configs')
       return
     }
@@ -394,6 +413,9 @@ async function handleRegisterAsPlayer(
       },
     })
     toast.success(t('training.playerAdded', { name, tag }))
+    if (returnToControl.value) {
+      goBackToControl()
+    }
   } catch (e: unknown) {
     showApiError(e, t('training.addPlayerFailed'))
   } finally {
@@ -493,19 +515,6 @@ onUnmounted(() => {
       <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-xs">cd server && poetry install --with training</code>
     </div>
 
-    <ExperimentContextBar
-      v-if="experimentIdFilter"
-      :experiment-id="experimentIdFilter"
-      return-tab="training"
-      clearable
-      @clear="
-        router.replace({
-          path: '/training',
-          query: { ...route.query, experiment_id: undefined },
-        })
-      "
-    />
-
     <div class="mb-6 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
       <button
         type="button"
@@ -548,6 +557,13 @@ onUnmounted(() => {
       :format-progress="formatProgress"
       @delete="handleDeleteTask"
     />
+
+    <p
+      v-if="activeTab === 'models' && returnToControl"
+      class="mb-4 rounded-ink-md border border-ink-border bg-ink-surface-muted/60 px-3 py-2 text-sm text-ink-text-secondary"
+    >
+      {{ t('training.returnToControlHint') }}
+    </p>
 
     <TrainingModelsPanel
       v-if="activeTab === 'models'"
@@ -678,6 +694,10 @@ onUnmounted(() => {
                     @update:model-value="(v) => (createForm.max_steps = v ?? CPU_SMOKE_MAX_STEPS)"
                   />
                 </div>
+              </div>
+              <div class="mt-3">
+                <UiCheckbox v-model="createForm.qlora" :label="t('training.qlora')" />
+                <p class="mt-1 text-xs text-ink-text-muted">{{ t('training.qloraHint') }}</p>
               </div>
               <div class="mt-1 text-xs text-ink-text-muted">
                 {{ t('training.loraHint') }}

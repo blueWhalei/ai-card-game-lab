@@ -1,11 +1,9 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute } from 'vue-router'
 import TraceWorkbenchPanel from '@/components/trace/TraceWorkbenchPanel.vue'
-import ExperimentContextBar from '@/components/common/ExperimentContextBar.vue'
 
 const route = useRoute()
-const router = useRouter()
 
 const experimentId = computed(() => {
   const v = route.query.experiment_id
@@ -14,20 +12,5 @@ const experimentId = computed(() => {
 </script>
 
 <template>
-  <div>
-    <div v-if="experimentId" class="page-container pb-0">
-      <ExperimentContextBar
-        :experiment-id="experimentId"
-        return-tab="traces"
-        clearable
-        @clear="
-          router.replace({
-            path: '/traces',
-            query: { ...route.query, experiment_id: undefined },
-          })
-        "
-      />
-    </div>
-    <TraceWorkbenchPanel :experiment-id="experimentId" />
-  </div>
+  <TraceWorkbenchPanel :experiment-id="experimentId" />
 </template>

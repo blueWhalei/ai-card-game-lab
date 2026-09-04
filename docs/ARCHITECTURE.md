@@ -48,8 +48,8 @@
 │                     前端 (Vue 3 + TypeScript)                     │
 │                                                                   │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
-│  │ 实验详情页 │ │ 牌局观察器 │ │ 数据与训练 │ │ 训练页     │   │
-│  │ (对局/选手)│ │ (WebSocket)│ │ 决策/追踪  │ │            │   │
+│  │ 实验详情页 │ │ 牌局观察器 │ │ 分析       │ │ 设置       │   │
+│  │ (五幕舞台) │ │ (WebSocket)│ │ 四工具     │ │ 提示词     │   │
 │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
 │                                                                   │
 │  Tailwind CSS + Reka UI（Ink Lab tokens；双壳 Workbench/Observer） │
@@ -191,7 +191,7 @@ class GameService:
 ### 4.1 对局执行流程
 
 ```
-用户点击"开始对局"
+用户创建对局
        │
        ▼
   POST /api/v1/games
@@ -534,9 +534,9 @@ class ConnectionManager:
 | type | 说明 | payload |
 |------|------|---------|
 | `game_started` | 对局开始 | `{players, current_player, landlord_cards}` |
-| `thinking` | AI 开始思考 | `{player_id, player_name}` |
+| `thinking` | AI 开始思考 | `{player_id, player_name, legal_actions}` |
 | `thinking_chunk` | AI 思考流式输出 | `{player_id, chunk, chunk_type}` |
-| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name}` |
+| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name, legal_actions, used_langchain_parser, win_probability, hand_analysis}` |
 | `action` | AI 完成出牌 | `{round, player_id, action_type, cards}` |
 | `state_update` | 全局状态更新 | `{players, hands, current_player, landlord_cards}` |
 | `game_paused` | 对局暂停 | `{}` |

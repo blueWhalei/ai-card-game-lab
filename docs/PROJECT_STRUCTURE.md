@@ -32,7 +32,7 @@ ai-card-game-lab/
 │   │   │       ├── prompt.py           # 提示词模板管理
 │   │   │       ├── trace.py            # AI 决策追踪 API
 │   │   │       ├── decision.py         # 决策点数据 API (SFT 训练样本)
-│   │   │       └── system.py           # 健康检查 / preflight / startup-check / engines / seed-demo / 归档
+│   │   │       └── system.py           # 健康检查 / preflight / engines / seed-demo / 归档
 │   │   │
 │   │   ├── schemas/                     # ---------- Pydantic 模型 ----------
 │   │   │   ├── __init__.py
@@ -117,12 +117,18 @@ ai-card-game-lab/
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── jsonl_writer.py    # JSONL 文件写入器
 │   │   │   │
+│   │   │   ├── pack.py                 # 实验包 / 选手包（密钥打码、导入解析）
+│   │   │   ├── stats/                  # 评测统计
+│   │   │   │   ├── proportion.py      # Wilson 区间
+│   │   │   │   ├── scenarios.py       # 叫分 / 出牌 / 残局 / 炸弹子分
+│   │   │   │   └── highlights.py      # 局后高光 3–5 步（决策点打分）
+│   │   │   │
 │   │   │   ├── database/               # 数据库抽象层（预留迁移接口）
 │   │   │   │   └── backend.py         # DatabaseBackend ABC + SQLiteBackend
 │   │   │   │
 │   │   │   ├── training/              # 训练模块
 │   │   │   │   ├── __init__.py
-│   │   │   │   ├── sft.py             # PEFT LoRA SFT（缺依赖则拒绝）
+│   │   │   │   ├── sft.py             # PEFT LoRA SFT（可选 QLoRA；缺依赖则拒绝）
 │   │   │   │   ├── exporter.py        # JSONL → ChatML SFT 格式导出
 │   │   │   │   ├── deploy.py          # merge / GGUF / Ollama 辅助
 │   │   │   │   └── cpu_smoke.py       # 无 GPU 步数/样本钳制
@@ -203,6 +209,9 @@ ai-card-game-lab/
 │   │   │   ├── error.ts               # API 错误消息映射与统一展示入口
 │   │   │   ├── format.ts              # 时间/字节/百分比格式化工具
 │   │   │   ├── pagination.ts          # 列表页默认 page_size=20
+│   │   │   ├── experimentStage.ts     # 详情页五幕状态机（纯函数，有测试）
+│   │   │   ├── pipeline.ts            # 分析枢纽路径 / 旧 URL 对照（有测试）
+│   │   │   ├── thinkingExcerpt.ts     # 观战座位上的思考摘录（有测试）
 │   │   │   └── compareMatrix.ts       # 实验对比转置矩阵
 │   │   │
 │   │   ├── i18n/                        # vue-i18n（zh-CN + en）
@@ -215,23 +224,26 @@ ai-card-game-lab/
 │   │   │   │   ├── ExperimentContextBar.vue # Pipeline 页回实验上下文条
 │   │   │   │   ├── KpiStrip.vue / NameChips.vue / CompactRecordList.vue
 │   │   │   │   ├── LoadingSpinner.vue
-│   │   │   │   └── EmptyState.vue
+│   │   │   │   ├── EmptyState.vue
+│   │   │   │   └── FirstRunStepper.vue  # 首页从零到第一局（密钥 / 选手 / 实验）
 │   │   │   │
-│   │   │   ├── experiment/            # 实验详情：顶栏 / 结果摘要 / Tab / 档案
-│   │   │   │   ├── ExperimentDetailContextBar.vue
-│   │   │   │   ├── ExperimentResultsStrip.vue
+│   │   │   ├── experiment/            # 实验详情：五幕舞台 / 进程 / 档案
+│   │   │   │   ├── ExperimentStage.vue           # 按状态机选一幕并给出该幕文案
+│   │   │   │   ├── StageAction.vue               # 一句话 + 一个动作（幕一至四）
+│   │   │   │   ├── StageVerdict.vue              # 结论句 + Δ + 证据强度（幕五）
+│   │   │   │   ├── ExperimentScenarioBars.vue    # 分场景 Δ 小倍数图
+│   │   │   │   ├── ExperimentTimeline.vue        # 进程事件流 + 对照进度
 │   │   │   │   ├── ExperimentMetaPanel.vue       # 实验档案（⋯ 对话框）
 │   │   │   │   ├── ExperimentNotebookPanel.vue
 │   │   │   │   ├── ExperimentGamesTab.vue
 │   │   │   │   ├── ExperimentPlayersTab.vue
-│   │   │   │   ├── ExperimentTrainingTab.vue     # 遗留组件，详情页未引用
 │   │   │   │   └── ExperimentControlDialog.vue
 │   │   │   │
 │   │   │   ├── guide/                 # 使用说明 /guide
 │   │   │   │   ├── GuideModuleSection.vue
 │   │   │   │   └── GuideFlowDiagram.vue
 │   │   │   │
-│   │   │   ├── decision/              # 决策点面板（侧栏独立页；可带 experiment_id）
+│   │   │   ├── decision/              # 决策点面板（分析枢纽；可带 experiment_id）
 │   │   │   │   └── DecisionWorkbenchPanel.vue
 │   │   │   │
 │   │   │   ├── training/              # 训练页：任务 / 模型仓库 / 实时日志
@@ -255,7 +267,7 @@ ai-card-game-lab/
 │   │   │   │       └── ArchiveTab.vue
 │   │   │   │
 │   │   │   └── trace/                # 追踪组件
-│   │   │       ├── TraceWorkbenchPanel.vue # 追踪面板（侧栏独立页；可带 experiment_id）
+│   │   │       ├── TraceWorkbenchPanel.vue # 追踪面板（分析枢纽；可带 experiment_id）
 │   │   │       ├── TraceDetail.vue   # 决策详情展示
 │   │   │       ├── TraceMetrics.vue  # 性能指标仪表盘
 │   │   │       └── ResponseTimeChart.vue # AI 响应时间趋势图
@@ -263,9 +275,10 @@ ai-card-game-lab/
 │   │   ├── views/                      # 页面级组件（路由对应）
 │   │   │   ├── GameView.vue           # 试玩对局列表 + 创建
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
-│   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /；/pipeline 重定向至此）
+│   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /）
 │   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
-│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（Tab：对局 / 选手表现）
+│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（五幕舞台）
+│   │   │   ├── PipelineView.vue       # 分析枢纽 /pipeline/{data,decisions,training,traces}
 │   │   │   ├── ExperimentConfigView.vue  # 选手配置 CRUD
 │   │   │   ├── GuideView.vue          # 使用说明 /guide（桌面端目录在右侧）
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
@@ -276,7 +289,7 @@ ai-card-game-lab/
 │   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
 │   │   │
 │   │   ├── layouts/                    # 双壳布局
-│   │   │   ├── WorkbenchLayout.vue    # 侧栏：研究 / 数据与训练 / 调试
+│   │   │   ├── WorkbenchLayout.vue    # 侧栏：实验 / 选手 / 试玩 / 分析 / 设置
 │   │   │   └── ObserverLayout.vue     # 全屏观战壳
 │   │   │
 │   │   ├── styles/                     # 全局样式

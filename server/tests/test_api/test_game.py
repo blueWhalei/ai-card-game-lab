@@ -47,6 +47,24 @@ async def test_game_not_found(client: AsyncClient) -> None:
     assert response.status_code == 404
 
 
+async def test_highlights_not_found(client: AsyncClient) -> None:
+    response = await client.get("/api/v1/games/nonexistent_id/highlights")
+    assert response.status_code == 404
+
+
+async def test_highlights_empty_for_new_game(client: AsyncClient) -> None:
+    res = await client.post(
+        "/api/v1/games",
+        json={"game_type": "doudizhu", "player_ids": VALID_PLAYER_IDS},
+    )
+    game_id = res.json()["data"]["id"]
+    response = await client.get(f"/api/v1/games/{game_id}/highlights")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["code"] == 0
+    assert body["data"]["items"] == []
+
+
 async def test_create_game_rejects_unknown_player_ids(client: AsyncClient) -> None:
     payload = {
         "game_type": "doudizhu",

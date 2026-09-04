@@ -48,3 +48,76 @@ export function actionTypeLabel(actionType: string): string {
   if (translated !== i18nKey) return translated
   return actionType.trim() || tt('action.UNKNOWN')
 }
+
+export type PlayAction = {
+  action_type?: string
+  type?: string
+  cards?: string[]
+}
+
+export function formatPlayAction(action: PlayAction | null | undefined): string {
+  if (!action) return '—'
+  const type = actionTypeLabel(String(action.action_type || action.type || ''))
+  const cards = action.cards?.length ? ` ${action.cards.join(' ')}` : ''
+  return `${type}${cards}`.trim()
+}
+
+export function samePlayAction(
+  a: PlayAction | null | undefined,
+  b: PlayAction | null | undefined,
+): boolean {
+  if (!a || !b) return false
+  const typeA = String(a.action_type || a.type || '').toUpperCase()
+  const typeB = String(b.action_type || b.type || '').toUpperCase()
+  if (typeA !== typeB) return false
+  const cardsA = (a.cards ?? []).join(',')
+  const cardsB = (b.cards ?? []).join(',')
+  return cardsA === cardsB
+}
+
+export type WinProbabilityExplain = {
+  probability: number
+  confidence: string
+  reasoning: string
+}
+
+export type HandAnalysisExplain = {
+  bomb_count: number
+  rocket: boolean
+  strength_score: number
+}
+
+export function parseLegalActions(value: unknown): PlayAction[] {
+  if (!Array.isArray(value)) return []
+  const out: PlayAction[] = []
+  for (const item of value) {
+    const rec = asRecord(item)
+    if (!rec) continue
+    const actionType = readActionType(rec)
+    if (!actionType) continue
+    out.push({ action_type: actionType, cards: asStringList(rec.cards) })
+  }
+  return out
+}
+
+export function parseWinProbability(value: unknown): WinProbabilityExplain | null {
+  const rec = asRecord(value)
+  if (!rec) return null
+  const probability = rec.probability
+  if (typeof probability !== 'number' || Number.isNaN(probability)) return null
+  return {
+    probability,
+    confidence: typeof rec.confidence === 'string' ? rec.confidence : '',
+    reasoning: typeof rec.reasoning === 'string' ? rec.reasoning : '',
+  }
+}
+
+export function parseHandAnalysis(value: unknown): HandAnalysisExplain | null {
+  const rec = asRecord(value)
+  if (!rec) return null
+  return {
+    bomb_count: typeof rec.bomb_count === 'number' ? rec.bomb_count : 0,
+    rocket: Boolean(rec.rocket),
+    strength_score: typeof rec.strength_score === 'number' ? rec.strength_score : 0,
+  }
+}

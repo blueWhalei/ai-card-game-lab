@@ -51,13 +51,6 @@ async def get_config(
     return ApiResponse(data=service.get_config())
 
 
-@router.get("/startup-check")
-async def startup_check(
-    service: SystemService = Depends(get_system_service),
-) -> ApiResponse[dict[str, Any]]:
-    return ApiResponse(data=service.get_startup_check())
-
-
 @router.get("/preflight")
 async def preflight(
     scope: str = "all",

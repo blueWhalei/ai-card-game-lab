@@ -197,13 +197,21 @@ class TrainingService:
         layer) when the environment is unsafe. Returns the (possibly clamped)
         config dict.
         """
-        from app.core.training.sft import training_deps_available
+        from app.core.training.sft import bitsandbytes_available, training_deps_available
 
         deps_ok = await asyncio.to_thread(training_deps_available)
         if not deps_ok:
             raise ValueError("Training deps missing: poetry install --with training")
 
         cuda = await asyncio.to_thread(_probe_cuda_available)
+
+        if cfg.get("qlora"):
+            if not cuda:
+                raise ValueError("QLoRA requires an NVIDIA GPU (CUDA)")
+            bnb_ok = await asyncio.to_thread(bitsandbytes_available)
+            if not bnb_ok:
+                raise ValueError("QLoRA requires bitsandbytes (pip install bitsandbytes)")
+            return cfg
 
         if not cuda:
             from app.core.training.cpu_smoke import (

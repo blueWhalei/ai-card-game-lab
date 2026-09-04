@@ -7,6 +7,8 @@ from typing import Any
 
 import aiosqlite
 
+from app.core.stats.scenarios import SCENARIO_SQL, fill_scenario_scores
+
 
 class ExperimentRepository:
     """CRUD operations for the ``experiments`` table."""
@@ -434,11 +436,13 @@ class ExperimentRepository:
         )
         parser_rate = (parser_ok / parser_n) if parser_n else 0.0
         train_rate = (train_usable_n / decision_count) if decision_count else 0.0
+        scenario_scores = await self._scenario_aggregates(experiment_id)
 
         return {
             "decision_count": decision_count,
             "train_usable_n": train_usable_n,
             "train_usable_rate": round(train_rate, 4),
+            "scenario_scores": scenario_scores,
             "avg_response_time_ms": (
                 round(float(avg_ms_raw), 2) if avg_ms_raw is not None else 0.0
             ),
@@ -460,6 +464,49 @@ class ExperimentRepository:
             "landlord_wins_by_player": landlord_wins,
             "finished_games": finished_games,
         }
+
+    async def _scenario_aggregates(self, experiment_id: str) -> dict[str, dict[str, Any]]:
+        """Train-usable / parser rates by bidding, playing, endgame, bomb."""
+        cursor = await self._db.execute(
+            f"""
+            SELECT
+              scenario,
+              COUNT(*) AS n,
+              SUM(usable) AS usable,
+              SUM(has_trace) AS parser_n,
+              SUM(parser_ok) AS parser_ok
+            FROM (
+              SELECT
+                {SCENARIO_SQL} AS scenario,
+                CASE WHEN dp.train_usable = 1 THEN 1 ELSE 0 END AS usable,
+                MAX(CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END) AS has_trace,
+                MAX(
+                  CASE WHEN json_extract(t.metrics, '$.used_langchain_parser') = 1
+                  THEN 1 ELSE 0 END
+                ) AS parser_ok
+              FROM decision_points dp
+              INNER JOIN games g ON g.id = dp.game_id
+              LEFT JOIN traces t
+                ON t.game_id = dp.game_id
+               AND t.round_number = dp.round_number
+               AND t.player_id = dp.player_id
+              WHERE g.experiment_id = ?
+              GROUP BY dp.id
+            )
+            GROUP BY scenario
+            """,
+            (experiment_id,),
+        )
+        rows = await cursor.fetchall()
+        grouped: dict[str, dict[str, int]] = {}
+        for row in rows:
+            grouped[str(row["scenario"])] = {
+                "n": int(row["n"] or 0),
+                "train_usable_n": int(row["usable"] or 0),
+                "parser_n": int(row["parser_n"] or 0),
+                "parser_ok": int(row["parser_ok"] or 0),
+            }
+        return fill_scenario_scores(grouped)
 
     async def compare_aggregates(self, experiment_id: str) -> dict[str, Any]:
         """Backward-compatible alias for eval_aggregates."""

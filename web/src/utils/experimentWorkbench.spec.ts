@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import {
   controlSlotLabels,
+  formatDeltaPp,
   formatWinRate,
   formatWinRateCi,
   initialControlPlayerIds,
   remainingCollectCount,
   sanitizeNamePart,
+  scenarioHasDecisions,
   uniqueFilledIds,
 } from './experimentWorkbench'
 
@@ -30,6 +32,25 @@ describe('experimentWorkbench', () => {
   it('formats win rates and Wilson intervals', () => {
     expect(formatWinRate(0.44)).toBe('44%')
     expect(formatWinRateCi([0.19, 0.73])).toBe('19–73%')
+  })
+
+  it('formats signed percentage-point deltas', () => {
+    expect(formatDeltaPp(0.04)).toBe('+4.0pp')
+    expect(formatDeltaPp(-0.12)).toBe('−12pp')
+    expect(formatDeltaPp(0)).toBe('0pp')
+    expect(formatDeltaPp(null)).toBe('—')
+  })
+
+  it('detects whether scenario scores have any decisions', () => {
+    expect(scenarioHasDecisions(undefined)).toBe(false)
+    expect(
+      scenarioHasDecisions({
+        bidding: { n: 0 },
+        playing: { n: 2 },
+        endgame: { n: 0 },
+        bomb: { n: 0 },
+      }),
+    ).toBe(true)
   })
 
   it('labels control seats from engine slot count', () => {

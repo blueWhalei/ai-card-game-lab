@@ -2,9 +2,19 @@
 import { useI18n } from 'vue-i18n'
 import type { GameItem } from '@/api/gameApi'
 import { formatDateTime } from '@/utils/format'
+import { formatGameProgress } from '@/utils/gameProgress'
 import UiButton from '@/components/ui/Button.vue'
 
-defineProps<{
+const emit = defineEmits<{
+  openGame: [game: GameItem]
+  pause: [gameId: string]
+  resume: [gameId: string]
+  pauseAll: []
+  resumeAll: []
+}>()
+
+const { t } = useI18n()
+const props = defineProps<{
   activeGames: GameItem[]
   runningGames: GameItem[]
   pausedGames: GameItem[]
@@ -17,15 +27,9 @@ defineProps<{
   gameStatusLabel: (status: string) => string
 }>()
 
-const emit = defineEmits<{
-  openGame: [game: GameItem]
-  pause: [gameId: string]
-  resume: [gameId: string]
-  pauseAll: []
-  resumeAll: []
-}>()
-
-const { t } = useI18n()
+function progressText(game: GameItem): string {
+  return formatGameProgress(game.progress, t, props.configLabel)
+}
 </script>
 
 <template>
@@ -62,7 +66,7 @@ const { t } = useI18n()
             <tr>
               <th class="px-3 py-2 font-medium">{{ t('gamesTab.colGame') }}</th>
               <th class="px-3 py-2 font-medium">{{ t('gamesTab.colStatus') }}</th>
-              <th class="px-3 py-2 font-medium">{{ t('gamesTab.colCreated') }}</th>
+              <th class="px-3 py-2 font-medium">{{ t('gamesTab.colProgress') }}</th>
               <th class="px-3 py-2 font-medium">{{ t('gamesTab.colActions') }}</th>
             </tr>
           </thead>
@@ -86,8 +90,8 @@ const { t } = useI18n()
                 </button>
               </td>
               <td class="px-3 py-2">{{ gameStatusLabel(g.status) }}</td>
-              <td class="px-3 py-2 whitespace-nowrap text-ink-text-secondary">
-                {{ formatDateTime(g.created_at) }}
+              <td class="px-3 py-2 text-ink-text-secondary">
+                {{ progressText(g) }}
               </td>
               <td class="px-3 py-2">
                 <div class="flex flex-wrap gap-1.5">
@@ -157,7 +161,7 @@ const { t } = useI18n()
                 {{ g.winner_id ? configLabel(g.winner_id) : t('common.dash') }}
               </td>
               <td class="px-3 py-2 tabular-nums">{{ g.total_rounds ?? t('common.dash') }}</td>
-              <td class="px-3 py-2 whitespace-nowrap text-ink-text-secondary">
+              <td class="px-3 py-2 whitespace-nowrap tabular-nums text-ink-text-secondary">
                 {{ formatDateTime(g.finished_at ?? g.created_at) }}
               </td>
             </tr>

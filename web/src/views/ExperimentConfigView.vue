@@ -13,6 +13,7 @@ import {
   type UpdateExperimentConfigRequest,
 } from '@/api/experimentConfigApi'
 import { formatDateTime, formatPercentage } from '@/utils/format'
+import { downloadJson, pickJsonFile } from '@/utils/jsonFile'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
@@ -24,6 +25,7 @@ import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { systemApi, type ProviderInfo } from '@/api/systemApi'
+import { providerName } from '@/utils/systemLabels'
 
 const { t } = useI18n()
 
@@ -44,12 +46,13 @@ const router = useRouter()
 const configs = ref<ExperimentConfig[]>([])
 const configStats = ref<Map<string, ExperimentConfigStats>>(new Map())
 const loading = ref(false)
+const packing = ref(false)
 const dialogVisible = ref(false)
 const isEditing = ref(false)
 
 const providers = ref<ProviderInfo[]>([])
 const providerOptions = computed(() =>
-  providers.value.map((p) => ({ label: p.name, value: p.id })),
+  providers.value.map((p) => ({ label: providerName(p.id, p.name), value: p.id })),
 )
 
 function onProviderChange(val: string) {
@@ -177,11 +180,58 @@ async function handleDelete(config: ExperimentConfig) {
 }
 
 onMounted(fetchConfigs)
+
+async function exportPack(): Promise<void> {
+  packing.value = true
+  try {
+    const res = await experimentConfigApi.exportPack()
+    downloadJson('cardlab-players.json', res.data)
+    toast.success(t('config.exportedPack'))
+  } catch (e: unknown) {
+    showApiError(e, t('config.exportFailed'))
+  } finally {
+    packing.value = false
+  }
+}
+
+async function importPack(): Promise<void> {
+  packing.value = true
+  try {
+    const raw = await pickJsonFile()
+    if (raw == null) return
+    const res = await experimentConfigApi.importPack(raw)
+    toast.success(
+      t('config.importedPack', {
+        created: res.data.players_created.length,
+        reused: res.data.players_reused.length,
+      }),
+    )
+    const tags = res.data.requirements?.ollama_tags ?? []
+    if (tags.length > 0) {
+      toast.info(t('experiment.importOllamaTags', { tags: tags.join(', ') }))
+    }
+    await fetchConfigs()
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'invalid json') {
+      toast.error(t('experiment.importInvalidJson'))
+    } else {
+      showApiError(e, t('config.importFailed'))
+    }
+  } finally {
+    packing.value = false
+  }
+}
 </script>
 
 <template>
   <div class="page-container">
     <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
+      <UiButton variant="secondary" :loading="packing" @click="importPack">
+        {{ t('config.importPack') }}
+      </UiButton>
+      <UiButton variant="secondary" :loading="packing" @click="exportPack">
+        {{ t('config.exportPack') }}
+      </UiButton>
       <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
     </div>
 
@@ -193,6 +243,9 @@ onMounted(fetchConfigs)
       >
         <template #action>
           <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
+          <UiButton variant="secondary" :loading="packing" @click="importPack">
+            {{ t('config.importPack') }}
+          </UiButton>
         </template>
       </EmptyState>
       <UiTable
@@ -281,8 +334,8 @@ onMounted(fetchConfigs)
 
     <UiDialog
       :open="dialogVisible"
+      size="lg"
       :title="isEditing ? t('config.editTitle') : t('config.createTitle')"
-      class="w-[min(92vw,560px)]"
       @update:open="dialogVisible = $event"
     >
       <div class="space-y-4">

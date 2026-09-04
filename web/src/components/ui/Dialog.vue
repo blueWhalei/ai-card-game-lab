@@ -18,8 +18,8 @@ const props = withDefaults(
     open?: boolean
     title?: string
     description?: string
-    /** default 520px; wide 896px for multi-column forms */
-    size?: 'default' | 'wide'
+    /** default 520px; lg 672px for create forms; wide 896px for archives */
+    size?: 'default' | 'lg' | 'wide'
     class?: string
   }>(),
   {
@@ -34,11 +34,11 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 
-const sizeClass = computed(() =>
-  props.size === 'wide'
-    ? 'w-[min(94vw,56rem)]'
-    : 'w-[min(92vw,520px)]',
-)
+const sizeClass = computed(() => {
+  if (props.size === 'wide') return 'w-[min(94vw,56rem)]'
+  if (props.size === 'lg') return 'w-[min(94vw,42rem)]'
+  return 'w-[min(92vw,520px)]'
+})
 </script>
 
 <template>
@@ -48,18 +48,18 @@ const sizeClass = computed(() =>
       <DialogContent
         :class="
           cn(
-            'ink-dialog-content fixed top-1/2 left-1/2 z-50 max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-ink-md border border-ink-border bg-ink-surface p-5 shadow-[var(--ink-shadow-md)] focus:outline-none',
+            'ink-dialog-content fixed top-1/2 left-1/2 z-50 max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-ink-md border border-ink-border bg-ink-surface p-ink-6 shadow-[var(--ink-shadow-md)] focus:outline-none',
             sizeClass,
             props.class,
           )
         "
       >
-        <div class="mb-4 flex items-start justify-between gap-3">
+        <div class="mb-ink-4 flex items-start justify-between gap-ink-3">
           <div>
-            <DialogTitle v-if="title" class="text-lg font-semibold text-ink-text">
+            <DialogTitle v-if="title" class="text-title font-semibold text-ink-text">
               {{ title }}
             </DialogTitle>
-            <DialogDescription v-if="description" class="mt-1 text-sm text-ink-text-secondary">
+            <DialogDescription v-if="description" class="mt-ink-1 text-caption text-ink-text-secondary">
               {{ description }}
             </DialogDescription>
           </div>
@@ -71,7 +71,7 @@ const sizeClass = computed(() =>
           </DialogClose>
         </div>
         <slot />
-        <div v-if="$slots.footer" class="mt-5 flex justify-end gap-2 border-t border-ink-border pt-4">
+        <div v-if="$slots.footer" class="mt-ink-6 flex justify-end gap-ink-2 border-t border-ink-border pt-ink-4">
           <slot name="footer" />
         </div>
       </DialogContent>

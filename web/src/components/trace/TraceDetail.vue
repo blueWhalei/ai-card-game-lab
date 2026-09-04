@@ -2,8 +2,9 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { Trace } from '@/api/traces'
-import { actionTypeLabel, parseTraceDecision } from '@/utils/traceOutput'
+import MoveExplainStrip from '@/components/common/MoveExplainStrip.vue'
 import UiBadge from '@/components/ui/Badge.vue'
+import { actionTypeLabel, parseTraceDecision } from '@/utils/traceOutput'
 
 const props = defineProps<{
   trace: Trace
@@ -16,6 +17,28 @@ const showSpans = ref(false)
 const decision = computed(() => parseTraceDecision(props.trace.output_data))
 const actionLabel = computed(() => actionTypeLabel(decision.value.actionType))
 const parserOk = computed(() => Boolean(props.trace.metrics.used_langchain_parser))
+const snapshot = computed(() =>
+  props.trace.input_snapshot && typeof props.trace.input_snapshot === 'object'
+    ? props.trace.input_snapshot
+    : {},
+)
+const legalActions = computed(() => snapshot.value.legal_actions)
+const winProbability = computed(
+  () => snapshot.value.win_probability ?? spanData('win_probability'),
+)
+const handAnalysis = computed(
+  () => snapshot.value.hand_analysis ?? spanData('hand_analysis'),
+)
+
+function spanData(key: string): unknown {
+  for (const span of props.trace.spans ?? []) {
+    const data = span.data
+    if (!data) continue
+    if (key === 'win_probability' && data.win_probability) return data.win_probability
+    if (key === 'hand_analysis' && data.hand_analysis) return data.hand_analysis
+  }
+  return null
+}
 
 function formatJson(data: unknown): string {
   return JSON.stringify(data, null, 2)
@@ -52,6 +75,14 @@ function formatJson(data: unknown): string {
       {{ decision.thinking }}
     </p>
     <p v-else class="mb-5 text-sm text-ink-text-muted">{{ t('trace.noThinking') }}</p>
+
+    <MoveExplainStrip
+      class="mb-5"
+      :legal-actions="legalActions"
+      :chosen="{ action_type: decision.actionType, cards: decision.cards }"
+      :win-probability="winProbability"
+      :hand-analysis="handAnalysis"
+    />
 
     <div class="flex flex-wrap items-center gap-2">
       <UiBadge variant="muted">{{ trace.prompt_version }}</UiBadge>
