@@ -95,7 +95,7 @@ export interface ThinkingHistoryEntry {
   round: number
   reasoning?: string  // 推理过程
   answer?: string     // 最终答案
-  thinking: string    // 完整思考（向后兼容）
+  thinking: string    // 完整思考文本
   responseTimeMs: number
   promptTokens?: number | null
   completionTokens?: number | null
@@ -149,7 +149,6 @@ export interface ThinkingCompletePayload {
   }
 }
 
-/** @deprecated Use ThinkingCompletePayload instead */
 export interface ThinkingContentPayload {
   thinking?: string
   round?: number

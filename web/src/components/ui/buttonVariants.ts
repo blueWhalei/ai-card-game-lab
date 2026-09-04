@@ -15,7 +15,7 @@ export const buttonVariants = cva(
         outline: 'border border-ink-border bg-ink-surface text-ink-text hover:bg-ink-surface-muted',
       },
       size: {
-        sm: 'h-8 px-3 text-caption',
+        sm: 'h-8 px-3 text-caption leading-none',
         md: 'h-10 px-4',
         lg: 'h-11 px-5',
         icon: 'h-10 w-10',

@@ -508,9 +508,6 @@ class ExperimentRepository:
             }
         return fill_scenario_scores(grouped)
 
-    async def compare_aggregates(self, experiment_id: str) -> dict[str, Any]:
-        """Backward-compatible alias for eval_aggregates."""
-        return await self.eval_aggregates(experiment_id)
 
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     data = dict(row)

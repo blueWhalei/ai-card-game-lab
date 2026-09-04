@@ -30,11 +30,11 @@ async def test_export_and_import_experiment_pack(client: AsyncClient) -> None:
     assert body["experiment"]["protocol"]["deal_seeds"] == pack["deal_seeds"]
 
 
-async def test_import_legacy_manifest_creates_experiment(client: AsyncClient) -> None:
+async def test_import_experiment_object_creates_experiment(client: AsyncClient) -> None:
     created = await _create_experiment(client, name="源")
     detail = await client.get(f"/api/v1/experiments/{created['id']}")
     exp = detail.json()["data"]
-    legacy = {
+    payload = {
         "experiment": {
             "id": exp["id"],
             "name": "清单导入",
@@ -45,7 +45,7 @@ async def test_import_legacy_manifest_creates_experiment(client: AsyncClient) ->
         "protocol": exp["protocol"],
         "summary": exp["summary"],
     }
-    imported = await client.post("/api/v1/experiments/import", json=legacy)
+    imported = await client.post("/api/v1/experiments/import", json=payload)
     assert imported.status_code == 200, imported.text
     assert imported.json()["data"]["experiment"]["name"] == "清单导入"
 

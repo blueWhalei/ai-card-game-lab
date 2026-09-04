@@ -57,6 +57,9 @@ models/
 logs/
 *.log
 
+# ===== GitHub Pages local preview =====
+site/screenshots/
+
 # ===== 临时文件 =====
 tmp/
 temp/

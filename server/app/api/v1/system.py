@@ -138,7 +138,7 @@ async def cleanup_old_data(
     request: CleanupRequest,
     archive_service: ArchiveService = Depends(get_archive_service),
 ) -> ApiResponse[CleanupResult]:
-    """Permanently delete old data (use with caution).
+    """Permanently delete expired data (use with caution).
 
     Set dry_run=true to preview without making changes.
     This operation cannot be undone.

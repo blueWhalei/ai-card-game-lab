@@ -49,7 +49,7 @@
 │                                                                   │
 │  ┌────────────┐ ┌────────────┐ ┌────────────┐ ┌────────────┐   │
 │  │ 实验详情页 │ │ 牌局观察器 │ │ 分析       │ │ 设置       │   │
-│  │ (五幕舞台) │ │ (WebSocket)│ │ 四工具     │ │ 提示词     │   │
+│  │ (实验阶段) │ │ (WebSocket)│ │ 四工具     │ │ 提示词     │   │
 │  └────────────┘ └────────────┘ └────────────┘ └────────────┘   │
 │                                                                   │
 │  Tailwind CSS + Reka UI（Ink Lab tokens；双壳 Workbench/Observer） │
@@ -750,8 +750,8 @@ CREATE TABLE experiment_configs (  -- 选手配置（UI 名称；API 路径 expe
 
 ### 10.2 新增 LLM 供应商
 
-OpenAI 兼容协议（`POST /chat/completions` + Bearer）：在 `dependencies.py` 的 provider 列表和 `config.py` / `.env` 增加项即可，**不要**新建 client 类。  
-非兼容协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「选手配置」页创建并选用。
+Chat Completions 协议（`POST /chat/completions` + Bearer）：在 `dependencies.py` 的 provider 列表和 `config.py` / `.env` 增加项即可，**不要**新建 client 类。  
+其他协议：新建 `LLMClient` 子类并在 `get_llm_factory()` 注册。运行时在「选手配置」页创建并选用。
 
 ### 10.3 新增训练算法
 

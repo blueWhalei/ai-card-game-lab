@@ -1,7 +1,7 @@
-"""OpenAI-compatible LLM client using httpx.
+"""Chat Completions LLM client using httpx.
 
-Supports all providers that implement the OpenAI `/chat/completions` protocol:
-OpenAI, DeepSeek, Kimi (Moonshot), MiniMax, ZhipuAI, Yi, DashScope, etc.
+Talks to any provider that exposes ``POST /chat/completions`` with Bearer auth:
+OpenAI, DeepSeek, Kimi (Moonshot), MiniMax, ZhipuAI, Yi, DashScope, and others.
 """
 
 from __future__ import annotations
@@ -21,12 +21,10 @@ logger = structlog.get_logger()
 
 
 class OpenAICompatibleClient(LLMClient):
-    """Generic async client for any OpenAI-compatible chat completions API.
+    """Async client for Chat Completions APIs.
 
-    All providers that follow the ``POST /chat/completions`` protocol
-    (same request/response schema, ``Bearer`` auth) can be served by
-    a single instance configured with the right *provider_name*,
-    *base_url* and *api_key*.
+    One instance covers any vendor that uses the same request/response schema
+    and Bearer auth. Configure *provider_name*, *base_url*, and *api_key*.
     """
 
     def __init__(
@@ -105,9 +103,8 @@ class OpenAICompatibleClient(LLMClient):
     ) -> AsyncGenerator[StreamChunk, None]:
         """Stream chat completion response chunk by chunk.
 
-        Uses Server-Sent Events (SSE) to receive streaming response from
-        OpenAI-compatible APIs. Supports reasoning_content field used by
-        DeepSeek R1, OpenAI o1, and other thinking models.
+        Uses Server-Sent Events (SSE). Reads the ``reasoning_content`` field
+        used by DeepSeek R1, OpenAI o1, and other thinking models.
 
         Yields:
             StreamChunk objects with type "reasoning" or "content" and text.
@@ -233,6 +230,3 @@ class OpenAICompatibleClient(LLMClient):
     def supports(self, provider: str) -> bool:
         return provider.lower() == self._provider_name
 
-
-# Backward-compatible alias
-OpenAIClient = OpenAICompatibleClient

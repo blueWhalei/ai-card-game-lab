@@ -41,7 +41,7 @@ export function isObserverSnapshot(data: unknown): data is ObserverSnapshot {
   return Array.isArray(d.players) && typeof d.phase === 'string'
 }
 
-/** Adapt legacy dict-shaped payloads during rollout / replay. */
+/** Normalize a dict-shaped observer payload. */
 export function coerceObserverSnapshot(
   data: unknown,
   fallbackGameType = 'unknown',

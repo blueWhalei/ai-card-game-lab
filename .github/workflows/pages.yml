@@ -1,0 +1,40 @@
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'site/**'
+      - 'screenshots/**'
+      - '.github/workflows/pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble
+        run: |
+          mkdir -p _pages
+          cp -R site/. _pages/
+          rm -rf _pages/screenshots
+          cp -R screenshots _pages/screenshots
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _pages
+      - uses: actions/deploy-pages@v4
+        id: deployment

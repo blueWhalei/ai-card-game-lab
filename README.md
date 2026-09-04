@@ -6,7 +6,11 @@
 
 > **关于模型**：本项目是**调用**第三方 LLM API（或本地 Ollama）进行卡牌决策，而非对任何大模型进行蒸馏或复制。LoRA 微调使用的是对局行为轨迹数据（用户自己的对局记录），不涉及将第三方 API 输出用于训练竞品模型。所有 API 调用均按各供应商服务条款合规使用。项目本身**不内置任何模型权重**，用户自行配置 API Key 或本地模型。
 
----
+<p align="center">
+  <img src="screenshots/zh/experiments-detail.png" alt="实验详情：对局产出可训练决策后，当前阶段只给出「开始训练」" width="920">
+</p>
+
+<p align="center"><em>实验详情按进度分五个阶段，每个阶段只说明当前状态，并给出下一步。上图是采集完成后——可训练决策就绪，下一步是开始训练。</em></p>
 
 ## 技术栈
 
@@ -43,14 +47,49 @@ cp .env.example .env    # Windows: copy .env.example .env
 
 1. **选手配置** → 设置模型与采样参数  
 2. **新建实验** → 选选手与目标局数（不会自动开始对局）  
-3. **开始实验** → 详情页当前一幕给出唯一按钮「开始实验」；可观战、回放  
+3. **开始实验** → 详情页当前阶段给出唯一按钮「开始实验」；可观战、回放  
 4. **开始训练** → 可训练决策就绪后导出 ChatML 并创建任务  
 5. **模型仓库** → 推送到 Ollama 或登记为选手  
 6. **对照 / 对比** → 训练完成后详情页让你开始对照实验（相同发牌）；对照就绪后首屏直接是一句结论加 Δ，证据不足时数字会显得更轻，并给出还需多少局；分场景差异在下方小图里，完整矩阵仍在对比页
 
-基准测验模式使用固定发牌种子（最多 50 局）。试玩对局在侧栏 `/game`，不计入实验。决策点、追踪、数据、训练在侧栏「分析」（`/pipeline/…`，支持 `?experiment_id=`）。实验详情可导出 JSON 实验包（不含密钥），首页可导入以在另一台机器复现。使用说明：顶栏书本图标 `/guide`。
+基准测验模式使用固定发牌种子（最多 50 局）。试玩对局在侧栏 `/game`，不计入实验。决策点、追踪、数据、训练在侧栏「分析」（`/pipeline/…`，支持 `?experiment_id=`）。实验详情可导出 JSON 实验包（包内不含 API 密钥），首页可导入以在另一台机器复现。使用说明：顶栏书本图标 `/guide`。
 
 脚本闭环：`.\scripts\e2e_pipeline.ps1 all -Count 1` — 详见 [E2E 指南](docs/E2E_PIPELINE.md)。
+
+## 界面
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/experiment-configs.png" alt="选手配置：模型、采样与胜率">
+      <p><strong>选手配置</strong> — 为每个座位指定模型与采样；可导入 / 导出选手包，包内不含 API 密钥。</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/games.png" alt="试玩对局列表">
+      <p><strong>试玩对局</strong> — 不计入实验的单局；也可加载演示对局先看观战。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/data.png" alt="分析 · 数据总览：对局、轮次、Token 与阵营胜负">
+      <p><strong>分析 · 数据</strong> — 语料规模、完成情况、地主 / 农民胜负分布。</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/decisions.png" alt="分析 · 决策点：手牌、合法行动与思考">
+      <p><strong>分析 · 决策点</strong> — 每步状态、合法行动、思考与是否可训练；可导出 ChatML。</p>
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/training.png" alt="分析 · 训练任务列表">
+      <p><strong>分析 · 训练</strong> — PEFT LoRA 任务与模型仓库；完成后可登记为选手。</p>
+    </td>
+    <td width="50%" valign="top">
+      <img src="screenshots/zh/traces.png" alt="分析 · 追踪：解析成功率与模型思考">
+      <p><strong>分析 · 追踪</strong> — 延迟、解析成功率、工具调用与原始 JSON。</p>
+    </td>
+  </tr>
+</table>
 
 ## 配置
 
@@ -73,6 +112,7 @@ DEEPSEEK_BASE_URL=https://api.deepseek.com/v1
 
 | 地址 | 说明 |
 |------|------|
+| https://blueWhalei.github.io/ai-card-game-lab/ | 项目页 |
 | http://localhost:5173 | 前端 |
 | http://localhost:8000/docs | API 文档 |
 | http://localhost:8000/api/v1/system/preflight | 开始前检查 |

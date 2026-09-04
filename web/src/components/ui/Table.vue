@@ -54,14 +54,14 @@ function cell(row: T, col: TableColumn<T>): string {
           <th
             v-for="col in columns"
             :key="col.key"
-            :class="cn(cellPad, 'whitespace-nowrap text-caption font-semibold', col.class)"
+            :class="cn(cellPad, 'align-middle whitespace-nowrap text-caption font-semibold', col.class)"
           >
             {{ col.label }}
           </th>
           <th
             v-if="$slots.actions"
             :class="
-              cn(cellPad, 'whitespace-nowrap text-caption font-semibold', actionsColumnClass)
+              cn(cellPad, 'align-middle whitespace-nowrap text-caption font-semibold', actionsColumnClass)
             "
           >
             {{ t('common.actions') }}
@@ -85,15 +85,17 @@ function cell(row: T, col: TableColumn<T>): string {
           <td
             v-for="col in columns"
             :key="col.key"
-            :class="cn(cellPad, 'whitespace-nowrap text-ink-text', col.class)"
+            :class="cn(cellPad, 'align-middle whitespace-nowrap text-ink-text', col.class)"
           >
             <slot :name="`cell-${col.key}`" :row="row">{{ cell(row, col) }}</slot>
           </td>
           <td
             v-if="$slots.actions"
-            :class="cn(cellPad, 'whitespace-nowrap align-top', actionsColumnClass)"
+            :class="cn(cellPad, 'align-middle whitespace-nowrap', actionsColumnClass)"
           >
-            <slot name="actions" :row="row" />
+            <div class="flex items-center">
+              <slot name="actions" :row="row" />
+            </div>
           </td>
         </tr>
       </tbody>

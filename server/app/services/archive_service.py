@@ -1,8 +1,8 @@
 """Data archiving and cleanup service.
 
 Provides functionality to:
-1. Archive old games to compressed files
-2. Clean up archived data from the database
+1. Archive finished games past a day threshold into compressed files
+2. Remove those rows from the database
 3. Manage storage lifecycle
 """
 

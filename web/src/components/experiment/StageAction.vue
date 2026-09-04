@@ -8,7 +8,7 @@ const props = withDefaults(
     claim: string
     /** Supporting line under the claim. */
     detail?: string
-    /** Headline number when the act is really about a quantity. */
+    /** Headline number when the phase is really about a quantity. */
     metricValue?: number | null
     metricTotal?: number | null
     metricLabel?: string

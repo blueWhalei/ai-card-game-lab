@@ -1,13 +1,13 @@
 import type { Experiment, ExperimentVerdictKey } from '@/api/experimentApi'
 
 /**
- * The five acts of the experiment workbench. Each one answers a single
- * question and offers a single action, so the detail page renders one act at
- * a time instead of stacking every strip and hiding parts with `v-if`.
+ * The five phases of the experiment workbench. Each one answers a single
+ * question and offers a single next step, so the detail page renders one
+ * phase at a time instead of stacking every strip and hiding parts with `v-if`.
  */
 export type ExperimentStageId = 'empty' | 'collecting' | 'harvest' | 'control' | 'verdict'
 
-/** Semantic actions an act can ask the page to perform. */
+/** Semantic actions a phase can ask the page to perform. */
 export type ExperimentStageAction =
   | 'collect'
   | 'watch'

@@ -59,7 +59,7 @@ class ActionOutputParser:
     Wraps LangChain's PydanticOutputParser with:
     - Schema validation
     - Automatic format instructions generation
-    - Legacy fallback for non-JSON responses
+    - Plain-text parse when the reply is not JSON
     - Legal action matching
     """
 
@@ -112,8 +112,7 @@ class ActionOutputParser:
         except json.JSONDecodeError:
             pass
 
-        # Fallback to legacy parsing
-        return self._legacy_parse(raw_response, legal_actions)
+        return self._plain_text_parse(raw_response, legal_actions)
 
     def _match_to_legal(
         self,
@@ -151,12 +150,12 @@ class ActionOutputParser:
 
         return None
 
-    def _legacy_parse(
+    def _plain_text_parse(
         self,
         raw_response: str,
         legal_actions: list[GameAction],
     ) -> tuple[str, GameAction]:
-        """Legacy fallback parsing for non-JSON or malformed responses."""
+        """Parse a non-JSON or malformed reply into a legal action."""
         thinking = ""
 
         # Try to extract thinking from any JSON-like structure

@@ -16,7 +16,7 @@ import UiButton from '@/components/ui/Button.vue'
 const props = withDefaults(
   defineProps<{
     experiment: Experiment
-    /** A blocking preflight check replaces the act's own action. */
+    /** A blocking preflight check replaces the phase's own action. */
     blockedMessage?: string
     /** A trained model has already been registered as a player config. */
     hasChallenger?: boolean

@@ -78,12 +78,12 @@ def test_build_experiment_pack_lists_ollama_tags() -> None:
     assert pack["deal_seeds"] == [1, 2]
 
 
-def test_parse_legacy_client_manifest() -> None:
+def test_parse_experiment_object_without_kind() -> None:
     parsed = parse_pack(
         {
             "experiment": {
-                "id": "exp-old",
-                "name": "旧清单",
+                "id": "exp-1",
+                "name": "对照实验",
                 "player_ids": ["a"],
                 "game_type": "doudizhu",
                 "target_games": 3,

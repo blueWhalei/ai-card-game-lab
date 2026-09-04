@@ -7,13 +7,6 @@ export function gameTypeLabel(id: string): string {
   return translated === key ? id : translated
 }
 
-/** @deprecated use gameTypeLabel — kept for existing imports */
-export const GAME_TYPE_MAP: Record<string, string> = {
-  get doudizhu() {
-    return tt('game.type.doudizhu')
-  },
-}
-
 /** Game status variant (not translated). */
 export const GAME_STATUS_VARIANT: Record<string, string> = {
   created: 'info',

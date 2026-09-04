@@ -80,15 +80,15 @@ class TestActionOutputParser:
         # Should fallback to cards-only match (PAIR)
         assert action.cards == ["S3", "H3"] or action.action_type == ActionType.PAIR
 
-    def test_parse_legacy_fallback_pass(self, parser: ActionOutputParser, legal_playing_actions: list[GameAction]) -> None:
-        """Should fallback to legacy parsing for non-JSON text with PASS keyword."""
+    def test_parse_plain_text_pass(self, parser: ActionOutputParser, legal_playing_actions: list[GameAction]) -> None:
+        """Parse non-JSON text that contains PASS."""
         raw = "我选择不出"
         thinking, action = parser.parse(raw, legal_playing_actions)
 
         assert action.action_type == ActionType.PASS
 
-    def test_parse_legacy_fallback_cards(self, parser: ActionOutputParser, legal_playing_actions: list[GameAction]) -> None:
-        """Should fallback to legacy parsing for text with card codes."""
+    def test_parse_plain_text_cards(self, parser: ActionOutputParser, legal_playing_actions: list[GameAction]) -> None:
+        """Parse non-JSON text that contains card codes."""
         raw = "我想出 S3"
         thinking, action = parser.parse(raw, legal_playing_actions)
 
@@ -159,15 +159,15 @@ class TestBidOutputParser:
         assert "手牌太弱" in thinking
         assert action.action_type == ActionType.BID_PASS
 
-    def test_parse_legacy_fallback_pass(self, parser: BidOutputParser, legal_bid_actions: list[GameAction]) -> None:
-        """Should fallback to legacy parsing for text with '不叫' keyword."""
+    def test_parse_plain_text_pass(self, parser: BidOutputParser, legal_bid_actions: list[GameAction]) -> None:
+        """Parse non-JSON text that contains 不叫."""
         raw = "手牌太弱，我选择不叫"
         thinking, action = parser.parse(raw, legal_bid_actions)
 
         assert action.action_type == ActionType.BID_PASS
 
-    def test_parse_legacy_fallback_bid(self, parser: BidOutputParser, legal_bid_actions: list[GameAction]) -> None:
-        """Should fallback to legacy parsing for text with bid value."""
+    def test_parse_plain_text_bid(self, parser: BidOutputParser, legal_bid_actions: list[GameAction]) -> None:
+        """Parse non-JSON text that contains a bid value."""
         raw = '{"thinking": "叫2分", "action": {"type": "BID", "value": 2}}'
         thinking, action = parser.parse(raw, legal_bid_actions)
 

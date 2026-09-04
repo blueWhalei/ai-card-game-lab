@@ -43,7 +43,7 @@ class BidOutputParser:
     - Schema validation
     - Bid value validation (1-3)
     - Legal action matching
-    - Legacy fallback
+    - Plain-text parse when the reply is not JSON
     """
 
     def __init__(self) -> None:
@@ -99,8 +99,7 @@ class BidOutputParser:
         except json.JSONDecodeError:
             pass
 
-        # Fallback to legacy parsing
-        return self._legacy_parse(raw_response, legal_actions)
+        return self._plain_text_parse(raw_response, legal_actions)
 
     def _match_to_legal(
         self,
@@ -133,12 +132,12 @@ class BidOutputParser:
 
         return None
 
-    def _legacy_parse(
+    def _plain_text_parse(
         self,
         raw_response: str,
         legal_actions: list[GameAction],
     ) -> tuple[str, GameAction]:
-        """Legacy fallback parsing for bidding responses."""
+        """Parse a non-JSON bidding reply into a legal action."""
         thinking = ""
 
         # Try to extract thinking from any JSON-like structure

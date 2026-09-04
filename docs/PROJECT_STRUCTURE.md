@@ -103,7 +103,7 @@ ai-card-game-lab/
 │   │   │   │   ├── provider_config.py  # LLMProviderConfig 配置驱动
 │   │   │   │   ├── providers/         # LLM 供应商实现
 │   │   │   │   │   ├── __init__.py
-│   │   │   │   │   ├── openai_client.py  # OpenAICompatibleClient（含 DashScope 等兼容厂商）
+│   │   │   │   │   ├── openai_client.py  # Chat Completions 客户端（OpenAI、DashScope、DeepSeek 等）
 │   │   │   │   │   └── ollama_client.py
 │   │   │   │   ├── parsers/            # AI 响应解析
 │   │   │   │   │   ├── action_parser.py  # 出牌动作解析
@@ -117,13 +117,13 @@ ai-card-game-lab/
 │   │   │   │   ├── __init__.py
 │   │   │   │   └── jsonl_writer.py    # JSONL 文件写入器
 │   │   │   │
-│   │   │   ├── pack.py                 # 实验包 / 选手包（密钥打码、导入解析）
+│   │   │   ├── pack.py                 # 实验包 / 选手包（导出不含 API 密钥）
 │   │   │   ├── stats/                  # 评测统计
 │   │   │   │   ├── proportion.py      # Wilson 区间
 │   │   │   │   ├── scenarios.py       # 叫分 / 出牌 / 残局 / 炸弹子分
 │   │   │   │   └── highlights.py      # 局后高光 3–5 步（决策点打分）
 │   │   │   │
-│   │   │   ├── database/               # 数据库抽象层（预留迁移接口）
+│   │   │   ├── database/               # 数据库抽象层
 │   │   │   │   └── backend.py         # DatabaseBackend ABC + SQLiteBackend
 │   │   │   │
 │   │   │   ├── training/              # 训练模块
@@ -209,8 +209,8 @@ ai-card-game-lab/
 │   │   │   ├── error.ts               # API 错误消息映射与统一展示入口
 │   │   │   ├── format.ts              # 时间/字节/百分比格式化工具
 │   │   │   ├── pagination.ts          # 列表页默认 page_size=20
-│   │   │   ├── experimentStage.ts     # 详情页五幕状态机（纯函数，有测试）
-│   │   │   ├── pipeline.ts            # 分析枢纽路径 / 旧 URL 对照（有测试）
+│   │   │   ├── experimentStage.ts     # 详情页阶段状态机（纯函数，有测试）
+│   │   │   ├── pipeline.ts            # 分析枢纽路径（有测试）
 │   │   │   ├── thinkingExcerpt.ts     # 观战座位上的思考摘录（有测试）
 │   │   │   └── compareMatrix.ts       # 实验对比转置矩阵
 │   │   │
@@ -227,10 +227,10 @@ ai-card-game-lab/
 │   │   │   │   ├── EmptyState.vue
 │   │   │   │   └── FirstRunStepper.vue  # 首页从零到第一局（密钥 / 选手 / 实验）
 │   │   │   │
-│   │   │   ├── experiment/            # 实验详情：五幕舞台 / 进程 / 档案
-│   │   │   │   ├── ExperimentStage.vue           # 按状态机选一幕并给出该幕文案
-│   │   │   │   ├── StageAction.vue               # 一句话 + 一个动作（幕一至四）
-│   │   │   │   ├── StageVerdict.vue              # 结论句 + Δ + 证据强度（幕五）
+│   │   │   ├── experiment/            # 实验详情：阶段主区 / 进程 / 档案
+│   │   │   │   ├── ExperimentStage.vue           # 按状态机选当前阶段并给出文案
+│   │   │   │   ├── StageAction.vue               # 一句话 + 一个操作（前四个阶段）
+│   │   │   │   ├── StageVerdict.vue              # 结论句 + Δ + 证据强度（结论阶段）
 │   │   │   │   ├── ExperimentScenarioBars.vue    # 分场景 Δ 小倍数图
 │   │   │   │   ├── ExperimentTimeline.vue        # 进程事件流 + 对照进度
 │   │   │   │   ├── ExperimentMetaPanel.vue       # 实验档案（⋯ 对话框）
@@ -251,7 +251,7 @@ ai-card-game-lab/
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
 │   │   │   │   ├── GenericBoard.vue   # 唯一观战牌桌（列表）
-│   │   │   │   ├── ThinkingPanel.vue # AI 思考历史面板
+│   │   │   │   ├── ThinkingPanel.vue # AI 思考记录
 │   │   │   │   └── GameReplayControls.vue
 │   │   │   │
 │   │   │   ├── data/                  # 数据相关组件
@@ -277,7 +277,7 @@ ai-card-game-lab/
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
 │   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /）
 │   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
-│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（五幕舞台）
+│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（分阶段）
 │   │   │   ├── PipelineView.vue       # 分析枢纽 /pipeline/{data,decisions,training,traces}
 │   │   │   ├── ExperimentConfigView.vue  # 选手配置 CRUD
 │   │   │   ├── GuideView.vue          # 使用说明 /guide（桌面端目录在右侧）
@@ -296,7 +296,7 @@ ai-card-game-lab/
 │   │   │   ├── index.css
 │   │   │   ├── tokens.css             # Ink Lab CSS 变量
 │   │   │   ├── motion.css             # 进出场 / 骨架 / 观战光晕
-│   │   │   ├── variables.css          # 兼容入口（转 tokens）
+│   │   │   ├── variables.css          # 转接到 tokens.css
 │   │   │   └── components.css
 │   │   │
 │   │   └── types/                      # 全局 TypeScript 类型
@@ -321,8 +321,16 @@ ai-card-game-lab/
 ├── scripts/                             # ===== 仓库根脚本（跨平台） =====
 │   ├── start-backend.bat / .sh          # 启动后端 :8000
 │   ├── start-frontend.bat / .sh         # 启动前端 :5173
+│   ├── preview-site.ps1 / .sh           # 本地预览 GitHub Pages（:4173）
 │   ├── e2e_pipeline.ps1 / .sh           # E2E 闭环包装（调 server/scripts）
 │   └── …
+│
+├── site/                                # ===== GitHub Pages 落地页 =====
+│   ├── index.html                       # 中文
+│   ├── en/index.html                    # English
+│   └── site.css
+│
+├── screenshots/                         # README / 项目页截图（zh + en）
 │
 ├── docs/                                # ===== 项目文档 =====
 │   ├── ARCHITECTURE.md

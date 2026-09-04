@@ -186,7 +186,7 @@ PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/concl
 POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
 GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率 / credibility）
 GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step + delta
-GET    /api/v1/experiments/{id}/export       # 实验包 JSON（选手快照 + protocol + 种子；不含密钥）
+GET    /api/v1/experiments/{id}/export       # 实验包 JSON（选手快照 + protocol + 种子；不含 API 密钥）
 POST   /api/v1/experiments/import            # 导入实验包（缺选手则创建，已有 id 则复用）
 POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座位级 provider 门闩；benchmark 用固定 deal_seed）
 ```
@@ -199,14 +199,14 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 - `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`、`control_progress[]`
 - `next_step` — `{ id, action, ref_id? }` 下一步引导。训练完成后若尚无对照则为 `open_control`（开始对照实验）；`collect_control` 跳转对照实验并开始对局。对照已就绪则为 `review` + `action=stay`（留在详情看结论，不去对比页）。
 - `delta` — 相对源实验（`vs_source`）或首个对照（`vs_control`）的一屏结论：`landlord_win_rate_diff`（本实验 − 对照）、`paired_n` / `paired_landlord_win_rate_diff`、双方 CI 与决胜局数、`can_conclude`、`inconclusive_reason`（`no_games` / `peer_not_ready` / `low_power`）、`verdict_key`。无对照时为 `null`。Δ **不以红绿表示好坏**（地主胜率升降取决于假设）。
-- `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，前端渲染为 `stage.verdict.<key>` 那一句人话结论。放在后端计算是为了让评估公式与它的措辞留在同一处；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。`can_conclude` 只决定这句话的视觉重量，不改变方向。
+- `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，前端渲染为 `stage.verdict.<key>` 那一句结论。放在后端计算是为了让评估公式与它的措辞留在同一处；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。`can_conclude` 只决定这句话的视觉重量，不改变方向。
 - `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
 
-创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒采集（无懒升级）。
+创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒绝采集。
 
 #### 实验包 / 选手包
 
-`kind` 为 `cardlab.experiment_pack` 或 `cardlab.player_pack`（`schema_version` 目前 `1`）。导出时剥掉 `api_key` / `*_api_key` 等密钥字段；`requirements.providers` 与 `requirements.ollama_tags` 供导入方对照本机环境。导入时已有选手 id **不覆盖**。旧版浏览器下载的 manifest（含 `experiment` + `protocol`、无 `kind`）仍可导入。
+`kind` 为 `cardlab.experiment_pack` 或 `cardlab.player_pack`（`schema_version` 为 `1`）。导出字段不含 `api_key` / `*_api_key`；`requirements.providers` 与 `requirements.ollama_tags` 列出导入方需要在本机配置的供应商与 Ollama 标签。导入时已有选手 id **不覆盖**。
 
 #### GET /api/v1/experiments/compare
 
@@ -222,7 +222,7 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 ```
 GET    /api/v1/experiment-configs                    # 选手配置列表
 POST   /api/v1/experiment-configs                    # 创建选手配置
-GET    /api/v1/experiment-configs/export             # 选手包 JSON（不含密钥；可选 ?ids=）
+GET    /api/v1/experiment-configs/export             # 选手包 JSON（不含 API 密钥；可选 ?ids=）
 POST   /api/v1/experiment-configs/import             # 导入选手（已有 id 不覆盖）
 GET    /api/v1/experiment-configs/{config_id}        # 配置详情
 PUT    /api/v1/experiment-configs/{config_id}        # 更新配置

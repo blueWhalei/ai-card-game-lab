@@ -32,7 +32,7 @@ class LLMClient(ABC):
     """统一的 LLM 调用接口抽象基类。
 
     为不同的大语言模型提供商提供统一的调用接口。支持多种提供商，
-    包括 OpenAI 兼容接口（OpenAI、DashScope、DeepSeek、Kimi、
+    包括 Chat Completions 接口（OpenAI、DashScope、DeepSeek、Kimi、
     ZhipuAI、Yi、Baichuan、MiniMax）和 Ollama 本地模型。
 
     子类必须实现：

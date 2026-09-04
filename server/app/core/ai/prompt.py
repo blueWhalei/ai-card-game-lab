@@ -27,7 +27,7 @@ if TYPE_CHECKING:
 # Models that output chain-of-thought reasoning before the final answer
 REASONING_MODEL_PATTERNS = [
     r"deepseek-v4-pro",
-    r"deepseek-reasoner",  # legacy alias (retired)
+    r"deepseek-reasoner",
     r"deepseek-r1",
     r"o1-mini",
     r"o1-preview",
@@ -52,7 +52,7 @@ def is_reasoning_model(model_name: str | None) -> bool:
     model_lower = model_name.lower()
     return any(re.search(pattern, model_lower) for pattern in REASONING_MODEL_PATTERNS)
 
-# Legacy templates (used as fallback)
+# Built-in templates when a stored template is missing
 SYSTEM_TEMPLATE = """\
 你是斗地主 AI 玩家。你的玩家ID会在每轮提示中明确标注。
 
@@ -106,7 +106,7 @@ def _load_rules(game_type: str, rules_ref: str | None = None) -> str:
     if rules_ref:
         ref_path = Path(rules_ref)
         candidates.append(ref_path if ref_path.is_absolute() else repo_root / rules_ref)
-    # Legacy default for doudizhu when rules_ref missing
+    # Default Dou Dizhu rules file when rules_ref is omitted
     if game_type == "doudizhu":
         candidates.append(repo_root / "docs" / "欢乐斗地主经典玩法规则.md")
     for path in candidates:

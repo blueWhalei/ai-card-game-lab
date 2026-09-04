@@ -133,7 +133,7 @@ def build_experiment_pack(
 
 
 def parse_pack(raw: Any) -> dict[str, Any]:
-    """Normalize a pack or a legacy client-side manifest into a known kind."""
+    """Parse a player or experiment pack into a known kind."""
     if not isinstance(raw, dict):
         raise ValueError("pack must be a JSON object")
     kind = raw.get("kind")

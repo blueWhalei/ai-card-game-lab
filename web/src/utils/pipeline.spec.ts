@@ -13,7 +13,7 @@ describe('pipeline', () => {
     expect(isPipelineSection('prompt')).toBe(false)
   })
 
-  it('reads the section from hub and legacy tool URLs', () => {
+  it('reads the section from hub and section paths', () => {
     expect(pipelineSectionOf('/pipeline/decisions')).toBe('decisions')
     expect(pipelineSectionOf('/training')).toBe('training')
     expect(pipelineSectionOf('/traces/extra')).toBe('traces')

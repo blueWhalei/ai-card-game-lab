@@ -10,12 +10,12 @@ export function pipelinePath(section: PipelineSection): string {
   return `/pipeline/${section}`
 }
 
-/** Current or legacy tool URL → section. `/pipeline` itself is not a section. */
+/** Path → Analyze section. `/pipeline` itself is not a section. */
 export function pipelineSectionOf(path: string): PipelineSection | null {
   const pipeline = /^\/pipeline\/([^/]+)/.exec(path)?.[1]
   if (pipeline && isPipelineSection(pipeline)) return pipeline
-  const legacy = /^\/(data|decisions|training|traces)(?:\/|$)/.exec(path)?.[1]
-  if (legacy && isPipelineSection(legacy)) return legacy
+  const bare = /^\/(data|decisions|training|traces)(?:\/|$)/.exec(path)?.[1]
+  if (bare && isPipelineSection(bare)) return bare
   return null
 }
 

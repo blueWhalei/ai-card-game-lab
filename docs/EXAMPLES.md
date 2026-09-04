@@ -231,7 +231,7 @@ def get_engine_registry() -> GameEngineRegistry:
 ```
 
 新建实验时会把 `capability.protocol_fingerprint()` 写入 `experiments.protocol`
-（当前 `schema_version: 1`）。采集要求协议完整，不做旧数据懒升级。
+（`schema_version: 1`）。采集要求协议完整，协议不完整则拒绝采集。
 `GET /system/engines` 返回完整 capability（benchmark 种子仅 count；完整列表走
 `GET /system/benchmark-seeds?game_type=`）。
 
@@ -258,7 +258,7 @@ def get_engine_registry() -> GameEngineRegistry:
 只需在 `dependencies.py` 的 `openai_compatible_providers` 列表和 `config.py` / `.env`
 增加一项，**不要**新建 client 类。
 
-下面示例仅适用于**非兼容协议**（以 Anthropic Messages API 为例）。
+下面示例仅适用于 **Chat Completions 以外的协议**（以 Anthropic Messages API 为例）。
 
 ### 2.1 创建客户端实现
 

@@ -1,6 +1,6 @@
 # 编码规范
 
-> 本文档是本项目的工程准则。凡属“规范性要求”，默认对**新增代码与本次修改范围内的代码**强制生效；对存量代码，按“发现即修、逐步收敛”的原则推进，不因历史原因降低标准。
+> 本文档是本项目的工程准则。提交的代码按本规范执行；改到的文件一并整理到同一标准。
 
 ## 1. Python 后端规范
 
@@ -14,7 +14,7 @@
 
 ### 1.2 类型提示
 
-**强制要求**：所有新增或修改的函数签名必须有完整类型注解；涉及本次改动的旧代码也应一并补齐。
+**强制要求**：函数签名必须有完整类型注解；本次改动触及的签名一并补齐。
 
 ```python
 # 正确 ✓
@@ -29,14 +29,14 @@ def search(self, query: str, top_k: int = 5) -> list[dict[str, Any]]:
 def get_legal_actions(self, state, player_id):
     ...
 
-# 错误 ✗ — 使用旧式 typing 导入（3.11+ 不需要）
+# 错误 ✗ — 从 typing 导入泛型（3.11+ 用内置语法）
 from typing import List, Dict
 def search(self, query: str) -> List[Dict[str, Any]]:
     ...
 ```
 
 **类型提示要点**：
-- 使用 `list[...]`, `dict[...]`, `tuple[...]` 等内置泛型，不再从 `typing` 导入
+- 使用 `list[...]`, `dict[...]`, `tuple[...]` 等内置泛型，不要从 `typing` 导入 `List` / `Dict` / `Optional` / `Union`
 - 联合类型使用 `X | Y` 语法，不用 `Union[X, Y]`
 - 可选参数使用 `X | None`，不用 `Optional[X]`
 - 复杂类型使用 `TypeAlias` 或 `type` 语句定义别名
@@ -245,7 +245,7 @@ class GameEngine(ABC):
 
 ### 2.1 TypeScript 配置
 
-项目目标为严格 TypeScript。**新增代码与修改过的代码**禁止随意引入 `any`；存量代码若暂时无法一次性清理，应优先限制范围并在后续迭代中继续收敛。
+项目目标为严格 TypeScript。禁止随意引入 `any`；改到的文件里已有的 `any` 一并收窄。
 
 ```json
 {
@@ -259,7 +259,7 @@ class GameEngine(ABC):
 }
 ```
 
-**禁止使用 `any`**：新增代码与本次修改范围内的代码必须有明确类型；存量代码如暂时无法彻底清理，应避免扩散并持续收敛。
+**禁止使用 `any`**：提交的代码必须有明确类型；改到的文件里已有的 `any` 一并收窄。
 
 ```typescript
 // 正确 ✓
@@ -405,7 +405,7 @@ export const gameApi = {
 - 技术专名可保留英文：Ollama、LoRA、ChatML、API 密钥、P50/P95、`.env` 等
 - 新增页面或按钮时同步更新中英两套 locale
 - 界面时间统一 `YYYY-MM-DD HH:mm:ss`（`formatDateTime`，本地时区）；不要再引入短格式
-- 改评测指标、详情结论幕或 KPI 含义时：同步 `metricHint.*`（格子旁 ?）与 `guide.sections.metrics`（`/guide#metrics`）
+- 改评测指标、详情结论阶段或 KPI 含义时：同步 `metricHint.*`（格子旁 ?）与 `guide.sections.metrics`（`/guide#metrics`）
 - 开始前检查（`GET /preflight` 的 `checks[].id`）文案在 `preflight.*`；供应商名称在 `settings.providerMeta.*`。后端 `message` 仅作 API 回退，界面不要直接展示
 
 ## 3. 通用规范

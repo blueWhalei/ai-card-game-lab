@@ -45,7 +45,7 @@ import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 
 const { t } = useI18n()
 
-const LEGACY_TABS = new Set(['decisions', 'traces', 'training'])
+const PIPELINE_TABS = new Set(['decisions', 'traces', 'training'])
 
 const route = useRoute()
 const router = useRouter()
@@ -163,8 +163,8 @@ const collectBlocked = computed(() => {
 })
 
 /**
- * A blocking check takes over the act's own claim and action, so the user is
- * never offered a button that only produces a warning toast.
+ * A blocking check takes over the phase's status line and action, so the user
+ * is never offered a button that only produces a warning toast.
  */
 const blockedMessage = computed(() => {
   const block = (preflight.value?.checks ?? []).find((c) => c.severity === 'block' && !c.ok)
@@ -749,8 +749,8 @@ function gameStatusLabel(status: string): string {
   }
 }
 
-function redirectLegacyTab(tab: unknown): boolean {
-  if (typeof tab !== 'string' || !LEGACY_TABS.has(tab) || !experimentId.value) return false
+function openPipelineTab(tab: unknown): boolean {
+  if (typeof tab !== 'string' || !PIPELINE_TABS.has(tab) || !experimentId.value) return false
   void router.replace({ path: route.path, query: stripTabQuery(route.query as Record<string, unknown>) })
   if (tab === 'decisions') goDecisions()
   else if (tab === 'traces') goTraces()
@@ -761,7 +761,7 @@ function redirectLegacyTab(tab: unknown): boolean {
 watch(
   () => route.query.tab,
   (tab) => {
-    redirectLegacyTab(tab)
+    openPipelineTab(tab)
   },
   { immediate: true },
 )

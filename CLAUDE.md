@@ -92,7 +92,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
 - `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.
 - Dual shells:
-  - `WorkbenchLayout.vue` — five destinations: Experiments / Players / Trial games / Analyze / Settings (zh: 实验 / 选手 / 试玩 / 分析 / 设置). Analyze is a hub (`/pipeline/{data,decisions,training,traces}`); old `/data` `/decisions` `/training` `/traces` redirect and keep query. Prompts stay at `/prompt`, linked from Settings. Route swap is immediate (no page `Transition`; it raced with overlay unmount). Do not wrap the observer shell. Layout owns the page title; list pages should not repeat an in-page subtitle. Brand logo at `/logo.png` in sidebar header. **Usage guide** (`/guide`) is header-only via `HeaderToggles` (book icon), not in the sidebar.
+  - `WorkbenchLayout.vue` — five destinations: Experiments / Players / Trial games / Analyze / Settings (zh: 实验 / 选手 / 试玩 / 分析 / 设置). Analyze is a hub (`/pipeline/{data,decisions,training,traces}`). Prompts stay at `/prompt`, linked from Settings. Route swap is immediate (no page `Transition`; it raced with overlay unmount). Do not wrap the observer shell. Layout owns the page title; list pages should not repeat an in-page subtitle. Brand logo at `/logo.png` in sidebar header. **Usage guide** (`/guide`) is header-only via `HeaderToggles` (book icon), not in the sidebar.
   - `ObserverLayout.vue` — fullscreen watch / replay.
 - UI kit: `components/ui/*` (Reka UI + Ink Lab tokens in `styles/tokens.css`, motion in `styles/motion.css`). Density helpers: `KpiStrip`, `NameChips`, `CompactRecordList`. Charts: ECharts.
 - Design baseline (`styles/tokens.css`): font sizes come **only** from the six-step
@@ -103,14 +103,14 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   groups with whitespace. There is a single row density — `UiTable` has no `density` prop.
   `--ink-evidence-*` renders a claim's confidence (weak claims look weak); it is never
   a good/bad hue.
-- Experiment detail is a **five-act stage**: `resolveStageId()` (`utils/experimentStage.ts`) picks
+- Experiment detail is a **five-phase workbench**: `resolveStageId()` (`utils/experimentStage.ts`) picks
   one of `empty` / `collecting` / `harvest` / `control` / `verdict`, and `ExperimentStage.vue`
-  renders exactly one act — a single claim sentence plus a single action (`StageAction.vue`,
+  renders exactly one phase — a status sentence plus a single next step (`StageAction.vue`,
   or `StageVerdict.vue` for the verdict). Do **not** reintroduce stacked strips or a games/players
   segmented control; the games list and player table are quiet sections under
   `ExperimentTimeline.vue`. Decisions/traces/training live on Pipeline pages with
-  `?experiment_id=`. Legacy `/experiments/:id?tab=decisions|traces|training` redirects there.
-- A blocking preflight check **replaces** the act's claim and action rather than sitting in a
+  `?experiment_id=`.
+- A blocking preflight check **replaces** that phase's status line and action rather than sitting in a
   banner above a button that only warns. Only `severity: warn` renders as a notice.
 - Observation uses **one** `GenericBoard` list board. Do not add `components/game/boards/<Game>Board.vue` or branch `GameObserverView` by `game_type`.
 
@@ -121,34 +121,34 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 | `/` | `ExperimentListView` (home; first-run checklist until provider + players + experiment) |
 | `/experiments/:id` | `ExperimentDetailView` (detail page; stage workbench with primary CTA) |
 | `/experiments/compare` | `ExperimentCompareView` |
-| `/pipeline` | `PipelineView` (Analyze hub; redirects to `/pipeline/data`) |
+| `/pipeline` | `PipelineView` (Analyze hub; opens `/pipeline/data`) |
 | `/pipeline/data` | `DataView` |
 | `/pipeline/decisions` | `DecisionView` |
 | `/pipeline/training` | `TrainingView` |
 | `/pipeline/traces` | `TraceView` |
 | `/game` | `GameView` (trial games — zh: 试玩对局) |
 | `/game/:id` | `GameObserverView` (Observer shell) |
-| `/experiment-configs` | `ExperimentConfigView` (`/ai-players` redirects here) |
+| `/experiment-configs` | `ExperimentConfigView` |
 | `/prompt` | `PromptView` (linked from Settings; not in the sidebar) |
 | `/settings` | `SettingsView` (read-only: providers, paths, storage; preflight via `GET /api/v1/system/preflight`) |
 | `/guide` | `GuideView` (usage guide: modules, flow diagrams; TOC on the right on desktop) |
 
-Legacy `/data`, `/decisions`, `/training`, `/traces` redirect to the matching `/pipeline/…` path and keep the query. Deep links (`?experiment_id=`, `?game_id=&decision_id=`) still work. The Analyze hub owns the experiment context bar.
+Deep links (`?experiment_id=`, `?game_id=&decision_id=`) keep the query. The Analyze hub owns the experiment context bar.
 
 ## Experiments
 
 - Table `experiments` includes `hypothesis`, `conclusion`, `tags` (JSON array), plus existing `notes` and frozen `protocol`.
 - `games.experiment_id` is nullable (trial games on `/game` stay outside experiments).
 - Creating an experiment does **not** start games (avoids accidental API spend). Start the experiment from the detail page.
-- Home (`/`): first-run checklist (configured provider → enough player configs → an experiment) until complete; **Load demo** remains a skip path. Experiment list can **import** a JSON pack; detail ⋯ **export** is the same format (legacy client manifests still import).
+- Home (`/`): first-run checklist (configured provider → enough player configs → an experiment) until complete; **Load demo** is a skip path. Experiment list can **import** a JSON pack; detail ⋯ **export** is the same format.
 - Player count is validated against the engine `min` / `max` from `GET /api/v1/system/engines`.
-- Detail page acts, in the order `resolveStageId()` checks them: `empty` (no games — Start experiment, and say it costs API usage), `collecting` (progress number + watch), `harvest` (trainable-decision count + Start training, or review exclusions when `next_step.id=review_decisions`), `control` (explain same-deal validation; register the `lora_*` player first when none exists; Start control experiment), `verdict` (`StageVerdict`). Identity bar (back / name / status / ⋯) and the **archive** dialog (notebook, protocol, validation, clone/manifest) stay on every act. The ⋯ menu carries the experiment-scoped Pipeline entries (decisions / data / training / traces); acts only link out when that *is* the next step (e.g. `review_decisions`), so pruning an act must not prune a deep link. Home list keeps **Compare several experiments**.
-- The verdict act shows: one claim sentence from `delta.verdict_key`, the Δ number, a support line (paired n + CI), and an evidence line that turns "not enough" into a number of games to run. `can_conclude=false` renders the claim and number through `--ink-evidence-weak` (lighter, not bold) — confidence is legible without reading the text. Scenario subscores are a `ExperimentScenarioBars` small-multiples row that only annotates the one notable gap, not four equal KPI cells.
+- Detail page phases, in the order `resolveStageId()` checks them: `empty` (no games — Start experiment, and say it costs API usage), `collecting` (progress number + watch), `harvest` (trainable-decision count + Start training, or review exclusions when `next_step.id=review_decisions`), `control` (explain same-deal validation; register the `lora_*` player first when none exists; Start control experiment), `verdict` (`StageVerdict`). Identity bar (back / name / status / ⋯) and the **archive** dialog (notebook, protocol, validation, clone/manifest) stay on every phase. The ⋯ menu carries the experiment-scoped Pipeline entries (decisions / data / training / traces); a phase only links out when that *is* the next step (e.g. `review_decisions`), so removing a phase block must not prune a deep link. Home list keeps **Compare several experiments**.
+- The verdict phase shows: one conclusion sentence from `delta.verdict_key`, the Δ number, a support line (paired n + CI), and an evidence line that turns "not enough" into a number of games to run. `can_conclude=false` renders the conclusion and number through `--ink-evidence-weak` (lighter, not bold) — confidence is legible without reading the text. Scenario subscores are a `ExperimentScenarioBars` small-multiples row that only annotates the one notable gap, not four equal KPI cells.
 - Δ cells have a `?` (`MetricHint`) linking to `/guide#metrics`. Formulas live in `metricHint.*` i18n and `guide.sections.metrics`. Changing an eval formula or verdict copy requires updating both. Δ is **not** colored good/bad.
 - `collect_mode`: `free` (random seeds) or `benchmark` (fixed `deal_seeds` from `BENCHMARK_DEAL_SEEDS`, up to 50 games).
 - Summary / compare expose eval metrics: role win rates, parser rate, train_usable, P50/P95 latency (from `rounds`), tokens/game, status counts, per-seat as-landlord win rate (needs `metadata.landlord_id`), plus `credibility` (decisive_n / CI width / low_power) and `scenario_scores` (bidding / playing / endgame / bomb: train_usable + parser). Collect CTA uses `GET /api/v1/system/preflight` (seat providers); Settings shows the same checks. UI copy comes from `preflight.*` by check `id` (not the backend `message`).
 - `GET /experiments/{id}` adds computed `timeline`, `validation` (control runs + `control_progress` + `validation_ready`), `next_step` (`open_control` after training completes with no control yet; `collect_control` → control experiment collect; `review` + `action=stay` when a control is ready — stay on the detail verdict, do not jump to compare), and `delta` (vs source or first control: landlord win-rate Δ, paired n, CI, `can_conclude` / `inconclusive_reason`, `verdict_key`, plus per-scenario train/parser Δ). New decisions store `game_phase=endgame` when any remaining hand has ≤8 cards.
-- `verdict_key` (`stronger` / `weaker` / `even` / `peer_pending` / `no_data`, from `_verdict_key()`) is the plain-language claim the UI renders as `stage.verdict.<key>`. It is computed server-side on purpose: an eval-formula change and its wording live in one place. `VERDICT_EVEN_THRESHOLD` decides when a gap is a tie. `verdictKeyOf()` mirrors it for payloads that predate the field.
+- `verdict_key` (`stronger` / `weaker` / `even` / `peer_pending` / `no_data`, from `_verdict_key()`) is the plain-language claim the UI renders as `stage.verdict.<key>`. It is computed server-side on purpose: an eval-formula change and its wording live in one place. `VERDICT_EVEN_THRESHOLD` decides when a gap is a tie. `verdictKeyOf()` derives the same key when the payload omits `verdict_key`.
 - Completed training tasks for the experiment appear on `/training?experiment_id=`; model repo can register an Ollama tag as a player config.
 
 Main HTTP:
@@ -166,7 +166,7 @@ GET      /api/v1/system/benchmark-seeds
 GET      /api/v1/system/preflight
 ```
 
-Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`. Player configs and experiments can be shared as JSON packs (`cardlab.player_pack` / `cardlab.experiment_pack`): secrets are stripped; existing player ids are reused, not overwritten; import lists unconfigured providers and Ollama tags.
+Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`. Player configs and experiments can be shared as JSON packs (`cardlab.player_pack` / `cardlab.experiment_pack`): packs do not include API keys; existing player ids are reused, not overwritten; import lists providers and Ollama tags that still need to be configured on this machine.
 
 ## Game observer
 
@@ -247,19 +247,19 @@ Routing is by `game_type`; Service layers must not hardcode a game id beyond def
 
 ## Adding an LLM provider
 
-- If the vendor is OpenAI-compatible (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
-- A new `LLMClient` subclass is only for a non-compatible protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
+- If the vendor uses Chat Completions (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
+- A new `LLMClient` subclass is only for a different protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
 - Player configs are created and edited in the Player configs UI (SQLite). There is no YAML seed.
 
 ## Key conventions
 
-- Coding standards apply to **new and touched** code; fix legacy in the same range when you see it (`docs/CODING_STANDARDS.md`).
+- Coding standards apply to the files you submit; when you edit a file, bring nearby code in that range up to the same standard (`docs/CODING_STANDARDS.md`).
 - Python: annotate new/changed functions with 3.11+ syntax (`list[...]`, `X | Y`, `X | None`). Do not use `typing.List/Dict/Optional/Union`.
 - Python: async for I/O. CPU-bound work via `asyncio.to_thread()`.
 - Python: structlog key-value pairs; no f-strings in log calls; no `print()`.
 - Python: exceptions inherit `AppError` (`app/utils/exceptions.py`).
 - Python: Ruff line-length 100; mypy strict is the target for new/changed code.
-- Frontend: no new `any`; narrow legacy `any` in files you touch.
+- Frontend: no new `any`; narrow existing `any` in files you touch.
 - Frontend: shared API errors via `src/api/client.ts` and `src/utils/error.ts`.
 - Frontend: `@` → `web/src/`.
 - Tests: pytest `asyncio_mode = auto`; `httpx.AsyncClient` + `ASGITransport`. Frontend: Vitest (`src/**/*.spec.ts`).

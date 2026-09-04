@@ -120,16 +120,16 @@ function handleSelect(template: PromptTemplateResponse) {
                 :class="{ 'bg-ink-primary-muted/40': selectedTemplateKey === key }"
                 @click="handleSelect(template)"
               >
-                <td class="py-1.5 font-medium text-ink-text">v{{ template.version }}</td>
-                <td class="py-1.5">
+                <td class="py-1.5 align-middle font-medium text-ink-text">v{{ template.version }}</td>
+                <td class="py-1.5 align-middle">
                   <UiBadge :variant="template.is_active ? 'success' : 'muted'">
                     {{ template.is_active ? t('prompt.active') : t('prompt.inactive') }}
                   </UiBadge>
                 </td>
-                <td class="hidden py-1.5 text-ink-text-muted md:table-cell">
+                <td class="hidden py-1.5 align-middle text-ink-text-muted md:table-cell">
                   {{ formatDateTime(template.updated_at) }}
                 </td>
-                <td class="py-1.5 text-right">
+                <td class="py-1.5 align-middle text-right">
                   <div
                     class="flex flex-nowrap items-center justify-end gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100"
                   >

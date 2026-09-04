@@ -86,7 +86,7 @@ async def test_migrate_retired_deepseek_models(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_migrate_ai_players_to_experiment_configs(tmp_path: Path) -> None:
-    """Legacy ai_players rows migrate to experiment_configs with notes, no avatar."""
+    """ai_players rows are copied into experiment_configs with notes, no avatar."""
     db_path = str(tmp_path / "app.db")
     db_dir = tmp_path
     db_dir.mkdir(parents=True, exist_ok=True)

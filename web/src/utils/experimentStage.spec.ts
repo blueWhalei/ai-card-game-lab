@@ -61,12 +61,12 @@ function makeDelta(overrides: Partial<ExperimentDelta> = {}): ExperimentDelta {
 }
 
 describe('resolveStageId', () => {
-  it('shows the empty act before any game runs', () => {
+  it('shows the empty phase before any game runs', () => {
     const experiment = makeExperiment({ summary: { status: 'pending_collect' } as never })
     expect(resolveStageId(experiment)).toBe('empty')
   })
 
-  it('prefers the collecting act while games are running, even for a control run', () => {
+  it('prefers the collecting phase while games are running, even for a control run', () => {
     const experiment = makeExperiment({
       summary: { status: 'collecting' } as never,
       delta: makeDelta({ relation: 'vs_source' }),
@@ -74,7 +74,7 @@ describe('resolveStageId', () => {
     expect(resolveStageId(experiment)).toBe('collecting')
   })
 
-  it('shows the verdict act once there is something to compare against', () => {
+  it('shows the verdict phase once there is something to compare against', () => {
     expect(resolveStageId(makeExperiment({ delta: makeDelta() }))).toBe('verdict')
   })
 
@@ -85,7 +85,7 @@ describe('resolveStageId', () => {
     expect(resolveStageId(experiment)).toBe('control')
   })
 
-  it('falls back to the harvest act', () => {
+  it('falls back to the harvest phase', () => {
     expect(resolveStageId(makeExperiment())).toBe('harvest')
   })
 })
