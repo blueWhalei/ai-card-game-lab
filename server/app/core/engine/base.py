@@ -5,9 +5,34 @@ All concrete game engines (doudizhu, sanguosha, etc.) inherit from
 are **stateless** -- game state is carried by ``GameState`` objects.
 """
 
+import random
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field
-from typing import Any
+from typing import Any, TypeAlias
+
+from app.core.engine.observation import Observation
+from app.core.engine.tools import ToolSpec
+from app.utils.exceptions import InvalidActionError
+
+ActionId: TypeAlias = str
+"""Stable, opaque handle for one legal action.
+
+Deterministic and human-readable (not a hash) so it can be embedded in prompts,
+JSON Schema ``enum`` values, JSONL archives, and puzzle definitions.
+"""
+
+
+@dataclass(frozen=True)
+class LegalAction:
+    """One legal action in normalized form.
+
+    ``id`` is what a policy chooses; ``action`` is the engine-internal
+    representation that a policy must never interpret.
+    """
+
+    id: ActionId
+    label: str
+    action: "GameAction"
 
 
 @dataclass(frozen=True)
@@ -30,6 +55,8 @@ class EngineCapability:
     eval_metric_ids: tuple[str, ...] = ()
     decision_schema_version: int = 1
     rules_ref: str | None = None
+    supports_hidden_state_sampling: bool = False
+    tools: tuple[ToolSpec, ...] = ()
 
     def to_public_dict(self, *, include_seeds: bool = False) -> dict[str, Any]:
         """JSON-safe view for ``GET /system/engines``. Seeds omitted unless requested."""
@@ -45,6 +72,7 @@ class EngineCapability:
         data["roles"] = list(self.roles)
         data["eval_metric_ids"] = list(self.eval_metric_ids)
         data["prompt_keys"] = dict(self.prompt_keys)
+        data["tools"] = [tool.to_public_dict() for tool in self.tools]
         return data
 
     def protocol_fingerprint(self) -> dict[str, Any]:
@@ -173,6 +201,143 @@ class GameEngine(ABC):
             max_players=self.max_players,
             prompt_keys={"playing": f"{self.game_type}_playing"},
         )
+
+    def canonical_cards(self, cards: list[str]) -> list[str]:
+        """Canonical card ordering used to build stable action ids.
+
+        Override when the game has a meaningful rank order (so that an id reads
+        the same way the action is displayed).
+        """
+        return sorted(cards)
+
+    def action_id(self, action: GameAction) -> ActionId:
+        """Deterministic id for an action.
+
+        Two actions that are equivalent for the rules must produce the same id;
+        the id must not depend on process-level randomness.
+        """
+        cards = " ".join(self.canonical_cards(action.cards))
+        return f"{action.action_type}|{cards}|{action.target or ''}"
+
+    def action_label(self, state: GameState, action: GameAction) -> str:
+        """Human-readable one-line label for an action (prompts and UI)."""
+        del state  # unused in the generic label
+        cards = " ".join(self.canonical_cards(action.cards))
+        if cards:
+            return f"{action.action_type}: [{cards}]"
+        if action.target:
+            return f"{action.action_type} {action.target}"
+        return str(action.action_type)
+
+    def order_legal_actions(
+        self, state: GameState, actions: list[GameAction]
+    ) -> list[GameAction]:
+        """Stable presentation order for legal actions. Override per game."""
+        del state  # generic order keeps engine order
+        return list(actions)
+
+    def legal_actions(self, state: GameState, player_id: str) -> list[LegalAction]:
+        """Normalized legal actions: deduplicated by id, in presentation order.
+
+        This is the form policies, structured-output schemas, and puzzles consume;
+        ``get_legal_actions`` stays the engine-internal rule query.
+        """
+        ordered = self.order_legal_actions(state, self.get_legal_actions(state, player_id))
+        result: list[LegalAction] = []
+        seen: set[ActionId] = set()
+        for action in ordered:
+            action_id = self.action_id(action)
+            if action_id in seen:
+                continue
+            seen.add(action_id)
+            result.append(
+                LegalAction(
+                    id=action_id,
+                    label=self.action_label(state, action),
+                    action=action,
+                )
+            )
+        return result
+
+    def resolve_action(
+        self, state: GameState, player_id: str, action_id: ActionId
+    ) -> GameAction:
+        """Map an ``ActionId`` back to a legal action.
+
+        Raises:
+            InvalidActionError: if the id is not currently legal. Never falls back
+                silently -- callers decide how to handle an illegal choice.
+        """
+        for legal in self.legal_actions(state, player_id):
+            if legal.id == action_id:
+                return legal.action
+        raise InvalidActionError(action_id, "Not a legal action in this state")
+
+    def observe(self, state: GameState, player_id: str) -> Observation:
+        """Build the player-facing view a policy decides from.
+
+        Override to fill ``private`` / ``public`` with the fields that game's
+        policies, tools, and hidden-state sampling need.
+        """
+        return Observation(
+            game_type=state.game_type,
+            phase=str(getattr(state, "phase", "playing")),
+            round=state.round,
+            player_id=player_id,
+            to_act=self.get_current_player(state) == player_id,
+            private={},
+            public=self.get_public_info(state, player_id),
+            text=self.format_for_prompt(state, player_id),
+        )
+
+    def sample_hidden_state(
+        self, observation: Observation, rng: random.Random
+    ) -> GameState:
+        """Sample a full state consistent with ``observation`` (determinization).
+
+        Required by the rollout evaluator and search policies in imperfect-information
+        games. Engines that can do it must set
+        ``EngineCapability.supports_hidden_state_sampling``.
+
+        Raises:
+            InvalidActionError: if this engine does not support sampling. Never
+                returns an approximate state silently.
+        """
+        del observation, rng
+        raise InvalidActionError(
+            "sample_hidden_state",
+            f"Engine '{self.game_type}' does not support hidden state sampling",
+        )
+
+    def run_tool(
+        self, name: str, observation: Observation, arguments: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Execute an engine-declared tool by name.
+
+        Raises:
+            InvalidActionError: if this engine declares no such tool.
+        """
+        for tool in self.capability.tools:
+            if tool.name == name:
+                return tool.handler(observation, arguments or {})
+        raise InvalidActionError(
+            name, f"Engine '{self.game_type}' declares no tool named '{name}'"
+        )
+
+    def terminal_rewards(self, state: GameState) -> dict[str, float]:
+        """Per-player payoff of a finished game.
+
+        The single source of truth for outcome value: consumed by the rollout
+        evaluator (EV loss), the RL environment reward, and scorers. Override when
+        the game has teams or a stake size.
+
+        Raises:
+            InvalidActionError: if the game has not finished.
+        """
+        if not self.is_terminal(state):
+            raise InvalidActionError("terminal_rewards", "Game has not finished")
+        winner = self.get_winner(state)
+        return {pid: 1.0 if pid == winner else 0.0 for pid in state.player_ids}
 
     def format_legal_actions_for_prompt(
         self, state: GameState, actions: list[GameAction]

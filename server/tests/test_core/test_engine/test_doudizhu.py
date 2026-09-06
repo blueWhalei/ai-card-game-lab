@@ -1,13 +1,14 @@
 """Tests for the Doudizhu game engine."""
 
 import json
+import random
 
 import pytest
 
-from app.core.engine.base import GameAction
-from app.core.engine.doudizhu.cards import ActionType
-from app.core.engine.doudizhu.engine import DoudizhuEngine, DoudizhuState
 from app.core.ai.prompt import PromptBuilder
+from app.core.engine.base import GameAction
+from app.core.engine.doudizhu.cards import FULL_DECK, ActionType
+from app.core.engine.doudizhu.engine import DoudizhuEngine, DoudizhuState
 from app.utils.exceptions import InvalidActionError
 
 
@@ -212,3 +213,90 @@ def test_is_terminal_false_initially() -> None:
     state = engine.initialize(["a", "b", "c"])
     assert not engine.is_terminal(state)
     assert engine.get_winner(state) is None
+
+
+def _advance(engine: DoudizhuEngine, state: DoudizhuState, steps: int) -> DoudizhuState:
+    """Take the first legal action ``steps`` times (bidding starts with BID 3)."""
+    for _ in range(steps):
+        if engine.is_terminal(state):
+            break
+        player_id = engine.get_current_player(state)
+        actions = engine.legal_actions(state, player_id)
+        state = engine._cast(engine.apply_action(state, actions[0].action))
+    return state
+
+
+def test_sample_hidden_state_keeps_the_deck_consistent() -> None:
+    engine = DoudizhuEngine()
+    state = _advance(engine, engine.initialize(["a", "b", "c"], seed=7), 4)
+    assert state.phase == "playing"
+
+    viewer = next(pid for pid, role in state.roles.items() if role == "peasant")
+    obs = engine.observe(state, viewer)
+    sampled = engine.sample_hidden_state(obs, random.Random(99))
+
+    assert sampled.hands[viewer] == state.hands[viewer]
+    assert {pid: len(h) for pid, h in sampled.hands.items()} == {
+        pid: len(h) for pid, h in state.hands.items()
+    }
+
+    played = [card for entry in state.play_history for card in entry.get("cards", [])]
+    all_cards = [card for hand in sampled.hands.values() for card in hand] + played
+    assert sorted(all_cards) == sorted(FULL_DECK)
+
+    landlord = next(pid for pid, role in state.roles.items() if role == "landlord")
+    unplayed_bottom = set(state.landlord_cards) - set(played)
+    assert unplayed_bottom <= set(sampled.hands[landlord])
+
+
+def test_sample_hidden_state_hides_the_bottom_cards_during_bidding() -> None:
+    engine = DoudizhuEngine()
+    state = engine.initialize(["a", "b", "c"], seed=11)
+    obs = engine.observe(state, "a")
+
+    assert "landlord_cards" not in obs.public
+
+    sampled = engine.sample_hidden_state(obs, random.Random(3))
+    assert sampled.hands["a"] == state.hands["a"]
+    assert len(sampled.landlord_cards) == 3
+    all_cards = [c for hand in sampled.hands.values() for c in hand] + sampled.landlord_cards
+    assert sorted(all_cards) == sorted(FULL_DECK)
+
+
+def _finished_state(winner: str, roles: dict[str, str]) -> DoudizhuState:
+    return DoudizhuState(
+        game_type="doudizhu",
+        round=10,
+        player_ids=["a", "b", "c"],
+        current_player=winner,
+        is_terminal=True,
+        winner=winner,
+        winner_role=roles[winner],
+        roles=roles,
+    )
+
+
+def test_terminal_rewards_pay_the_whole_winning_side() -> None:
+    engine = DoudizhuEngine()
+    roles = {"a": "landlord", "b": "peasant", "c": "peasant"}
+
+    landlord_win = engine.terminal_rewards(_finished_state("a", roles))
+    assert landlord_win == {"a": 1.0, "b": 0.0, "c": 0.0}
+
+    peasant_win = engine.terminal_rewards(_finished_state("b", roles))
+    assert peasant_win == {"a": 0.0, "b": 1.0, "c": 1.0}
+
+
+def test_terminal_rewards_pay_nothing_on_a_no_bid_redeal() -> None:
+    engine = DoudizhuEngine()
+    state = DoudizhuState(
+        game_type="doudizhu",
+        round=3,
+        player_ids=["a", "b", "c"],
+        current_player="a",
+        is_terminal=True,
+        winner=None,
+        winner_role="no_bid",
+    )
+
+    assert engine.terminal_rewards(state) == {"a": 0.0, "b": 0.0, "c": 0.0}

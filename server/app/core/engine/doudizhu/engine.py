@@ -14,10 +14,11 @@ from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
 from app.core.engine.doudizhu.cards import (
     FULL_DECK,
     ActionType,
-    card_rank,
     sort_cards,
 )
 from app.core.engine.doudizhu.hand_evaluator import classify, get_legal_plays
+from app.core.engine.doudizhu.tools import DOUDIZHU_TOOLS
+from app.core.engine.observation import Observation
 from app.utils.exceptions import InvalidActionError
 
 RANK_DISPLAY: dict[str, str] = {
@@ -124,14 +125,28 @@ class DoudizhuEngine(GameEngine):
             ),
             decision_schema_version=1,
             rules_ref=_DOUDIZHU_RULES_REF,
+            supports_hidden_state_sampling=True,
+            tools=DOUDIZHU_TOOLS,
         )
 
-    def format_legal_actions_for_prompt(
-        self, state: GameState, actions: list[GameAction]
-    ) -> str:
+    def canonical_cards(self, cards: list[str]) -> list[str]:
+        return sort_cards(cards)
+
+    def action_label(self, state: GameState, action: GameAction) -> str:
         del state
-        if not actions:
-            return "无可选动作"
+        if action.action_type == ActionType.PASS:
+            return "PASS（不出）"
+        if action.action_type == ActionType.BID_PASS:
+            return "BID_PASS（不叫）"
+        if action.action_type == ActionType.BID:
+            return f"BID {action.target}分（叫{action.target}分）"
+        cards_str = " ".join(sort_cards(action.cards)) if action.cards else ""
+        return f"{action.action_type}: [{cards_str}]"
+
+    def order_legal_actions(
+        self, state: GameState, actions: list[GameAction]
+    ) -> list[GameAction]:
+        del state
 
         def sort_key(a: GameAction) -> tuple[int, int]:
             priority = _ACTION_PRIORITY.get(str(a.action_type), 0)
@@ -140,27 +155,26 @@ class DoudizhuEngine(GameEngine):
             card_power = max((ord(c[0]) for c in a.cards), default=0) if a.cards else 0
             return (priority, card_power)
 
-        sorted_actions = sorted(actions, key=sort_key, reverse=True)
+        return sorted(actions, key=sort_key, reverse=True)
+
+    def format_legal_actions_for_prompt(
+        self, state: GameState, actions: list[GameAction]
+    ) -> str:
+        if not actions:
+            return "无可选动作"
+
+        ordered = self.order_legal_actions(state, actions)
         lines: list[str] = []
         seen: set[str] = set()
-        for a in sorted_actions:
-            cards_str = " ".join(sort_cards(a.cards)) if a.cards else ""
-            key = f"{a.action_type}:{cards_str}:{getattr(a, 'target', '')}"
-            if key in seen:
+        for a in ordered:
+            action_id = self.action_id(a)
+            if action_id in seen:
                 continue
-            seen.add(key)
-
-            if a.action_type == ActionType.PASS:
-                lines.append(f"{len(lines) + 1}. PASS（不出）")
-            elif a.action_type == ActionType.BID_PASS:
-                lines.append(f"{len(lines) + 1}. BID_PASS（不叫）")
-            elif a.action_type == ActionType.BID:
-                lines.append(f"{len(lines) + 1}. BID {a.target}分（叫{a.target}分）")
-            else:
-                lines.append(f"{len(lines) + 1}. {a.action_type}: [{cards_str}]")
+            seen.add(action_id)
+            lines.append(f"{len(lines) + 1}. {self.action_label(state, a)}")
 
             if len(lines) >= 80:
-                remaining = len(sorted_actions) - len(seen)
+                remaining = len(ordered) - len(seen)
                 if remaining > 0:
                     lines.append(f"...还有 {remaining} 个可选动作未列出")
                 break
@@ -352,6 +366,153 @@ class DoudizhuEngine(GameEngine):
         s.current_player = landlord_id
         s.phase = "playing"
         return s
+
+    def observe(self, state: GameState, player_id: str) -> Observation:
+        s = self._cast(state)
+
+        last_play: dict[str, Any] | None = None
+        if s.last_play:
+            lp_player, lp_type, lp_power, lp_cards = s.last_play
+            last_play = {
+                "player_id": lp_player,
+                "action_type": str(lp_type),
+                "power": lp_power,
+                "cards": list(lp_cards),
+            }
+
+        public: dict[str, Any] = {
+            "player_ids": list(s.player_ids),
+            "current_player": s.current_player,
+            "hand_counts": {pid: len(s.hands.get(pid, [])) for pid in s.player_ids},
+            "roles": dict(s.roles),
+            "play_history": [dict(entry) for entry in s.play_history],
+            "last_play": last_play,
+            "consecutive_passes": s.consecutive_passes,
+            "turn_order": list(s.turn_order),
+            "current_turn_index": s.current_turn_index,
+            "bid_order": list(s.bid_order),
+            "bid_index": s.bid_index,
+            "current_bids": dict(s.current_bids),
+            "current_highest_bid": s.current_highest_bid,
+            "current_highest_bidder": s.current_highest_bidder,
+        }
+        # The bottom cards stay hidden until a landlord has been decided.
+        if s.phase == "playing":
+            public["landlord_cards"] = list(s.landlord_cards)
+
+        return Observation(
+            game_type=s.game_type,
+            phase=s.phase,
+            round=s.round,
+            player_id=player_id,
+            to_act=s.current_player == player_id,
+            private={"hand_cards": list(s.hands.get(player_id, []))},
+            public=public,
+            text=self.format_for_prompt(state, player_id),
+        )
+
+    def sample_hidden_state(
+        self, observation: Observation, rng: random.Random
+    ) -> DoudizhuState:
+        """Deal the unseen cards at random, respecting everything the viewer knows.
+
+        Known: own hand, every played card, hand sizes, and -- once a landlord
+        exists -- the bottom cards, which must sit in the landlord's hand unless
+        they have already been played.
+        """
+        pub = observation.public
+        viewer = observation.player_id
+        player_ids: list[str] = list(pub["player_ids"])
+        hand_counts: dict[str, int] = dict(pub["hand_counts"])
+        own_hand: list[str] = list(observation.private.get("hand_cards", []))
+        landlord_cards: list[str] = list(pub.get("landlord_cards", []))
+
+        played = {
+            card
+            for entry in pub["play_history"]
+            for card in entry.get("cards", [])
+        }
+        accounted = set(own_hand) | played
+        unknown = [card for card in FULL_DECK if card not in accounted]
+
+        others = [pid for pid in player_ids if pid != viewer]
+        forced: dict[str, list[str]] = {pid: [] for pid in others}
+        landlord_id = next(
+            (pid for pid, role in pub["roles"].items() if role == "landlord"), None
+        )
+        if landlord_id in forced:
+            bottom_in_hand = [card for card in landlord_cards if card in set(unknown)]
+            forced[landlord_id] = bottom_in_hand
+            remaining_bottom = set(bottom_in_hand)
+            unknown = [card for card in unknown if card not in remaining_bottom]
+
+        rng.shuffle(unknown)
+        hands: dict[str, list[str]] = {viewer: sort_cards(own_hand)}
+        for pid in others:
+            need = hand_counts[pid] - len(forced[pid])
+            if need < 0 or need > len(unknown):
+                raise InvalidActionError(
+                    "sample_hidden_state",
+                    f"Cannot satisfy hand count for {pid}: need {need}",
+                )
+            hands[pid] = sort_cards(forced[pid] + unknown[:need])
+            unknown = unknown[need:]
+
+        # During bidding the leftovers are the still-hidden bottom cards.
+        bottom = sort_cards(landlord_cards) if landlord_cards else sort_cards(unknown)
+
+        restored_last_play: tuple[str, ActionType, int, list[str]] | None = None
+        last_play = pub.get("last_play")
+        if last_play:
+            restored_last_play = (
+                str(last_play["player_id"]),
+                ActionType(last_play["action_type"]),
+                int(last_play["power"]),
+                list(last_play["cards"]),
+            )
+
+        return DoudizhuState(
+            game_type=observation.game_type,
+            round=observation.round,
+            player_ids=player_ids,
+            current_player=str(pub["current_player"]),
+            is_terminal=False,
+            hands=hands,
+            roles=dict(pub["roles"]),
+            landlord_cards=bottom,
+            last_play=restored_last_play,
+            consecutive_passes=int(pub["consecutive_passes"]),
+            play_history=[dict(entry) for entry in pub["play_history"]],
+            turn_order=list(pub["turn_order"]),
+            current_turn_index=int(pub["current_turn_index"]),
+            phase=observation.phase,
+            bid_order=list(pub["bid_order"]),
+            bid_index=int(pub["bid_index"]),
+            current_bids=dict(pub["current_bids"]),
+            current_highest_bid=int(pub["current_highest_bid"]),
+            current_highest_bidder=str(pub["current_highest_bidder"]),
+        )
+
+    def terminal_rewards(self, state: GameState) -> dict[str, float]:
+        """Team payoff: the winner's whole side scores 1.0, the other side 0.0.
+
+        A no-bid re-deal pays nothing to anyone. Bid multipliers and 春天 are
+        deliberately out of scope -- EV comparisons only need a consistent ordering.
+        """
+        s = self._cast(state)
+        if not s.is_terminal:
+            raise InvalidActionError("terminal_rewards", "Game has not finished")
+
+        winner = s.winner
+        if winner is None:
+            return {pid: 0.0 for pid in s.player_ids}
+
+        winning_role = s.roles.get(winner)
+        if winning_role is None:
+            return {pid: 1.0 if pid == winner else 0.0 for pid in s.player_ids}
+        return {
+            pid: 1.0 if s.roles.get(pid) == winning_role else 0.0 for pid in s.player_ids
+        }
 
     def is_terminal(self, state: GameState) -> bool:
         return state.is_terminal
