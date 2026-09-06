@@ -2,6 +2,7 @@
 
 from app.core.policy.base import (
     ActionChosen,
+    ActionSelector,
     Budget,
     EngineAdvisor,
     LlmUsage,
@@ -12,11 +13,18 @@ from app.core.policy.base import (
     ToolCall,
     ToolResult,
 )
-from app.core.policy.baselines import FirstActionPolicy, HeuristicPolicy, RandomPolicy
+from app.core.policy.baselines import (
+    BaselinePolicy,
+    FirstActionPolicy,
+    HeuristicPolicy,
+    RandomPolicy,
+)
 from app.core.policy.registry import PolicyRegistry
 
 __all__ = [
     "ActionChosen",
+    "ActionSelector",
+    "BaselinePolicy",
     "Budget",
     "EngineAdvisor",
     "FirstActionPolicy",

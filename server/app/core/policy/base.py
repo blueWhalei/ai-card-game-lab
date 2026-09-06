@@ -114,6 +114,23 @@ class PolicyContext:
     session_id: str | None = None
 
 
+class ActionSelector(Protocol):
+    """Synchronous action choice.
+
+    ``Policy`` is async because an LLM call is I/O. Rollouts are pure CPU work and
+    must not be dragged into the event loop, so the evaluator consumes selectors
+    instead. Baseline policies implement both: the logic lives in ``choose`` and
+    ``decide`` wraps it, so there is only ever one implementation.
+    """
+
+    def choose(
+        self,
+        observation: Observation,
+        legal_actions: list[LegalAction],
+        ctx: PolicyContext,
+    ) -> ActionId: ...
+
+
 class Policy(ABC):
     """Chooses one legal action and reports progress as events."""
 

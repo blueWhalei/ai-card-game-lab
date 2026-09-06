@@ -219,7 +219,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 |----|----|------|
 | 0 | 引擎四项新能力（§9.1）+ `Observation` / action id 规范化 —— **已完成 2026-09-06**，设计见 `docs/designs/step0-engine-foundation.md` | 一切抽象的地基；不先做这步，Policy 会绑死在斗地主上 |
 | 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **1a 已完成 2026-09-06**（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b（`LLMPolicy`，`AIService` 退化为事件消费者）与 1c（structured output）待做。设计见 `docs/designs/step1-policy-layer.md` | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
-| 2 | rollout 评估器 → 决策级 EV loss | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
+| 2 | rollout 评估器 → 决策级 EV loss —— **core 部分已完成 2026-09-06**（`core/eval/`，含 determinization 与 common random numbers）；接线到决策点 / SFT 过滤 / highlights 待做（需 `decision_schema_version` 升级）。设计见 `docs/designs/step2-rollout-evaluator.md` | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
