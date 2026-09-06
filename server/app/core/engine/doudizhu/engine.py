@@ -9,7 +9,14 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
 
-from app.core.engine.base import EngineCapability, GameAction, GameEngine, GameState
+from app.core.engine.base import (
+    ActionId,
+    EngineCapability,
+    GameAction,
+    GameEngine,
+    GameState,
+    LegalAction,
+)
 from app.core.engine.doudizhu.benchmark_seeds import BENCHMARK_DEAL_SEEDS
 from app.core.engine.doudizhu.cards import (
     FULL_DECK,
@@ -85,6 +92,17 @@ _ACTION_PRIORITY: dict[str, int] = {
 }
 
 _DOUDIZHU_RULES_REF = "docs/欢乐斗地主经典玩法规则.md"
+
+# Heuristic thresholds over HandAnalyzerTool's 0-100 strength score.
+_BID_STRENGTH_THREE = 45.0
+_BID_STRENGTH_TWO = 30.0
+_BID_STRENGTH_ONE = 18.0
+
+# Card types the heuristic saves for emergencies.
+_NUCLEAR_TYPES = frozenset({ActionType.BOMB, ActionType.ROCKET})
+
+# "About to finish" for the purpose of spending a bomb.
+_ENDGAME_CARD_COUNT = 2
 
 
 class DoudizhuEngine(GameEngine):
@@ -492,6 +510,105 @@ class DoudizhuEngine(GameEngine):
             current_highest_bid=int(pub["current_highest_bid"]),
             current_highest_bidder=str(pub["current_highest_bidder"]),
         )
+
+    def suggest_action(
+        self, observation: Observation, legal_actions: list[LegalAction]
+    ) -> ActionId | None:
+        """A deliberately simple, explainable heuristic.
+
+        Bid on hand strength; otherwise play the cheapest hand that does the job
+        and keep bombs for when an opponent is about to run out. Strength, not
+        subtlety -- this is a reference point for win rates and a rollout
+        opponent, not a solver.
+        """
+        if not legal_actions:
+            return None
+        if observation.phase == "bidding":
+            return self._suggest_bid(observation, legal_actions)
+        return self._suggest_play(observation, legal_actions)
+
+    def _suggest_bid(
+        self, observation: Observation, legal_actions: list[LegalAction]
+    ) -> ActionId | None:
+        analysis = self.run_tool("analyze_hand", observation)
+        strength = float(analysis.get("strength_score", 0.0))
+
+        wanted = 0
+        if strength >= _BID_STRENGTH_THREE:
+            wanted = 3
+        elif strength >= _BID_STRENGTH_TWO:
+            wanted = 2
+        elif strength >= _BID_STRENGTH_ONE:
+            wanted = 1
+
+        bids = {
+            int(la.action.target or 0): la
+            for la in legal_actions
+            if la.action.action_type == ActionType.BID and la.action.target
+        }
+        for score in range(wanted, 0, -1):
+            if score in bids:
+                return bids[score].id
+
+        return next(
+            (
+                la.id
+                for la in legal_actions
+                if la.action.action_type == ActionType.BID_PASS
+            ),
+            None,
+        )
+
+    def _suggest_play(
+        self, observation: Observation, legal_actions: list[LegalAction]
+    ) -> ActionId | None:
+        pub = observation.public
+        pass_action = next(
+            (la for la in legal_actions if la.action.action_type == ActionType.PASS),
+            None,
+        )
+        plays = [la for la in legal_actions if la.action.action_type != ActionType.PASS]
+        if not plays:
+            return pass_action.id if pass_action else legal_actions[0].id
+
+        cheap = [
+            la for la in plays if la.action.action_type not in _NUCLEAR_TYPES
+        ]
+        leading = pub.get("last_play") is None or int(pub.get("consecutive_passes", 0)) >= 2
+
+        if leading:
+            pool = cheap or plays
+            return self._cheapest(pool)
+
+        if cheap:
+            return self._cheapest(cheap)
+
+        # Only bombs can answer: worth it just to stop someone from finishing.
+        if pass_action is not None and not self._opponent_is_about_to_finish(observation):
+            return pass_action.id
+        return self._cheapest(plays)
+
+    def _opponent_is_about_to_finish(self, observation: Observation) -> bool:
+        pub = observation.public
+        my_role = pub.get("roles", {}).get(observation.player_id)
+        hand_counts: dict[str, int] = pub.get("hand_counts", {})
+        for pid, count in hand_counts.items():
+            if pid == observation.player_id or count > _ENDGAME_CARD_COUNT:
+                continue
+            if pub.get("roles", {}).get(pid) != my_role:
+                return True
+        return False
+
+    @staticmethod
+    def _cheapest(actions: list[LegalAction]) -> ActionId:
+        """Lowest-power play, breaking ties by shedding more cards."""
+
+        def cost(la: LegalAction) -> tuple[int, int]:
+            classified = classify(la.action.cards)
+            power = classified[1] if classified else 0
+            return (power, -len(la.action.cards))
+
+        return min(actions, key=cost).id
 
     def terminal_rewards(self, state: GameState) -> dict[str, float]:
         """Team payoff: the winner's whole side scores 1.0, the other side 0.0.

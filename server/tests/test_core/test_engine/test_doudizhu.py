@@ -9,6 +9,7 @@ from app.core.ai.prompt import PromptBuilder
 from app.core.engine.base import GameAction
 from app.core.engine.doudizhu.cards import FULL_DECK, ActionType
 from app.core.engine.doudizhu.engine import DoudizhuEngine, DoudizhuState
+from app.core.engine.doudizhu.hand_evaluator import classify
 from app.utils.exceptions import InvalidActionError
 
 
@@ -261,6 +262,84 @@ def test_sample_hidden_state_hides_the_bottom_cards_during_bidding() -> None:
     assert len(sampled.landlord_cards) == 3
     all_cards = [c for hand in sampled.hands.values() for c in hand] + sampled.landlord_cards
     assert sorted(all_cards) == sorted(FULL_DECK)
+
+
+def _playing_state(
+    hands: dict[str, list[str]],
+    *,
+    last_play: tuple[str, ActionType, int, list[str]] | None = None,
+) -> DoudizhuState:
+    return DoudizhuState(
+        game_type="doudizhu",
+        round=5,
+        player_ids=["a", "b", "c"],
+        current_player="a",
+        is_terminal=False,
+        hands=hands,
+        roles={"a": "landlord", "b": "peasant", "c": "peasant"},
+        landlord_cards=[],
+        last_play=last_play,
+        consecutive_passes=0,
+        play_history=[],
+        turn_order=["a", "b", "c"],
+        current_turn_index=0,
+        phase="playing",
+    )
+
+
+def _suggested(engine: DoudizhuEngine, state: DoudizhuState) -> GameAction:
+    legal = engine.legal_actions(state, "a")
+    suggestion = engine.suggest_action(engine.observe(state, "a"), legal)
+    assert suggestion is not None
+    return engine.resolve_action(state, "a", suggestion)
+
+
+def test_heuristic_leads_with_the_cheapest_play() -> None:
+    engine = DoudizhuEngine()
+    state = _playing_state(
+        {
+            "a": ["S3", "H4", "S5", "S6", "H6", "D6", "C6"],
+            "b": ["S7", "H7"],
+            "c": ["S8", "H8"],
+        }
+    )
+
+    action = _suggested(engine, state)
+
+    assert action.action_type == ActionType.SINGLE
+    assert action.cards == ["S3"]
+
+
+def test_heuristic_keeps_its_bomb_when_nobody_is_close_to_finishing() -> None:
+    engine = DoudizhuEngine()
+    single_seven = classify(["S7"])
+    assert single_seven is not None
+    state = _playing_state(
+        {
+            "a": ["S6", "H6", "D6", "C6"],
+            "b": ["S9", "H9", "D9", "ST", "HT"],
+            "c": ["SJ", "HJ", "DJ", "SQ", "HQ"],
+        },
+        last_play=("b", single_seven[0], single_seven[1], ["S7"]),
+    )
+
+    action = _suggested(engine, state)
+
+    assert action.action_type == ActionType.PASS
+
+
+def test_heuristic_spends_the_bomb_to_stop_an_opponent() -> None:
+    engine = DoudizhuEngine()
+    single_seven = classify(["S7"])
+    assert single_seven is not None
+    state = _playing_state(
+        {"a": ["S6", "H6", "D6", "C6"], "b": ["S9"], "c": ["SJ", "HJ"]},
+        last_play=("b", single_seven[0], single_seven[1], ["S7"]),
+    )
+
+    action = _suggested(engine, state)
+
+    assert action.action_type == ActionType.BOMB
 
 
 def _finished_state(winner: str, roles: dict[str, str]) -> DoudizhuState:

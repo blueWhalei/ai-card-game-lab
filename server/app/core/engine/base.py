@@ -309,6 +309,20 @@ class GameEngine(ABC):
             f"Engine '{self.game_type}' does not support hidden state sampling",
         )
 
+    def suggest_action(
+        self, observation: Observation, legal_actions: list[LegalAction]
+    ) -> ActionId | None:
+        """House heuristic: a reasonable move without consulting a model.
+
+        Backs the ``heuristic`` baseline policy and the rollout opponent, which is
+        why the game knowledge lives here rather than in a policy. Return ``None``
+        when the engine has no heuristic; the caller then falls back to random.
+
+        The returned id must be one of ``legal_actions``.
+        """
+        del observation, legal_actions
+        return None
+
     def run_tool(
         self, name: str, observation: Observation, arguments: dict[str, Any] | None = None
     ) -> dict[str, Any]:
