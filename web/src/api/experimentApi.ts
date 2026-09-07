@@ -160,6 +160,18 @@ export interface ExperimentCredibility {
   low_power: boolean
 }
 
+/** Coverage of the declared deal-seed set. Null unless collect_mode is benchmark. */
+export interface ExperimentBenchmark {
+  seed_total: number
+  seed_started: number
+  seed_finished: number
+  seed_failed: number
+  seed_running: number
+  seed_remaining: number
+  extra_games: number
+  complete: boolean
+}
+
 export interface ExperimentSummary {
   status: ExperimentStatus
   target_games: number
@@ -213,6 +225,7 @@ export interface Experiment {
   validation?: ExperimentValidation
   next_step?: ExperimentNextStep
   delta?: ExperimentDelta | null
+  benchmark?: ExperimentBenchmark | null
 }
 
 export interface CreateExperimentRequest {
@@ -372,6 +385,11 @@ export const experimentApi = {
     apiClient.post<never, ApiResponse<CollectExperimentResult>>(
       `/api/v1/experiments/${id}/collect`,
       data,
+    ),
+
+  cancelCollect: (id: string) =>
+    apiClient.post<never, ApiResponse<{ cancelled_game_ids: string[]; count: number }>>(
+      `/api/v1/experiments/${id}/cancel-collect`,
     ),
 
   compare: (ids: string[]) =>

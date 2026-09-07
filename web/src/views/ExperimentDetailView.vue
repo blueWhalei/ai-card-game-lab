@@ -13,20 +13,23 @@ import {
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { systemApi, type PreflightResult } from '@/api/systemApi'
-import { dataApi } from '@/api/dataApi'
 import { trainingApi } from '@/api/trainingApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { preflightCheckMessage } from '@/utils/systemLabels'
 import { downloadJson } from '@/utils/jsonFile'
+import { shouldShowBenchmarkReport } from '@/utils/experimentBenchmark'
 import {
   initialControlPlayerIds,
-  remainingCollectCount,
   sanitizeNamePart,
   uniqueFilledIds,
 } from '@/utils/experimentWorkbench'
 import type { ExperimentStageAction } from '@/utils/experimentStage'
 import { pipelinePath } from '@/utils/pipeline'
+import { useExperimentCollect } from '@/composables/useExperimentCollect'
+import { useRegisterAndTrain } from '@/composables/useRegisterAndTrain'
+import HeaderToggles from '@/components/common/HeaderToggles.vue'
+import ExperimentBenchmarkReport from '@/components/experiment/ExperimentBenchmarkReport.vue'
 import ExperimentControlDialog from '@/components/experiment/ExperimentControlDialog.vue'
 import ExperimentMetaPanel from '@/components/experiment/ExperimentMetaPanel.vue'
 import ExperimentStage from '@/components/experiment/ExperimentStage.vue'
@@ -50,10 +53,8 @@ const PIPELINE_TABS = new Set(['decisions', 'traces', 'training'])
 const route = useRoute()
 const router = useRouter()
 const loading = ref(true)
-const collecting = ref(false)
-const collectOpen = ref(false)
-const collectCount = ref(1)
 const registeringTrain = ref(false)
+const cancellingCollect = ref(false)
 const trainStartedLocal = ref(false)
 const controlCreatedLocal = ref(false)
 const trainingDepsAvailable = ref(false)
@@ -87,6 +88,8 @@ const experiment = ref<Experiment | null>(null)
 const configs = ref<ExperimentConfig[]>([])
 const preflight = ref<PreflightResult | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
+
+const { registerAndMaybeTrain, stampNow } = useRegisterAndTrain()
 
 const experimentId = computed(() => String(route.params.id ?? ''))
 
@@ -176,6 +179,32 @@ const noticeText = computed(() => {
   return warn ? preflightCheckMessage(warn) : ''
 })
 
+async function refreshQuiet(): Promise<void> {
+  if (!experimentId.value) return
+  try {
+    const res = await experimentApi.get(experimentId.value)
+    experiment.value = res.data
+  } catch {
+    /* ignore poll errors */
+  }
+}
+
+const {
+  collecting,
+  collectOpen,
+  collectCount,
+  remaining,
+  openCollect,
+  openCollectDialog,
+  submitCollect,
+} = useExperimentCollect({
+  experiment,
+  collectBlocked,
+  noticeText,
+  t,
+  onCollected: refreshQuiet,
+})
+
 const hasChallenger = computed(() => configs.value.some((c) => c.id.startsWith('lora_')))
 
 const stageBusy = computed(() => collecting.value || registeringTrain.value)
@@ -198,12 +227,6 @@ const collectCta = computed(() => {
   if (status === 'ready_more' || status === 'ready_review') return t('experiment.runMore')
   return t('experiment.runMore')
 })
-
-function stampSuffix(): string {
-  const d = new Date()
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
-}
 
 const configSelectOptions = computed(() =>
   configs.value.map((c) => ({
@@ -241,11 +264,9 @@ const finishedGames = computed(() =>
   ),
 )
 
-const remaining = computed(() => {
-  const s = summary.value
-  if (!s) return 1
-  return remainingCollectCount(s.target_games, s.finished_games)
-})
+const showBenchmarkReport = computed(
+  () => experiment.value != null && shouldShowBenchmarkReport(experiment.value),
+)
 
 const runningGames = computed(() =>
   activeGames.value.filter((g) => g.status === 'running'),
@@ -255,26 +276,38 @@ const pausedGames = computed(() =>
   activeGames.value.filter((g) => g.status === 'paused'),
 )
 
-const openMenuItems = computed((): DropdownMenuItemDef[] => [
-  { id: 'archive', label: t('experiment.metaPanelTitle') },
-  {
-    id: 'collect',
-    label: collectCta.value,
-    disabled: remaining.value <= 0 || collectBlocked.value,
-  },
-  {
-    id: 'train',
-    label: t('experiment.saveAndTrain'),
-    disabled: !canRegisterTrain.value || registeringTrain.value,
-  },
-  { id: 'decisions', label: t('nav.decisions') },
-  { id: 'data', label: t('nav.data') },
-  { id: 'training', label: t('nav.training') },
-  { id: 'traces', label: t('nav.traces') },
-  { id: 'control', label: t('experiment.newRound') },
-  { id: 'manifest', label: t('experiment.downloadManifest') },
-  { id: 'clone', label: t('experiment.cloneExperiment') },
-])
+const openMenuItems = computed((): DropdownMenuItemDef[] => {
+  const items: DropdownMenuItemDef[] = [
+    { id: 'archive', label: t('experiment.metaPanelTitle') },
+    {
+      id: 'collect',
+      label: collectCta.value,
+      disabled: remaining.value <= 0 || collectBlocked.value,
+    },
+  ]
+  if (summary.value?.status === 'collecting') {
+    items.push({
+      id: 'cancel-collect',
+      label: t('experiment.cancelCollect'),
+      disabled: cancellingCollect.value || activeGames.value.length === 0,
+    })
+  }
+  items.push(
+    {
+      id: 'train',
+      label: t('experiment.saveAndTrain'),
+      disabled: !canRegisterTrain.value || registeringTrain.value,
+    },
+    { id: 'decisions', label: t('nav.decisions') },
+    { id: 'data', label: t('nav.data') },
+    { id: 'training', label: t('nav.training') },
+    { id: 'traces', label: t('nav.traces') },
+    { id: 'control', label: t('experiment.newRound') },
+    { id: 'manifest', label: t('experiment.downloadManifest') },
+    { id: 'clone', label: t('experiment.cloneExperiment') },
+  )
+  return items
+})
 
 function onOpenMenuSelect(id: string): void {
   switch (id) {
@@ -282,7 +315,10 @@ function onOpenMenuSelect(id: string): void {
       archiveOpen.value = true
       break
     case 'collect':
-      openCollect()
+      openCollectDialog()
+      break
+    case 'cancel-collect':
+      void cancelCollect()
       break
     case 'train':
       openRegisterDialog()
@@ -421,6 +457,7 @@ function handlePostLoadQuery(): void {
   const q = route.query
   if (q.collect === '1') {
     openCollect()
+    void submitCollect()
     void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
     return
   }
@@ -432,39 +469,21 @@ function handlePostLoadQuery(): void {
   }
 }
 
-async function refreshQuiet(): Promise<void> {
-  if (!experimentId.value) return
-  try {
-    const res = await experimentApi.get(experimentId.value)
-    experiment.value = res.data
-  } catch {
-    /* ignore poll errors */
-  }
-}
-
-function openCollect(): void {
-  if (collectBlocked.value) {
-    toast.warning(noticeText.value || t('experiment.apiKeyWarning'))
-    return
-  }
-  collectCount.value = Math.min(remaining.value, 5)
-  collectOpen.value = true
-}
-
-async function submitCollect(): Promise<void> {
+async function cancelCollect(): Promise<void> {
   if (!experiment.value) return
-  const n = collectCount.value ?? 1
-  if (n < 1 || n > 50) return
-  collecting.value = true
+  cancellingCollect.value = true
   try {
-    const res = await experimentApi.collect(experiment.value.id, { count: n })
-    collectOpen.value = false
-    toast.success(t('experiment.startedN', { n: res.data.count }))
+    const res = await experimentApi.cancelCollect(experiment.value.id)
+    if (res.data.count <= 0) {
+      toast.info(t('experiment.cancelCollectNone'))
+    } else {
+      toast.success(t('experiment.cancelCollectDone', { n: res.data.count }))
+    }
     await refreshQuiet()
   } catch (e: unknown) {
-    showApiError(e, t('experiment.collectFailed'))
+    showApiError(e, t('experiment.cancelCollectFailed'))
   } finally {
-    collecting.value = false
+    cancellingCollect.value = false
   }
 }
 
@@ -538,7 +557,7 @@ function goModelRepo(): void {
 function onStageAction(action: ExperimentStageAction): void {
   switch (action) {
     case 'collect':
-      openCollect()
+      void submitCollect()
       break
     case 'watch':
       openLatest()
@@ -563,6 +582,9 @@ function onStageAction(action: ExperimentStageAction): void {
       break
     case 'settings':
       void router.push('/settings')
+      break
+    case 'cancel-collect':
+      void cancelCollect()
       break
   }
 }
@@ -623,46 +645,30 @@ async function submitRegister(): Promise<void> {
 
 async function registerAndTrain(evalRatio = 0): Promise<void> {
   if (!experiment.value || !canRegisterTrain.value) return
-  registeringTrain.value = true
-  try {
-    const stamp = stampSuffix()
-    const base = sanitizeNamePart(experiment.value.name)
-    const dsName = `${base}-chatml-${stamp}`
-    const dsRes = await dataApi.createDatasetFromDecisions({
-      name: dsName,
+  const stamp = stampNow()
+  const base = sanitizeNamePart(experiment.value.name)
+  await registerAndMaybeTrain(
+    {
+      name: `${base}-chatml-${stamp}`,
       game_type: experiment.value.game_type,
       experiment_id: experiment.value.id,
       train_usable_only: true,
       include_thinking: false,
       eval_ratio: evalRatio,
-    })
-    const dataset = dsRes.data
-
-    if (!trainingDepsAvailable.value) {
-      toast.warning(
-        t('experiment.savedNoDeps', { name: dataset.name, count: dataset.sample_count }),
-      )
-      return
-    }
-
-    try {
-      const taskRes = await trainingApi.createTask({
-        name: `${base}-sft-${stamp}`,
-        dataset_id: dataset.id,
-        training_type: 'sft',
-        experiment_id: experiment.value.id,
-      })
-      trainStartedLocal.value = true
-      toast.success(t('experiment.trainStartedNamed', { name: taskRes.data.name }))
-    } catch (e: unknown) {
-      toast.success(t('experiment.savedNamed', { name: dataset.name, count: dataset.sample_count }))
-      showApiError(e, t('experiment.trainStartFailed'))
-    }
-  } catch (e: unknown) {
-    showApiError(e, t('experiment.saveDatasetFailed'))
-  } finally {
-    registeringTrain.value = false
-  }
+    },
+    {
+      startTraining: true,
+      trainingDepsAvailable: trainingDepsAvailable.value,
+      experimentId: experiment.value.id,
+      nameBase: base,
+      stamp,
+      t,
+      busy: registeringTrain,
+      onTrainStarted: () => {
+        trainStartedLocal.value = true
+      },
+    },
+  )
 }
 
 function openControlDialog(opts?: { requireChallenger?: boolean }): boolean {
@@ -819,11 +825,14 @@ onUnmounted(() => {
             {{ t('experiment.modeBenchmark') }}
           </UiBadge>
         </div>
-        <UiDropdownMenu :items="openMenuItems" @select="onOpenMenuSelect">
-          <UiButton variant="ghost" size="icon" :aria-label="t('common.more')">
-            <Icon icon="lucide:ellipsis" class="h-4 w-4" />
-          </UiButton>
-        </UiDropdownMenu>
+        <div class="flex items-center gap-ink-1">
+          <HeaderToggles class="hidden md:flex" />
+          <UiDropdownMenu :items="openMenuItems" @select="onOpenMenuSelect">
+            <UiButton variant="ghost" size="icon" :aria-label="t('common.more')">
+              <Icon icon="lucide:ellipsis" class="h-4 w-4" />
+            </UiButton>
+          </UiDropdownMenu>
+        </div>
       </header>
 
       <p v-if="experiment.hypothesis?.trim()" class="max-w-2xl text-body text-ink-text-secondary">
@@ -835,9 +844,18 @@ onUnmounted(() => {
         :blocked-message="blockedMessage"
         :has-challenger="hasChallenger"
         :busy="stageBusy"
+        v-model:collect-count="collectCount"
+        :remaining-collect="remaining"
+        :cancelling-collect="cancellingCollect"
         @action="onStageAction"
         @compare="goCompareWithSuggested"
         @open-experiment="openExperiment"
+      />
+
+      <ExperimentBenchmarkReport
+        v-if="showBenchmarkReport"
+        :experiment="experiment"
+        :config-label="configLabel"
       />
 
       <button
@@ -892,7 +910,7 @@ onUnmounted(() => {
         <label class="mb-1.5 block text-body font-medium text-ink-text">
           {{ t('experiment.batchCount') }}
         </label>
-        <UiInputNumber v-model="collectCount" :min="1" :max="50" />
+        <UiInputNumber v-model="collectCount" :min="1" :max="Math.min(50, Math.max(remaining, 1))" />
       </div>
       <template #footer>
         <UiButton variant="secondary" @click="collectOpen = false">{{ t('common.cancel') }}</UiButton>
