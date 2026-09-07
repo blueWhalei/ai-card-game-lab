@@ -61,12 +61,39 @@ async def test_create_and_get_experiment(client: AsyncClient) -> None:
     assert detail["id"] == created["id"]
     assert detail["games"] == []
     assert detail["summary"]["status"] == "pending_collect"
+    assert detail["benchmark"] is None
 
     listed = await client.get("/api/v1/experiments")
     assert listed.status_code == 200
     items = listed.json()["data"]
     assert len(items) == 1
     assert items[0]["id"] == created["id"]
+    assert items[0]["next_step"]["id"] == "collect"
+    assert items[0]["next_step"]["action"] == "collect"
+    assert items[0]["delta"] is None
+
+
+async def test_list_experiments_includes_slim_delta_for_control(
+    client: AsyncClient,
+) -> None:
+    source = await _create_experiment(client, name="list-source")
+    control = await _create_experiment(
+        client,
+        name="list-control",
+        source_experiment_id=source["id"],
+        pair_deals=True,
+    )
+    listed = await client.get("/api/v1/experiments")
+    assert listed.status_code == 200
+    by_id = {item["id"]: item for item in listed.json()["data"]}
+    assert control["id"] in by_id
+    delta = by_id[control["id"]]["delta"]
+    assert delta is not None
+    assert delta["peer_id"] == source["id"]
+    assert delta["relation"] == "vs_source"
+    assert "verdict_key" in delta
+    assert "scenario_diffs" not in delta
+    assert "next_step" in by_id[control["id"]]
 
 
 async def test_create_rejects_wrong_player_count(client: AsyncClient) -> None:
@@ -198,9 +225,9 @@ async def test_decision_filter_by_experiment(client: AsyncClient) -> None:
     game_id = collect.json()["data"]["game_ids"][0]
 
     # Insert a decision point tied to the experiment game via raw API path / DB
+    from app.database import open_db_connection
     from app.dependencies import get_settings
     from app.repositories.decision_repo import DecisionRepository
-    from app.database import open_db_connection
 
     settings = get_settings()
     conn = await open_db_connection(settings.sqlite_path)
@@ -462,7 +489,7 @@ async def test_clone_experiment(client: AsyncClient) -> None:
 async def test_create_benchmark_experiment(client: AsyncClient) -> None:
     created = await _create_experiment(
         client,
-        name="基准测验",
+        name="基准测试",
         collect_mode="benchmark",
         target_games=5,
     )

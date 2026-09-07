@@ -10,12 +10,12 @@ import aiosqlite
 import pytest
 
 from app.database import init_db
-from app.services.experiment_service import (
-    ExperimentService,
-    _resolve_delta_peer,
-    _verdict_key,
+from app.services.experiment_eval import (
     build_experiment_delta,
+    resolve_delta_peer,
+    verdict_key,
 )
+from app.services.experiment_service import ExperimentService
 
 
 @pytest.fixture
@@ -31,15 +31,15 @@ class _FakeGameService:
 
 
 def test_resolve_delta_peer_prefers_source_then_ready_control() -> None:
-    assert _resolve_delta_peer({"protocol": {}}, {"control_experiment_ids": []}) == (
+    assert resolve_delta_peer({"protocol": {}}, {"control_experiment_ids": []}) == (
         None,
         None,
     )
-    assert _resolve_delta_peer(
+    assert resolve_delta_peer(
         {"protocol": {"source_experiment_id": "exp-base"}},
         {"control_progress": [{"id": "exp-other", "ready": True}]},
     ) == ("exp-base", "vs_source")
-    assert _resolve_delta_peer(
+    assert resolve_delta_peer(
         {"protocol": {}},
         {
             "control_progress": [
@@ -98,15 +98,40 @@ def test_build_experiment_delta_can_conclude_when_powered() -> None:
 
 def test_verdict_key_reports_direction_independently_of_confidence() -> None:
     # A weak claim still names a direction; `can_conclude` governs how it reads.
-    assert _verdict_key(overall_diff=0.07, inconclusive_reason="low_power") == "stronger"
-    assert _verdict_key(overall_diff=-0.07, inconclusive_reason=None) == "weaker"
-    assert _verdict_key(overall_diff=0.01, inconclusive_reason=None) == "even"
+    assert verdict_key(overall_diff=0.07, inconclusive_reason="low_power") == "stronger"
+    assert verdict_key(overall_diff=-0.07, inconclusive_reason=None) == "weaker"
+    assert verdict_key(overall_diff=0.01, inconclusive_reason=None) == "even"
 
 
 def test_verdict_key_falls_back_when_there_is_nothing_to_compare() -> None:
-    assert _verdict_key(overall_diff=None, inconclusive_reason="no_games") == "no_data"
-    assert _verdict_key(overall_diff=0.2, inconclusive_reason="peer_not_ready") == "peer_pending"
-    assert _verdict_key(overall_diff=None, inconclusive_reason=None) == "no_data"
+    assert verdict_key(overall_diff=None, inconclusive_reason="no_games") == "no_data"
+    assert verdict_key(overall_diff=0.2, inconclusive_reason="peer_not_ready") == "peer_pending"
+    assert verdict_key(overall_diff=None, inconclusive_reason=None) == "no_data"
+
+
+@pytest.mark.parametrize(
+    ("overall_diff", "inconclusive_reason", "expected"),
+    [
+        (0.05, None, "stronger"),
+        (-0.05, None, "weaker"),
+        (0.019, None, "even"),
+        (-0.019, None, "even"),
+        (0.0, None, "even"),
+        (None, "no_games", "no_data"),
+        (0.1, "peer_not_ready", "peer_pending"),
+        (None, None, "no_data"),
+        (0.1, "low_power", "stronger"),
+    ],
+)
+def test_verdict_key_table(
+    overall_diff: float | None,
+    inconclusive_reason: str | None,
+    expected: str,
+) -> None:
+    assert (
+        verdict_key(overall_diff=overall_diff, inconclusive_reason=inconclusive_reason)
+        == expected
+    )
 
 
 def test_build_experiment_delta_carries_verdict_key() -> None:
