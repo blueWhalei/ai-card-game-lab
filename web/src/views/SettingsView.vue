@@ -67,146 +67,148 @@ onMounted(fetchAll)
 </script>
 
 <template>
-  <div class="page-container relative min-h-[240px] space-y-6">
+  <div class="page-container relative min-h-[240px] space-y-ink-8">
     <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
 
     <div
       v-if="loadError && !loading"
-      class="flex flex-wrap items-center justify-between gap-3 rounded-ink-md border border-ink-danger/30 bg-ink-surface px-4 py-3"
+      class="flex flex-wrap items-center justify-between gap-ink-3 rounded-ink-md border border-ink-danger/30 bg-ink-surface px-ink-4 py-ink-3"
     >
-      <p class="text-sm text-ink-text">{{ t('settings.loadError') }}</p>
+      <p class="text-body text-ink-text">{{ t('settings.loadError') }}</p>
       <UiButton size="sm" variant="secondary" @click="fetchAll">{{ t('common.retry') }}</UiButton>
     </div>
 
-    <section v-if="config" class="ink-card">
-      <h3 class="mb-1 text-sm font-semibold text-ink-text">{{ t('settings.runtime') }}</h3>
-      <p class="mb-4 text-xs text-ink-text-muted">
+    <section v-if="config" class="ink-section">
+      <h2 class="ink-section-title">{{ t('settings.runtime') }}</h2>
+      <p class="mt-ink-2 max-w-2xl text-body text-ink-text-secondary">
         {{ t('settings.runtimeHint', { env: '.env' }) }}
         <RouterLink to="/experiment-configs" class="text-ink-primary hover:underline">{{
           t('nav.playerConfigs')
         }}</RouterLink>
         {{ t('settings.runtimeHintMid') }}
         <RouterLink to="/prompt" class="text-ink-primary hover:underline">{{ t('nav.prompts') }}</RouterLink>
+        ·
+        <RouterLink to="/guide" class="text-ink-primary hover:underline">{{ t('guide.button') }}</RouterLink>
       </p>
-      <div class="grid grid-cols-2 gap-4 md:grid-cols-4">
+      <div class="mt-ink-4 grid grid-cols-2 gap-ink-4 md:grid-cols-4">
         <div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.app') }}</div>
-          <div class="mt-1 text-sm font-medium text-ink-text">{{ config.app_name }}</div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.app') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">{{ config.app_name }}</div>
         </div>
         <div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.version') }}</div>
-          <div class="mt-1 text-sm font-medium text-ink-text">{{ config.version }}</div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.version') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">{{ config.version }}</div>
         </div>
         <div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.debug') }}</div>
-          <div class="mt-1">
+          <div class="text-caption text-ink-text-muted">{{ t('settings.debug') }}</div>
+          <div class="mt-ink-1">
             <UiBadge :variant="config.debug ? 'warning' : 'muted'">
               {{ config.debug ? t('common.on') : t('common.off') }}
             </UiBadge>
           </div>
         </div>
         <div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.maxGames') }}</div>
-          <div class="mt-1 text-sm font-medium tabular-nums text-ink-text">
+          <div class="text-caption text-ink-text-muted">{{ t('settings.maxGames') }}</div>
+          <div class="mt-ink-1 text-body font-medium tabular-nums text-ink-text">
             {{ config.max_concurrent_games ?? t('common.dash') }}
           </div>
         </div>
       </div>
       <div
         v-if="startup && startup.checks?.some((c) => !c.ok)"
-        class="mt-4 space-y-2 border-t border-ink-border pt-3"
+        class="mt-ink-4 space-y-ink-2 border-t border-ink-border pt-ink-3"
       >
-        <p class="text-xs text-ink-text-muted">{{ t('settings.startup') }}</p>
+        <p class="text-caption text-ink-text-muted">{{ t('settings.startup') }}</p>
         <PreflightBanner :checks="startup.checks" />
       </div>
     </section>
 
-    <section class="ink-card">
-      <h3 class="mb-4 text-sm font-semibold text-ink-text">
+    <section class="ink-section">
+      <h2 class="ink-section-title">
         {{ t('settings.providers') }}
-        <span class="ml-2 font-normal text-ink-text-muted">
+        <span class="ml-ink-2 text-body font-normal text-ink-text-muted">
           {{ t('settings.configuredN', { ready: readyProviders.length, total: providers.length }) }}
         </span>
-      </h3>
-      <ul class="divide-y divide-ink-border">
+      </h2>
+      <ul class="mt-ink-3 divide-y divide-ink-border">
         <li
           v-for="p in readyProviders"
           :key="p.id"
-          class="flex items-center justify-between gap-3 py-2.5"
+          class="flex items-center justify-between gap-ink-3 py-ink-3"
         >
           <div class="min-w-0">
-            <div class="text-sm font-medium text-ink-text">{{ providerName(p.id, p.name) }}</div>
-            <div class="truncate text-xs text-ink-text-muted">
+            <div class="text-body font-medium text-ink-text">{{ providerName(p.id, p.name) }}</div>
+            <div class="truncate text-caption text-ink-text-muted">
               {{ providerDescription(p.id, p.description) }}
             </div>
           </div>
           <UiBadge variant="success">{{ t('settings.configured') }}</UiBadge>
         </li>
       </ul>
-      <div v-if="idleProviders.length" class="mt-2">
+      <div v-if="idleProviders.length" class="mt-ink-2">
         <button
           type="button"
-          class="text-sm text-ink-text-secondary hover:text-ink-text"
+          class="text-body text-ink-text-secondary hover:text-ink-text"
           @click="showIdleProviders = !showIdleProviders"
         >
           {{ showIdleProviders ? t('settings.hideIdle') : t('settings.showIdle', { n: idleProviders.length }) }}
         </button>
-        <ul v-if="showIdleProviders" class="mt-2 divide-y divide-ink-border">
+        <ul v-if="showIdleProviders" class="mt-ink-2 divide-y divide-ink-border">
           <li
             v-for="p in idleProviders"
             :key="p.id"
-            class="flex items-center justify-between gap-3 py-2"
+            class="flex items-center justify-between gap-ink-3 py-ink-2"
           >
-            <span class="text-sm text-ink-text-muted">{{ providerName(p.id, p.name) }}</span>
+            <span class="text-body text-ink-text-muted">{{ providerName(p.id, p.name) }}</span>
             <UiBadge variant="muted">{{ t('settings.unconfigured') }}</UiBadge>
           </li>
         </ul>
       </div>
     </section>
 
-    <section v-if="storage" class="ink-card">
-      <div class="mb-4 flex items-baseline justify-between gap-2">
-        <h3 class="text-sm font-semibold text-ink-text">{{ t('settings.disk') }}</h3>
-        <RouterLink to="/data?tab=storage" class="text-xs text-ink-primary hover:underline">
+    <section v-if="storage" class="ink-section">
+      <div class="flex items-baseline justify-between gap-ink-2">
+        <h2 class="ink-section-title">{{ t('settings.disk') }}</h2>
+        <RouterLink to="/pipeline/data?tab=storage" class="text-caption text-ink-primary hover:underline">
           {{ t('settings.storageLink') }}
         </RouterLink>
       </div>
-      <div class="grid grid-cols-3 gap-4">
+      <div class="mt-ink-3 grid grid-cols-3 gap-ink-4">
         <div>
-          <div class="text-lg font-semibold tabular-nums text-ink-text">
+          <div class="ink-kpi-value">
             {{ formatBytes(storage.db_size_bytes) }}
           </div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.database') }}</div>
+          <div class="ink-kpi-label">{{ t('settings.database') }}</div>
         </div>
         <div>
-          <div class="text-lg font-semibold tabular-nums text-ink-text">
+          <div class="ink-kpi-value">
             {{ formatBytes(storage.data_size_bytes) }}
           </div>
-          <div class="text-xs text-ink-text-muted">{{ t('settings.dataDir') }}</div>
+          <div class="ink-kpi-label">{{ t('settings.dataDir') }}</div>
         </div>
         <div>
-          <div class="text-lg font-semibold tabular-nums text-ink-text">
+          <div class="ink-kpi-value">
             {{ storage.jsonl_file_count }}
           </div>
-          <div class="text-xs text-ink-text-muted">JSONL</div>
+          <div class="ink-kpi-label">JSONL</div>
         </div>
       </div>
     </section>
 
-    <section v-if="config" class="ink-card">
+    <section v-if="config" class="ink-section">
       <button
         type="button"
         class="flex w-full items-center justify-between text-left"
         @click="showPaths = !showPaths"
       >
-        <h3 class="text-sm font-semibold text-ink-text">{{ t('settings.paths') }}</h3>
-        <span class="text-xs text-ink-text-muted">{{ showPaths ? t('common.collapse') : t('common.expand') }}</span>
+        <h2 class="ink-section-title">{{ t('settings.paths') }}</h2>
+        <span class="text-caption text-ink-text-muted">{{ showPaths ? t('common.collapse') : t('common.expand') }}</span>
       </button>
-      <div v-if="showPaths" class="mt-4 space-y-3">
+      <div v-if="showPaths" class="mt-ink-4 space-y-ink-3">
         <div v-for="item in pathItems" :key="item.label">
-          <div class="text-xs text-ink-text-muted">{{ item.label }}</div>
+          <div class="text-caption text-ink-text-muted">{{ item.label }}</div>
           <code
-            class="mt-1 block overflow-x-auto rounded-ink bg-ink-surface-muted px-3 py-2 text-xs text-ink-text-secondary"
+            class="mt-ink-1 block overflow-x-auto rounded-ink bg-ink-surface-muted px-ink-3 py-ink-2 text-caption text-ink-text-secondary"
           >
             {{ item.value }}
           </code>

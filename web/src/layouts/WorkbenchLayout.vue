@@ -23,17 +23,6 @@ const items = computed((): NavItem[] => [
   { path: '/settings', label: t('nav.settings'), icon: 'lucide:settings' },
 ])
 
-const pipelineTitle = computed(() => {
-  const map: Record<string, string> = {
-    data: t('nav.data'),
-    decisions: t('nav.decisions'),
-    training: t('nav.training'),
-    traces: t('nav.traces'),
-  }
-  const section = route.path.match(/^\/pipeline\/([^/]+)/)?.[1]
-  return (section && map[section]) || t('nav.analyze')
-})
-
 const activePath = computed(() => {
   const p = route.path
   if (p === '/' || p === '') return '/'
@@ -56,12 +45,13 @@ const pageTitle = computed(() => {
   if (route.path === '/guide') return t('guide.title')
   if (route.path === '/prompt') return t('nav.prompts')
   if (route.path.startsWith('/experiments/compare')) return t('nav.experimentCompare')
-  if (route.path.startsWith('/pipeline')) return pipelineTitle.value
+  if (route.path.startsWith('/pipeline')) return t('nav.analyze')
   if (isExperimentDetail.value) return ''
   return items.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
 })
 
 const showPageChrome = computed(() => Boolean(pageTitle.value))
+const showDesktopTogglesOnly = computed(() => !showPageChrome.value && !isExperimentDetail.value)
 
 watch(
   () => route.fullPath,
@@ -169,7 +159,7 @@ function go(path: string): void {
           <span
             :class="
               cn(
-                'overflow-hidden text-sm whitespace-nowrap transition-[opacity,width] duration-200',
+                'overflow-hidden text-caption whitespace-nowrap transition-[opacity,width] duration-200',
                 isCollapsed ? 'w-0 opacity-0' : 'opacity-100',
               )
             "
@@ -249,7 +239,7 @@ function go(path: string): void {
         </div>
       </header>
       <header
-        v-else
+        v-else-if="showDesktopTogglesOnly"
         class="hidden justify-end border-b border-ink-border px-6 py-3 md:flex md:px-8 xl:px-10"
       >
         <HeaderToggles />

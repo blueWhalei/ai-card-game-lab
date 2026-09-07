@@ -7,7 +7,7 @@ import AIPerformanceTab from '@/components/data/tabs/AIPerformanceTab.vue'
 import DatasetTab from '@/components/data/tabs/DatasetTab.vue'
 import StorageTab from '@/components/data/tabs/StorageTab.vue'
 import ArchiveTab from '@/components/data/tabs/ArchiveTab.vue'
-import UiTabs from '@/components/ui/Tabs.vue'
+import { cn } from '@/lib/cn'
 
 type TabType = 'overview' | 'ai-performance' | 'datasets' | 'storage' | 'archive'
 
@@ -42,14 +42,13 @@ function applyTabFromRoute(): void {
   activeTab.value = parseTab(route.query.tab)
 }
 
-function setTab(tab: string): void {
-  const next = parseTab(tab)
-  activeTab.value = next
+function setTab(tab: TabType): void {
+  activeTab.value = tab
   const query = { ...route.query }
-  if (next === 'overview') {
+  if (tab === 'overview') {
     delete query.tab
   } else {
-    query.tab = next
+    query.tab = tab
   }
   void router.replace({ query })
 }
@@ -60,12 +59,27 @@ watch(() => route.query.tab, applyTabFromRoute)
 
 <template>
   <div class="page-container">
-    <UiTabs
-      :model-value="activeTab"
-      :tabs="tabs"
-      class="mb-6"
-      @update:model-value="setTab"
-    />
+    <nav
+      class="mb-ink-6 flex flex-wrap gap-ink-4"
+      :aria-label="t('data.tabOverview')"
+    >
+      <button
+        v-for="tab in tabs"
+        :key="tab.value"
+        type="button"
+        :class="
+          cn(
+            'pb-ink-1 text-caption transition-colors',
+            activeTab === tab.value
+              ? 'border-b border-ink-text font-medium text-ink-text'
+              : 'border-b border-transparent text-ink-text-muted hover:text-ink-text-secondary',
+          )
+        "
+        @click="setTab(tab.value)"
+      >
+        {{ tab.label }}
+      </button>
+    </nav>
 
     <div>
       <OverviewTab v-if="activeTab === 'overview'" />

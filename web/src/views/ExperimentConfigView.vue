@@ -12,7 +12,7 @@ import {
   type CreateExperimentConfigRequest,
   type UpdateExperimentConfigRequest,
 } from '@/api/experimentConfigApi'
-import { formatDateTime, formatPercentage } from '@/utils/format'
+import { formatPercentage } from '@/utils/format'
 import { downloadJson, pickJsonFile } from '@/utils/jsonFile'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
@@ -21,26 +21,11 @@ import UiTextarea from '@/components/ui/Textarea.vue'
 import UiSelect from '@/components/ui/Select.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
-import UiTable from '@/components/ui/Table.vue'
-import type { TableColumn } from '@/components/ui/Table.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import { systemApi, type ProviderInfo } from '@/api/systemApi'
 import { providerName } from '@/utils/systemLabels'
 
 const { t } = useI18n()
-
-type ConfigRow = ExperimentConfig & Record<string, unknown>
-
-const configColumns = computed((): TableColumn<ConfigRow>[] => [
-  { key: 'name', label: t('common.name') },
-  { key: 'model', label: t('common.model'), class: 'w-48' },
-  { key: 'sampling', label: t('common.sampling'), class: 'w-40' },
-  { key: 'games', label: t('common.games'), class: 'w-20' },
-  { key: 'win_rate', label: t('common.winRate'), class: 'w-20' },
-  { key: 'recent', label: t('common.recent'), class: 'hidden w-44 md:table-cell' },
-])
-
-const configRows = computed(() => configs.value as ConfigRow[])
 
 const router = useRouter()
 const configs = ref<ExperimentConfig[]>([])
@@ -248,88 +233,60 @@ async function importPack(): Promise<void> {
           </UiButton>
         </template>
       </EmptyState>
-      <UiTable
-        v-else
-        :columns="configColumns"
-        :rows="configRows"
-        row-key="id"
-      >
-        <template #cell-name="{ row }">
-          <div class="min-w-0">
-            <div class="font-medium text-ink-text">{{ row.name }}</div>
-            <div class="truncate font-mono text-xs text-ink-text-muted">
-              {{ String(row.id || t('common.noId')) }}
+      <ul v-else class="grid gap-ink-3 sm:grid-cols-2 xl:grid-cols-3">
+        <li
+          v-for="row in configs"
+          :key="row.id"
+          class="rounded-ink-md border border-ink-border bg-ink-surface px-ink-4 py-ink-3"
+        >
+          <div class="flex items-start justify-between gap-ink-2">
+            <div class="min-w-0">
+              <h3 class="truncate text-body font-semibold text-ink-text">{{ row.name }}</h3>
+              <p class="mt-ink-1 truncate text-caption text-ink-text-secondary">
+                {{ row.model_config.provider }} / {{ row.model_config.model_name }}
+              </p>
+              <p class="mt-ink-1 text-caption text-ink-text-muted">
+                T={{ row.model_config.temperature }} · top_p={{ row.model_config.top_p }} · max={{
+                  row.model_config.max_tokens
+                }}
+              </p>
             </div>
-          </div>
-        </template>
-        <template #cell-model="{ row }">
-          <span
-            class="block max-w-[12rem] truncate text-sm text-ink-text"
-            :title="`${row.model_config.provider} / ${row.model_config.model_name}`"
-          >
-            {{ row.model_config.provider }} / {{ row.model_config.model_name }}
-          </span>
-        </template>
-        <template #cell-sampling="{ row }">
-          <span
-            class="block max-w-[10rem] truncate text-sm text-ink-text-secondary"
-            :title="`T=${row.model_config.temperature} · top_p=${row.model_config.top_p} · max=${row.model_config.max_tokens}`"
-          >
-            T={{ row.model_config.temperature }} · top_p={{ row.model_config.top_p }} · max={{
-              row.model_config.max_tokens
-            }}
-          </span>
-        </template>
-        <template #cell-games="{ row }">
-          <span class="tabular-nums">{{ getConfigStats(String(row.id)).games_played }}</span>
-        </template>
-        <template #cell-win_rate="{ row }">
-          <span
-            class="tabular-nums"
-            :class="
-              getConfigStats(String(row.id)).win_rate >= 0.5 ? 'text-ink-success' : 'text-ink-danger'
-            "
-          >
-            {{ formatPercentage(getConfigStats(String(row.id)).win_rate) }}
-          </span>
-        </template>
-        <template #cell-recent="{ row }">
-          <template v-if="getConfigStats(String(row.id)).last_game_at">
-            <div class="flex max-w-[11rem] items-center gap-1 truncate">
-              <span
-                class="min-w-0 truncate text-sm text-ink-text-secondary"
-                :title="formatDateTime(getConfigStats(String(row.id)).last_game_at)"
-              >
-                {{ formatDateTime(getConfigStats(String(row.id)).last_game_at) }}
-              </span>
+            <div class="flex shrink-0 items-center gap-ink-2 text-caption">
               <button
-                v-if="getConfigStats(String(row.id)).last_game_id"
                 type="button"
-                class="shrink-0 text-sm text-ink-primary hover:underline"
-                @click="router.push(`/game/${getConfigStats(String(row.id)).last_game_id}`)"
+                class="text-ink-text-secondary hover:text-ink-text hover:underline"
+                @click="openEditDialog(row)"
               >
-                {{ t('config.replay') }}
+                {{ t('common.edit') }}
+              </button>
+              <button
+                type="button"
+                class="text-ink-text-secondary hover:text-ink-danger hover:underline"
+                @click="handleDelete(row)"
+              >
+                {{ t('common.delete') }}
               </button>
             </div>
-          </template>
-          <span v-else class="text-ink-text-muted">{{ t('common.dash') }}</span>
-        </template>
-        <template #actions="{ row }">
-          <div class="flex flex-nowrap items-center gap-1">
-            <UiButton size="sm" variant="ghost" @click="openEditDialog(row as ExperimentConfig)">
-              {{ t('common.edit') }}
-            </UiButton>
-            <UiButton
-              size="sm"
-              variant="ghost"
-              class="text-ink-danger"
-              @click="handleDelete(row as ExperimentConfig)"
-            >
-              {{ t('common.delete') }}
-            </UiButton>
           </div>
-        </template>
-      </UiTable>
+          <div class="mt-ink-3 flex flex-wrap items-baseline gap-ink-3 text-caption text-ink-text-muted">
+            <span class="tabular-nums">
+              {{ t('common.games') }} {{ getConfigStats(row.id).games_played }}
+            </span>
+            <span class="tabular-nums text-ink-text-secondary">
+              {{ t('common.winRate') }}
+              {{ formatPercentage(getConfigStats(row.id).win_rate) }}
+            </span>
+            <button
+              v-if="getConfigStats(row.id).last_game_id"
+              type="button"
+              class="text-ink-primary hover:underline"
+              @click="router.push(`/game/${getConfigStats(row.id).last_game_id}`)"
+            >
+              {{ t('config.replay') }}
+            </button>
+          </div>
+        </li>
+      </ul>
     </div>
 
     <UiDialog
@@ -340,19 +297,19 @@ async function importPack(): Promise<void> {
     >
       <div class="space-y-4">
         <div v-if="!isEditing">
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+          <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('config.playerId') }} <span class="text-ink-danger">*</span>
           </label>
           <UiInput v-model="form.id" :placeholder="t('config.idPlaceholder')" class="w-full" />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">
+          <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('common.name') }} <span class="text-ink-danger">*</span>
           </label>
           <UiInput v-model="form.name" :placeholder="t('config.namePlaceholder')" class="w-full" />
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.notes') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
           <UiTextarea
             v-model="form.notes"
             :rows="2"
@@ -361,11 +318,11 @@ async function importPack(): Promise<void> {
           />
         </div>
 
-        <div class="rounded-ink-md bg-ink-surface-muted p-4">
-          <h4 class="mb-3 font-medium text-ink-text">{{ t('config.modelSection') }}</h4>
-          <div class="space-y-3">
+        <div class="rounded-ink-md bg-ink-surface-muted p-ink-4">
+          <h4 class="mb-ink-3 font-medium text-ink-text">{{ t('config.modelSection') }}</h4>
+          <div class="space-y-ink-3">
             <div>
-              <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('config.provider') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.provider') }}</label>
               <UiSelect
                 v-model="form.model_config_data.provider"
                 :options="providerOptions"
@@ -374,16 +331,16 @@ async function importPack(): Promise<void> {
               />
             </div>
             <div>
-              <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('config.modelName') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.modelName') }}</label>
               <UiInput
                 v-model="form.model_config_data.model_name"
                 placeholder="gpt-4o-mini"
                 class="w-full"
               />
             </div>
-            <div class="grid grid-cols-3 gap-3">
+            <div class="grid grid-cols-3 gap-ink-3">
               <div>
-                <label class="mb-1.5 block text-sm font-medium text-ink-text">Temperature</label>
+                <label class="mb-1.5 block text-body font-medium text-ink-text">Temperature</label>
                 <UiInputNumber
                   :model-value="form.model_config_data.temperature"
                   :min="0"
@@ -394,7 +351,7 @@ async function importPack(): Promise<void> {
                 />
               </div>
               <div>
-                <label class="mb-1.5 block text-sm font-medium text-ink-text">Top P</label>
+                <label class="mb-1.5 block text-body font-medium text-ink-text">Top P</label>
                 <UiInputNumber
                   :model-value="form.model_config_data.top_p"
                   :min="0"
@@ -405,7 +362,7 @@ async function importPack(): Promise<void> {
                 />
               </div>
               <div>
-                <label class="mb-1.5 block text-sm font-medium text-ink-text">Max Tokens</label>
+                <label class="mb-1.5 block text-body font-medium text-ink-text">Max Tokens</label>
                 <UiInputNumber
                   :model-value="form.model_config_data.max_tokens"
                   :min="64"

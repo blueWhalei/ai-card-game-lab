@@ -39,36 +39,35 @@ function runAction(id: FirstRunStepId): void {
 </script>
 
 <template>
-  <section
-    v-if="!allDone"
-    class="rounded-ink-md border border-ink-border bg-ink-surface px-3 py-2.5"
-  >
-    <div class="flex flex-wrap items-start justify-between gap-2">
+  <section v-if="!allDone" class="ink-section">
+    <div class="flex flex-wrap items-start justify-between gap-ink-2">
       <div>
-        <h2 class="text-sm font-semibold text-ink-text">{{ t('firstRun.title') }}</h2>
-        <p class="mt-0.5 text-xs text-ink-text-secondary">{{ t('firstRun.subtitle') }}</p>
+        <h2 class="text-title font-semibold text-ink-text">{{ t('firstRun.title') }}</h2>
+        <p class="mt-ink-1 text-body text-ink-text-secondary">{{ t('firstRun.subtitle') }}</p>
       </div>
       <UiButton size="sm" variant="ghost" :loading="demoLoading" @click="emit('demo')">
         {{ t('experiment.loadDemo') }}
       </UiButton>
     </div>
 
-    <ol class="mt-3 space-y-2">
+    <ol class="mt-ink-4 space-y-ink-3">
       <li
         v-for="(step, index) in steps"
         :key="step.id"
-        class="flex flex-wrap items-center gap-2 rounded-ink border border-ink-border/80 px-2.5 py-2"
-        :class="step.id === current ? 'bg-ink-surface-muted/70' : 'bg-ink-surface-muted/30'"
+        class="flex flex-wrap items-center gap-ink-2"
+        :class="step.id === current ? '' : 'opacity-70'"
       >
-        <span class="w-5 text-center text-xs tabular-nums text-ink-text-muted">{{ index + 1 }}</span>
+        <span class="w-5 text-center text-caption tabular-nums text-ink-text-muted">
+          {{ index + 1 }}
+        </span>
         <Icon
           :icon="step.done ? 'lucide:circle-check' : 'lucide:circle'"
           class="h-4 w-4"
           :class="step.done ? 'text-ink-success' : 'text-ink-text-muted'"
         />
         <div class="min-w-0 flex-1">
-          <p class="text-sm font-medium text-ink-text">{{ t(`firstRun.step.${step.id}`) }}</p>
-          <p class="text-xs text-ink-text-secondary">
+          <p class="text-body font-medium text-ink-text">{{ t(`firstRun.step.${step.id}`) }}</p>
+          <p class="text-caption text-ink-text-secondary">
             {{
               step.id === 'players'
                 ? t('firstRun.hint.players', { n: requiredPlayers })

@@ -17,8 +17,8 @@ const resolvedTitle = computed(() => props.title ?? t('common.noContent'))
 <template>
   <div :class="cn('flex flex-col items-center justify-center gap-2 px-4 py-12 text-center', props.class)">
     <Icon icon="lucide:inbox" class="h-10 w-10 text-ink-text-muted opacity-60" />
-    <p class="text-sm font-medium text-ink-text">{{ resolvedTitle }}</p>
-    <p v-if="description" class="text-sm text-ink-text-secondary">{{ description }}</p>
+    <p class="text-body font-medium text-ink-text">{{ resolvedTitle }}</p>
+    <p v-if="description" class="text-body text-ink-text-secondary">{{ description }}</p>
     <div v-if="$slots.default" class="mt-2">
       <slot />
     </div>

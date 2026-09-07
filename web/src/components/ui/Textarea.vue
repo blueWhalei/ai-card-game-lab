@@ -4,7 +4,7 @@ import { cn } from '@/lib/cn'
 
 defineOptions({ inheritAttrs: false })
 
-const props = withDefaults(
+withDefaults(
   defineProps<{
     modelValue?: string
     placeholder?: string
