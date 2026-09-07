@@ -8,13 +8,12 @@ import UiBadge from '@/components/ui/Badge.vue'
 defineProps<{
   game: GameItem | null
   title: string
+  phaseLabel?: string
   isConnected: boolean
   isStarted: boolean
   isPaused: boolean
   isFinished: boolean
   isReplayMode: boolean
-  totalTokens: number
-  latestModelName: string | undefined
 }>()
 
 defineEmits<{
@@ -42,16 +41,17 @@ const { t } = useI18n()
       </button>
       <span class="truncate text-body font-medium">{{ title }}</span>
       <span
+        v-if="phaseLabel"
+        class="text-caption text-ink-obs-muted"
+      >
+        {{ phaseLabel }}
+      </span>
+      <span
         class="inline-block h-2 w-2 shrink-0 rounded-full"
         :class="isConnected ? 'bg-ink-success' : 'bg-ink-danger'"
         :title="isConnected ? t('game.connected') : t('game.connecting')"
         :aria-label="isConnected ? t('game.connected') : t('game.connecting')"
       />
-      <span v-if="game" class="font-mono text-caption text-ink-obs-muted">{{ game.id }}</span>
-      <span v-if="totalTokens > 0" class="text-caption tabular-nums text-ink-obs-muted">
-        Token {{ totalTokens.toLocaleString() }}
-      </span>
-      <span v-if="latestModelName" class="text-caption text-ink-obs-muted">{{ latestModelName }}</span>
     </div>
     <div class="flex items-center gap-ink-2">
       <UiButton v-if="!isStarted && !isFinished" size="sm" @click="$emit('start')">{{
@@ -67,7 +67,6 @@ const { t } = useI18n()
       </UiButton>
       <UiButton v-if="isPaused" size="sm" @click="$emit('resume')">{{ t('common.resume') }}</UiButton>
       <UiBadge v-if="isFinished && !isReplayMode" variant="danger">{{ t('game.ended') }}</UiBadge>
-      <slot name="replay-controls" />
     </div>
   </div>
 </template>

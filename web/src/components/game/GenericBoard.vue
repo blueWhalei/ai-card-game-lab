@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { ObserverSnapshot } from '@/types/observer'
+import type { ObserverPlayer, ObserverSnapshot } from '@/types/observer'
 import { displayCard, isRedCard } from '@/utils/card'
 import { gameTypeLabel } from '@/utils/constants'
 import { cn } from '@/lib/cn'
@@ -30,6 +30,31 @@ const phaseLabel = computed(() => {
 })
 
 const tableSlots = computed(() => props.snapshot?.table?.slots ?? [])
+const players = computed(() => props.snapshot?.players ?? [])
+
+/** Seat areas by player count — table stays center; no game_type branch. */
+const layoutClass = computed(() => {
+  const n = players.value.length
+  if (n <= 1) return 'board-grid--one'
+  if (n === 2) return 'board-grid--two'
+  if (n === 3) return 'board-grid--three'
+  return 'board-grid--many'
+})
+
+function seatArea(index: number): string {
+  const n = players.value.length
+  if (n <= 1) return 'seat-main'
+  if (n === 2) return index === 0 ? 'seat-top' : 'seat-bottom'
+  if (n === 3) {
+    if (index === 0) return 'seat-top'
+    if (index === 1) return 'seat-left'
+    return 'seat-right'
+  }
+  if (index === 0) return 'seat-top'
+  if (index === 1) return 'seat-left'
+  if (index === 2) return 'seat-right'
+  return 'seat-bottom'
+}
 
 function displayName(id: string): string {
   return props.playerNames?.[id] || id
@@ -52,6 +77,14 @@ function slotDisplayLabel(key: string, label: string): string {
   if (key === 'landlord') return t('game.bottomCards')
   return label
 }
+
+function seatClasses(player: ObserverPlayer): string {
+  return cn(
+    'rounded-ink-md border border-ink-obs-border/80 bg-ink-obs-surface/80 px-ink-4 py-ink-3 transition-shadow duration-(--ink-duration-content)',
+    player.is_active && 'border-ink-obs-accent/50',
+    props.thinkingPlayerId === player.id && 'ink-obs-glow',
+  )
+}
 </script>
 
 <template>
@@ -72,33 +105,13 @@ function slotDisplayLabel(key: string, label: string): string {
       </p>
 
       <div
-        v-if="tableSlots.length > 0"
-        class="mx-ink-4 mt-ink-3 rounded-ink-md border border-ink-obs-border/80 bg-black/20 px-ink-4 py-ink-3"
+        :class="cn('board-grid min-h-0 flex-1 gap-ink-3 overflow-y-auto px-ink-4 py-ink-4', layoutClass)"
       >
-        <div v-for="slot in tableSlots" :key="slot.key" class="flex flex-wrap items-center gap-ink-3">
-          <span class="text-caption text-ink-obs-muted">
-            {{ slotDisplayLabel(slot.key, slot.label) }}
-          </span>
-          <CardDisplay
-            v-if="slot.cards?.length"
-            :cards="slot.cards"
-            :show-count="false"
-            size="table"
-          />
-        </div>
-      </div>
-
-      <ul class="flex-1 space-y-ink-3 overflow-y-auto px-ink-4 py-ink-4">
-        <li
-          v-for="player in snapshot.players"
+        <div
+          v-for="(player, index) in players"
           :key="player.id"
-          :class="
-            cn(
-              'rounded-ink-md border border-ink-obs-border/80 bg-ink-obs-surface/80 px-ink-4 py-ink-3 transition-shadow duration-(--ink-duration-content)',
-              player.is_active && 'border-ink-obs-accent/50',
-              thinkingPlayerId === player.id && 'ink-obs-glow',
-            )
-          "
+          :class="seatClasses(player)"
+          :style="{ gridArea: seatArea(index) }"
         >
           <div class="flex flex-wrap items-baseline gap-ink-2">
             <span class="text-body font-medium">{{ displayName(player.id) }}</span>
@@ -154,8 +167,34 @@ function slotDisplayLabel(key: string, label: string): string {
               {{ displayCard(card) }}
             </span>
           </div>
-        </li>
-      </ul>
+        </div>
+
+        <div
+          class="flex min-h-[7rem] flex-col justify-center gap-ink-3 rounded-ink-md border border-ink-obs-border/60 bg-black/25 px-ink-4 py-ink-4"
+          style="grid-area: table"
+        >
+          <template v-if="tableSlots.length > 0">
+            <div
+              v-for="slot in tableSlots"
+              :key="slot.key"
+              class="flex flex-wrap items-center justify-center gap-ink-3"
+            >
+              <span class="text-caption text-ink-obs-muted">
+                {{ slotDisplayLabel(slot.key, slot.label) }}
+              </span>
+              <CardDisplay
+                v-if="slot.cards?.length"
+                :cards="slot.cards"
+                :show-count="false"
+                size="table"
+              />
+            </div>
+          </template>
+          <p v-else class="text-center text-caption text-ink-obs-muted">
+            {{ t('game.tableEmpty') }}
+          </p>
+        </div>
+      </div>
     </template>
   </div>
 </template>
@@ -164,5 +203,53 @@ function slotDisplayLabel(key: string, label: string): string {
 .ink-obs-felt {
   background:
     radial-gradient(ellipse 90% 70% at 50% 30%, #1a2a24 0%, var(--ink-obs-bg) 72%);
+}
+
+.board-grid {
+  display: grid;
+  align-content: stretch;
+}
+
+.board-grid--one {
+  grid-template-areas:
+    'table'
+    'seat-main';
+  grid-template-rows: minmax(7rem, 0.4fr) 1fr;
+}
+
+.board-grid--two {
+  grid-template-areas:
+    'seat-top'
+    'table'
+    'seat-bottom';
+  grid-template-rows: auto minmax(7rem, 1fr) auto;
+}
+
+.board-grid--three {
+  grid-template-areas:
+    'seat-top seat-top'
+    'seat-left table'
+    'seat-right table';
+  grid-template-columns: 1fr 1.2fr;
+  grid-template-rows: auto minmax(7rem, 1fr) auto;
+}
+
+@media (min-width: 1024px) {
+  .board-grid--three {
+    grid-template-areas:
+      '. seat-top .'
+      'seat-left table seat-right';
+    grid-template-columns: 1fr minmax(12rem, 1.4fr) 1fr;
+    grid-template-rows: auto minmax(8rem, 1fr);
+  }
+}
+
+.board-grid--many {
+  grid-template-areas:
+    'seat-top seat-top seat-top'
+    'seat-left table seat-right'
+    'seat-bottom seat-bottom seat-bottom';
+  grid-template-columns: 1fr minmax(10rem, 1.2fr) 1fr;
+  grid-template-rows: auto minmax(7rem, 1fr) auto;
 }
 </style>

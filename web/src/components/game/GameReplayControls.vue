@@ -22,8 +22,11 @@ const { t } = useI18n()
 </script>
 
 <template>
-  <template v-if="replayData">
-    <span class="rounded-ink bg-ink-obs-bg px-3 py-1 text-xs font-medium text-ink-obs-muted">
+  <div
+    v-if="replayData"
+    class="flex shrink-0 flex-wrap items-center justify-center gap-ink-2 border-b border-ink-obs-border bg-ink-obs-surface/80 px-ink-4 py-ink-2"
+  >
+    <span class="rounded-ink bg-ink-obs-bg px-3 py-1 text-caption font-medium text-ink-obs-muted">
       {{ t('game.replay', { current: replayIndex + 1, total: replayData.rounds.length }) }}
     </span>
     <UiButton
@@ -55,7 +58,7 @@ const { t } = useI18n()
     </UiButton>
     <select
       :value="replaySpeed"
-      class="w-max rounded-ink border border-ink-obs-border bg-ink-obs-bg px-3 py-1.5 text-xs text-ink-obs-text"
+      class="w-max rounded-ink border border-ink-obs-border bg-ink-obs-bg px-3 py-1.5 text-caption text-ink-obs-text"
       @change="
         $emit('update:replaySpeed', Number(($event.target as HTMLSelectElement).value))
       "
@@ -65,5 +68,5 @@ const { t } = useI18n()
       <option :value="500">2x</option>
       <option :value="250">4x</option>
     </select>
-  </template>
+  </div>
 </template>

@@ -69,7 +69,7 @@ const modeOptions = computed(() => [{ label: t('game.realtime'), value: 'realtim
 type GameRow = GameItem & Record<string, unknown>
 
 const columns = computed<TableColumn<GameRow>[]>(() => [
-  { key: 'id', label: t('game.colId'), class: 'w-44 max-w-[11rem]' },
+  { key: 'id', label: t('game.colGame'), class: 'w-36 max-w-[11rem]' },
   { key: 'game_type', label: t('game.colType'), class: 'w-28' },
   { key: 'status', label: t('game.colStatus'), class: 'w-24' },
   { key: 'player_ids', label: t('game.colPlayers') },
@@ -79,6 +79,12 @@ const columns = computed<TableColumn<GameRow>[]>(() => [
 ])
 
 const gameRows = computed(() => games.value as GameRow[])
+
+function gameRowLabel(row: GameRow, index: number): string {
+  if (String(row.id) === 'game_demo_doudizhu') return t('common.demo')
+  const n = index >= 0 ? index + 1 : 1
+  return t('game.gameN', { n })
+}
 
 const configNameById = computed(() => {
   const map = new Map<string, string>()
@@ -316,11 +322,11 @@ watch(
         <template #cell-id="{ row }">
           <button
             type="button"
-            class="block max-w-full truncate font-mono text-sm text-ink-primary hover:underline"
+            class="block max-w-full truncate text-body text-ink-primary hover:underline"
             :title="String(row.id)"
             @click="goToGame(row)"
           >
-            {{ row.id }}
+            {{ gameRowLabel(row, games.findIndex((g) => g.id === row.id)) }}
             <UiBadge v-if="row.id === 'game_demo_doudizhu'" variant="muted" class="ml-1">{{
               t('common.demo')
             }}</UiBadge>

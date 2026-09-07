@@ -430,33 +430,34 @@ onUnmounted(() => {
     <GameHeaderBar
       :game="game"
       :title="watchTitle"
+      :phase-label="
+        snapshot
+          ? `${t('game.roundN', { n: snapshot.round })}`
+          : undefined
+      "
       :is-connected="isConnected"
       :is-started="isStarted"
       :is-paused="isPaused"
       :is-finished="isFinished"
       :is-replay-mode="isReplayMode"
-      :total-tokens="totalTokens"
-      :latest-model-name="latestModelName"
       @back="goBack"
       @start="handleStart"
       @pause="handlePause"
       @resume="handleResume"
-    >
-      <template #replay-controls>
-        <GameReplayControls
-          v-if="isReplayMode"
-          :replay-data="replayData"
-          :replay-index="replayIndex"
-          :replay-playing="replayPlaying"
-          :replay-speed="replaySpeed"
-          @prev="replayPrev"
-          @play="replayPlay"
-          @pause="replayPause"
-          @next="replayNext"
-          @update:replay-speed="replaySpeed = $event"
-        />
-      </template>
-    </GameHeaderBar>
+    />
+
+    <GameReplayControls
+      v-if="isReplayMode"
+      :replay-data="replayData"
+      :replay-index="replayIndex"
+      :replay-playing="replayPlaying"
+      :replay-speed="replaySpeed"
+      @prev="replayPrev"
+      @play="replayPlay"
+      @pause="replayPause"
+      @next="replayNext"
+      @update:replay-speed="replaySpeed = $event"
+    />
 
     <div class="flex min-h-0 flex-1 flex-col lg:flex-row">
       <div class="relative min-h-0 min-w-0 flex-1">
@@ -475,8 +476,20 @@ onUnmounted(() => {
           v-if="!rightPanelCollapsed"
           class="flex max-h-[42vh] w-full shrink-0 flex-col border-t border-ink-obs-border bg-ink-obs-surface lg:max-h-none lg:w-96 lg:border-t-0 lg:border-l"
         >
-          <div class="flex shrink-0 items-center justify-between px-ink-4 py-ink-3">
-            <p class="text-caption text-ink-obs-muted">{{ t('game.aiThinking') }}</p>
+          <div class="flex shrink-0 items-center justify-between gap-ink-2 px-ink-4 py-ink-3">
+            <div class="min-w-0">
+              <p class="text-caption text-ink-obs-muted">{{ t('game.aiThinking') }}</p>
+              <p
+                v-if="latestModelName || totalTokens > 0"
+                class="truncate text-caption text-ink-obs-muted"
+              >
+                <span v-if="latestModelName">{{ latestModelName }}</span>
+                <span v-if="latestModelName && totalTokens > 0"> · </span>
+                <span v-if="totalTokens > 0" class="tabular-nums">
+                  Token {{ totalTokens.toLocaleString() }}
+                </span>
+              </p>
+            </div>
             <button
               type="button"
               class="rounded-ink p-1.5 text-ink-obs-muted hover:bg-ink-obs-bg"

@@ -2,7 +2,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { CardDisplayProps } from '@/types/game'
-import { getCardInfo, isRedSuit, RANK_ORDER } from '@/utils/card'
+import { getCardInfo, isRedSuit, RANK_ORDER, displayCard } from '@/utils/card'
 
 const props = withDefaults(defineProps<CardDisplayProps>(), {
   cards: () => [],
@@ -74,7 +74,7 @@ const sizeClass = computed(() =>
 
 <template>
   <div class="card-display">
-    <div v-if="showCount && cards.length > 0" class="mb-1 text-sm text-gray-500">
+    <div v-if="showCount && cards.length > 0" class="mb-1 text-caption text-ink-obs-muted">
       {{ t('game.cardsCount', { n: cards.length }) }}
     </div>
     <div
@@ -84,8 +84,10 @@ const sizeClass = computed(() =>
     >
       <div
         v-for="(card, index) in sortedCards"
-        :key="card"
+        :key="`${card}-${index}`"
         class="playing-card"
+        role="img"
+        :aria-label="displayCard(card)"
         :class="[
           isRedSuit(card) ? 'playing-card--red' : 'playing-card--black',
           card === 'BJ' ? 'playing-card--black-joker' : '',
@@ -98,23 +100,23 @@ const sizeClass = computed(() =>
         :style="compactStyle(index)"
         @click="toggleCard(card)"
       >
-        <div class="card-corner card-corner--top">
+        <div class="card-corner card-corner--top" aria-hidden="true">
           <span class="card-rank">{{ getCardInfo(card).rank }}</span>
           <span class="card-suit">{{ getCardInfo(card).suit }}</span>
         </div>
-        <div class="card-center">
+        <div class="card-center" aria-hidden="true">
           <span v-if="!getCardInfo(card).isJoker" class="card-suit-large">{{
             getCardInfo(card).suit
           }}</span>
           <span v-else class="card-joker-text">{{ getCardInfo(card).rank }}</span>
         </div>
-        <div class="card-corner card-corner--bottom">
+        <div class="card-corner card-corner--bottom" aria-hidden="true">
           <span class="card-rank">{{ getCardInfo(card).rank }}</span>
           <span class="card-suit">{{ getCardInfo(card).suit }}</span>
         </div>
       </div>
     </div>
-    <div v-if="cards.length === 0" class="text-sm text-gray-400">{{ t('common.none') }}</div>
+    <div v-if="cards.length === 0" class="text-caption text-ink-obs-muted">{{ t('common.none') }}</div>
   </div>
 </template>
 

@@ -74,7 +74,7 @@ export interface GameStartedPayload {
   extras?: Record<string, unknown>
 }
 
-export interface StateUpdatePayload extends GameStartedPayload {}
+export type StateUpdatePayload = GameStartedPayload
 
 export interface ThinkingPayload {
   player_id: string

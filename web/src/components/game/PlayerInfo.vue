@@ -21,15 +21,6 @@ const roleDisplay = computed(() => {
   return props.role
 })
 
-const roleColor = computed(() => {
-  const colorMap: Record<string, string> = {
-    landlord: 'bg-red-100 text-red-800',
-    peasant: 'bg-green-100 text-green-800',
-    unknown: 'bg-gray-100 text-gray-800',
-  }
-  return colorMap[props.role] || 'bg-gray-100 text-gray-800'
-})
-
 const formattedResponseTime = computed(() => {
   if (!props.responseTimeMs) return ''
   if (props.responseTimeMs < 1000) {
@@ -41,39 +32,38 @@ const formattedResponseTime = computed(() => {
 
 <template>
   <div
-    class="player-info rounded-lg border p-3 transition-all"
+    class="player-info rounded-ink border border-ink-border bg-ink-surface p-ink-3 transition-all"
     :class="[
-      isCurrentPlayer ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200' : 'border-gray-200 bg-white',
+      isCurrentPlayer ? 'border-ink-primary bg-ink-primary-muted ring-2 ring-ink-primary-muted' : '',
       isThinking ? 'animate-pulse' : '',
     ]"
   >
     <div class="flex items-center justify-between">
-      <div class="flex items-center gap-2">
-        <span class="font-medium text-gray-900">{{ name }}</span>
+      <div class="flex items-center gap-ink-2">
+        <span class="font-medium text-ink-text">{{ name }}</span>
         <span
           v-if="showRole"
-          class="rounded px-1.5 py-0.5 text-xs font-medium"
-          :class="roleColor"
+          class="rounded-ink bg-ink-surface-muted px-1.5 py-0.5 text-caption font-medium text-ink-text-secondary"
         >
           {{ roleDisplay }}
         </span>
       </div>
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-ink-2">
         <span
           v-if="showCardsLeft"
-          class="text-sm text-gray-500"
+          class="text-caption text-ink-text-muted"
         >
           {{ t('game.cardsCount', { n: cardsLeft }) }}
         </span>
         <span
           v-if="formattedResponseTime"
-          class="rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600"
+          class="rounded-ink bg-ink-surface-muted px-1.5 py-0.5 text-caption text-ink-text-secondary"
         >
           {{ formattedResponseTime }}
         </span>
       </div>
     </div>
-    <div v-if="isThinking" class="mt-2 text-sm text-blue-600">
+    <div v-if="isThinking" class="mt-ink-2 text-caption text-ink-primary">
       <span class="inline-flex items-center gap-1.5">
         <UiSpinner size="sm" class="!gap-0 text-current" />
         {{ t('game.thinkingDots') }}
