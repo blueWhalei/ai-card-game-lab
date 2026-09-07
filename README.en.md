@@ -20,7 +20,7 @@ Local AI card-game research tool: experiments as the unit—watch decisions, col
 | Backend | Python 3.11+ · FastAPI · WebSocket |
 | LLM | OpenAI · Ollama · DashScope · DeepSeek · Kimi · Zhipu · Yi · Baichuan · MiniMax |
 | Storage | SQLite index + JSONL archive |
-| Training | PEFT LoRA (`poetry install --with training`; CPU smoke without GPU; optional 4-bit QLoRA needs bitsandbytes) |
+| Training | PEFT LoRA (`poetry install --with training`; CPU quick check without GPU; optional 4-bit QLoRA needs bitsandbytes) |
 
 ## Quick start
 
@@ -50,9 +50,9 @@ Open http://localhost:5173 . Home walks you through provider → players → exp
 3. **Start experiment** — the detail page's current phase offers one button, Start experiment; watch and replay
 4. **Start training** — export ChatML when trainable decisions are ready
 5. **Model repo** — push to Ollama or register as player  
-6. **Control / compare** — after training, the detail page asks you to start a control experiment (same deals); once it is ready the first screen is a one-sentence verdict plus Δ. When the evidence is thin the number reads lighter and the page tells you how many more games it needs. Per-scenario gaps sit below as a small chart; the compare page still has the full matrix  
+6. **Control / compare** — after training, start a control experiment from the detail page (same deals). When the evidence is strong enough, the first screen is a one-sentence verdict plus Δ. When it is not, the headline says there is not enough to conclude, Δ drops to a footnote, and the page tells you how many more games it needs. Per-scenario gaps sit below as a small chart; the compare page still has the full matrix.
 
-Benchmark mode uses fixed deal seeds (up to 50 games). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Analyze** (`/pipeline/…`, `?experiment_id=`). Export an experiment pack from detail (no API keys) and import it on the home page to reproduce on another machine. Usage guide: header book icon → `/guide`.
+Benchmark mode uses fixed deal seeds (up to 50 games); the detail page shows **this run’s** metrics under the current phase (landlord WR, parse, trainable, latency, tokens/game). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Analyze** (`/pipeline/…`, `?experiment_id=`). Export an experiment pack from detail (no API keys) and import it on the home page to reproduce on another machine. Usage guide: header book icon → `/guide`.
 
 Script loop: `.\scripts\e2e_pipeline.ps1 all -Count 1` — see [E2E guide](docs/E2E_PIPELINE.md).
 

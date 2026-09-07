@@ -131,7 +131,7 @@ ai-card-game-lab/
 │   │   │   │   ├── sft.py             # PEFT LoRA SFT（可选 QLoRA；缺依赖则拒绝）
 │   │   │   │   ├── exporter.py        # JSONL → ChatML SFT 格式导出
 │   │   │   │   ├── deploy.py          # merge / GGUF / Ollama 辅助
-│   │   │   │   └── cpu_smoke.py       # 无 GPU 步数/样本钳制
+│   │   │   │   └── cpu_smoke.py       # 无 GPU 时限制步数与样本上限
 │   │   │   │
 │   │   │   └── events/                # 领域事件（EventBus + game lifecycle）
 │   │   │
@@ -227,12 +227,13 @@ ai-card-game-lab/
 │   │   │   │   ├── EmptyState.vue
 │   │   │   │   └── FirstRunStepper.vue  # 首页从零到第一局（密钥 / 选手 / 实验）
 │   │   │   │
-│   │   │   ├── experiment/            # 实验详情：阶段主区 / 进程 / 档案
+│   │   │   ├── experiment/            # 实验：首页行 / 详情阶段 / 进展 / 档案
+│   │   │   │   ├── ExperimentListRow.vue         # 首页一行：状态句 + 下一步
 │   │   │   │   ├── ExperimentStage.vue           # 按状态机选当前阶段并给出文案
 │   │   │   │   ├── StageAction.vue               # 一句话 + 一个操作（前四个阶段）
-│   │   │   │   ├── StageVerdict.vue              # 结论句 + Δ + 证据强度（结论阶段）
-│   │   │   │   ├── ExperimentScenarioBars.vue    # 分场景 Δ 小倍数图
-│   │   │   │   ├── ExperimentTimeline.vue        # 进程事件流 + 对照进度
+│   │   │   │   ├── StageVerdict.vue              # 可下结论：结论句+Δ；弱证据：证据句为主、Δ 为附注
+│   │   │   │   ├── ExperimentScenarioBars.vue    # 分场景 Δ 分面小图
+│   │   │   │   ├── ExperimentTimeline.vue        # 进展事件流 + 对照进度
 │   │   │   │   ├── ExperimentMetaPanel.vue       # 实验档案（⋯ 对话框）
 │   │   │   │   ├── ExperimentNotebookPanel.vue
 │   │   │   │   ├── ExperimentGamesTab.vue
@@ -250,7 +251,7 @@ ai-card-game-lab/
 │   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
-│   │   │   │   ├── GenericBoard.vue   # 唯一观战牌桌（列表）
+│   │   │   │   ├── GenericBoard.vue   # 唯一观战牌桌（居中桌面 + 围座 grid）
 │   │   │   │   ├── ThinkingPanel.vue # AI 思考记录
 │   │   │   │   └── GameReplayControls.vue
 │   │   │   │
@@ -275,18 +276,18 @@ ai-card-game-lab/
 │   │   ├── views/                      # 页面级组件（路由对应）
 │   │   │   ├── GameView.vue           # 试玩对局列表 + 创建
 │   │   │   ├── GameObserverView.vue   # 实时观战（Observer 壳 + GenericBoard）
-│   │   │   ├── ExperimentListView.vue # 实验列表（默认首页 /）
+│   │   │   ├── ExperimentListView.vue # 实验首页（行式列表：状态句 + 下一步）
 │   │   │   ├── ExperimentCompareView.vue # 跨实验对比 /experiments/compare
-│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（分阶段）
+│   │   │   ├── ExperimentDetailView.vue # 实验详情 /experiments/:id（单阶段工作台）
 │   │   │   ├── PipelineView.vue       # 分析枢纽 /pipeline/{data,decisions,training,traces}
-│   │   │   ├── ExperimentConfigView.vue  # 选手配置 CRUD
+│   │   │   ├── ExperimentConfigView.vue  # 选手名册（卡片；胜率不着色）
 │   │   │   ├── GuideView.vue          # 使用说明 /guide（桌面端目录在右侧）
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练页（任务列表 + 模型仓库 + 创建对话框）
 │   │   │   ├── PromptView.vue         # 提示词管理（模板列表 + 版本控制）
 │   │   │   ├── TraceView.vue          # 决策追踪（薄壳 → TraceWorkbenchPanel）
 │   │   │   ├── DecisionView.vue       # 决策点（薄壳 → DecisionWorkbenchPanel）
-│   │   │   └── SettingsView.vue       # 系统设置（只读：供应商状态/存储/路径）
+│   │   │   └── SettingsView.vue       # 设置（只读机器状态；密钥在 .env）
 │   │   │
 │   │   ├── layouts/                    # 双壳布局
 │   │   │   ├── WorkbenchLayout.vue    # 侧栏：实验 / 选手 / 试玩 / 分析 / 设置
