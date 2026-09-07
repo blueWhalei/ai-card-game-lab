@@ -27,7 +27,7 @@ async def test_export_and_import_experiment_pack(client: AsyncClient) -> None:
         VALID_PLAYER_IDS
     )
     assert body["players_created"] == []
-    assert body["experiment"]["protocol"]["deal_seeds"] == pack["deal_seeds"]
+    assert body["experiment"]["protocol"]["dataset"]["deal_seeds"] == pack["deal_seeds"]
 
 
 async def test_import_experiment_object_creates_experiment(client: AsyncClient) -> None:

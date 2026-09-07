@@ -91,13 +91,14 @@ Policy 可挂 `Memory`：每局结束由模型更新对手风格笔记，下局�
 
 ### 2.2 评测层：从"看胜率"到 harness
 
-**2.2.1 显式 Task = Dataset × Solver × Scorer**（借鉴 Inspect AI / lm-eval-harness）
+**2.2.1 显式 Task = Dataset × Solver × Scorer**（借鉴 Inspect AI / lm-eval-harness）—— **命名已完成 2026-09-07**
 
 Dataset = 固定 `deal_seeds`；Solver = 各座位 Policy 配置；Scorer = 引擎注册的指标实现。
 benchmark 模式即一个 Task 定义；`examples/` 中的实验包即 Task 文件；CLI 一条命令出报告。
 
 **不引入新实体**：`Experiment` + 冻结 `protocol` 已经是 Task 实例。Task 只是 protocol 的
-schema 命名（dataset / solver / scorer 三段），不建平行的表与 API。
+schema 命名（`dataset` / `solver` / `scorer` / `engine` 四段，`schema_version: 2`），
+不建平行的表与 API。指标**计算**仍走现有聚合路径；Scorer ABC / 引擎侧插件另开。
 
 **2.2.2 决策级评分：EV loss（最重要的技术深化）**
 
@@ -223,7 +224,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **已完成**：1a 2026-09-06（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b+1c 2026-09-07（`LLMPolicy` 接管提示词 / 工具 / 重试 / 解析，`AIService` 退化为事件消费者，动作 id 协议 + JSON Schema `enum`） | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight） | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
-| 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **VCR 已完成 2026-09-07**（`core/ai/vcr.py`）；Task/Scorer 仍待 | harness 成型 |
+| 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR（`core/ai/vcr.py`）+ protocol `schema_version: 2` 嵌套 `dataset`/`solver`/`scorer`/`engine`（Scorer **实现**仍待插件化） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
@@ -300,7 +301,7 @@ Policy.decide(observation: Observation,
 
 | 变化 | 承载 | 版本 |
 |------|------|------|
-| protocol 新增 `policy`（kind、参数、budget、prompt hash、memory 模式）、`evaluator` 段 | `experiments.protocol` | `schema_version: 1 → 2`；旧版本在 collect 时拒绝，不静默迁移（沿用现规则） |
+| protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；后续再加 policy kind/budget、evaluator 参数 | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
 | 决策点新增 ~~`ev_loss`、`evaluator_params`~~ ✅（2026-09-07，迁移 3）；`policy_kind`、`tool_calls` 待做 | `decision_points` | `decision_schema_version` 1 → 2 已升 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
 | ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号迁移列表 | 已落地，`SCHEMA_VERSION = 2` |

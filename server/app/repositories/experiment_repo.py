@@ -8,6 +8,7 @@ from typing import Any
 import aiosqlite
 
 from app.core.stats.scenarios import SCENARIO_SQL, fill_scenario_scores
+from app.core.task_protocol import protocol_source_experiment_id
 
 
 class ExperimentRepository:
@@ -150,7 +151,7 @@ class ExperimentRepository:
                         protocol = parsed
                 except json.JSONDecodeError:
                     protocol = {}
-            if str(protocol.get("source_experiment_id") or "") == source_experiment_id:
+            if protocol_source_experiment_id(protocol) == source_experiment_id:
                 results.append(
                     {
                         "id": str(data["id"]),

@@ -290,9 +290,10 @@ UI: `TraceView.vue`, `TraceDetail.vue`, `TraceMetrics.vue`.
 Do **not** add a per-game Vue board or `game_type` branches in `GameObserverView`.
 
 `GET /system/engines` exposes capability; experiment `protocol` is written complete at
-create time (`schema_version` currently `1`). Incomplete protocol is rejected on collect
-(no silent migration). Decision points stay on the shared table (JSON fields);
-`decision_schema_version` documents the payload contract.
+create time as a Task document (`schema_version` currently `2`: nested `dataset` /
+`solver` / `scorer` / `engine`). Incomplete or wrong-version protocol is rejected on
+collect and collect preflight (no silent migration). Decision points stay on the shared
+table (JSON fields); `decision_schema_version` documents the payload contract.
 
 Routing is by `game_type`; Service layers must not hardcode a game id beyond defaults.
 

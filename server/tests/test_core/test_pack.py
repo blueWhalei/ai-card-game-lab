@@ -49,7 +49,18 @@ def test_build_experiment_pack_lists_ollama_tags() -> None:
             "target_games": 5,
             "game_type": "doudizhu",
         },
-        protocol={"collect_mode": "benchmark", "deal_seeds": [1, 2], "players": []},
+        protocol={
+            "schema_version": 2,
+            "dataset": {
+                "collect_mode": "benchmark",
+                "deal_seeds": [1, 2],
+                "pair_deals": False,
+                "source_experiment_id": None,
+            },
+            "solver": {"players": [], "prompt_version": "v3"},
+            "scorer": {"eval_metric_ids": []},
+            "engine": {"game_type": "doudizhu"},
+        },
         players=[
             {
                 "id": "a",
@@ -89,16 +100,29 @@ def test_parse_experiment_object_without_kind() -> None:
                 "target_games": 3,
             },
             "protocol": {
-                "collect_mode": "free",
-                "deal_seeds": [9],
-                "players": [
-                    {
-                        "id": "a",
-                        "name": "A",
-                        "notes": "",
-                        "model_config": {"provider": "openai", "model_name": "gpt-4o-mini"},
-                    }
-                ],
+                "schema_version": 2,
+                "dataset": {
+                    "collect_mode": "free",
+                    "deal_seeds": [9],
+                    "pair_deals": False,
+                    "source_experiment_id": None,
+                },
+                "solver": {
+                    "prompt_version": "v3",
+                    "players": [
+                        {
+                            "id": "a",
+                            "name": "A",
+                            "notes": "",
+                            "model_config": {
+                                "provider": "openai",
+                                "model_name": "gpt-4o-mini",
+                            },
+                        }
+                    ],
+                },
+                "scorer": {"eval_metric_ids": []},
+                "engine": {"game_type": "doudizhu"},
             },
             "summary": {"finished_games": 3},
         }

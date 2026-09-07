@@ -89,6 +89,7 @@ export interface ExperimentProtocolPlayer {
   }
 }
 
+/** Flat Task fields used by workbench UI (see ``flattenProtocol``). */
 export interface ExperimentProtocol {
   schema_version: number
   frozen_at: string
@@ -108,6 +109,68 @@ export interface ExperimentProtocol {
   eval_metric_ids: string[]
   supports_deal_seed: boolean
   benchmark_seed_count: number
+}
+
+/** Nested protocol as stored/returned by the API (schema_version ≥ 2). */
+export interface ExperimentProtocolNested {
+  schema_version: number
+  frozen_at: string
+  dataset: {
+    collect_mode?: CollectMode
+    deal_seeds: number[]
+    pair_deals: boolean
+    source_experiment_id: string | null
+  }
+  solver: {
+    players: ExperimentProtocolPlayer[]
+    prompt_version: string
+  }
+  scorer: {
+    eval_metric_ids: string[]
+  }
+  engine: {
+    game_type: string
+    engine_version: string
+    decision_schema_version: number
+    rules_ref: string | null
+    phases: string[]
+    prompt_keys: Record<string, string>
+    roles: string[]
+    supports_deal_seed: boolean
+    benchmark_seed_count: number
+  }
+}
+
+export type ExperimentProtocolRaw = ExperimentProtocol | ExperimentProtocolNested
+
+export function flattenProtocol(
+  protocol: ExperimentProtocolRaw | null | undefined,
+): ExperimentProtocol | null {
+  if (!protocol) return null
+  if ('dataset' in protocol && protocol.dataset && typeof protocol.dataset === 'object') {
+    const nested = protocol as ExperimentProtocolNested
+    return {
+      schema_version: nested.schema_version,
+      frozen_at: nested.frozen_at,
+      prompt_version: nested.solver?.prompt_version ?? '',
+      players: nested.solver?.players ?? [],
+      source_experiment_id: nested.dataset?.source_experiment_id ?? null,
+      pair_deals: Boolean(nested.dataset?.pair_deals),
+      deal_seeds: nested.dataset?.deal_seeds ?? [],
+      collect_mode: nested.dataset?.collect_mode,
+      eval_metric_ids: nested.scorer?.eval_metric_ids ?? [],
+      game_type: nested.engine?.game_type ?? '',
+      engine_version: nested.engine?.engine_version ?? '',
+      decision_schema_version: nested.engine?.decision_schema_version ?? 0,
+      rules_ref: nested.engine?.rules_ref ?? null,
+      phases: nested.engine?.phases ?? [],
+      prompt_keys: nested.engine?.prompt_keys ?? {},
+      roles: nested.engine?.roles ?? [],
+      supports_deal_seed: Boolean(nested.engine?.supports_deal_seed),
+      benchmark_seed_count: nested.engine?.benchmark_seed_count ?? 0,
+    }
+  }
+  return protocol as ExperimentProtocol
 }
 
 export type ExperimentDeltaRelation = 'vs_source' | 'vs_control'
@@ -216,7 +279,7 @@ export interface Experiment {
   game_type: string
   player_ids: string[]
   target_games: number
-  protocol?: ExperimentProtocol | null
+  protocol?: ExperimentProtocolRaw | null
   created_at: string
   updated_at: string
   summary: ExperimentSummary
@@ -284,7 +347,7 @@ export interface ExperimentCompareRow {
   notes: string
   game_type: string
   player_ids: string[]
-  protocol?: ExperimentProtocol | null
+  protocol?: ExperimentProtocolRaw | null
   finished_games: number
   games_with_winner: number
   avg_rounds: number
@@ -351,7 +414,7 @@ export interface ExperimentPack {
     target_games: number
     collect_mode: CollectMode
   }
-  protocol?: ExperimentProtocol | null
+  protocol?: ExperimentProtocolRaw | null
   players: ExperimentPackPlayer[]
   requirements?: ExperimentPackRequirements
   deal_seeds?: number[]
@@ -427,7 +490,7 @@ export function experimentTimelineLabel(id: string): string {
 }
 
 export function isBenchmarkExperiment(experiment: {
-  protocol?: ExperimentProtocol | null
+  protocol?: ExperimentProtocolRaw | null
 }): boolean {
-  return experiment.protocol?.collect_mode === 'benchmark'
+  return flattenProtocol(experiment.protocol)?.collect_mode === 'benchmark'
 }

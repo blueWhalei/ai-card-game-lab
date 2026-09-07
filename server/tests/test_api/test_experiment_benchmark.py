@@ -22,11 +22,13 @@ async def test_benchmark_collect_uses_fixed_seeds(client: AsyncClient) -> None:
     assert create.status_code == 201, create.text
     exp = create.json()["data"]
     protocol = exp.get("protocol") or {}
-    expected_seeds = protocol.get("deal_seeds") or []
+    dataset = protocol.get("dataset") or {}
+    engine = protocol.get("engine") or {}
+    expected_seeds = dataset.get("deal_seeds") or []
     assert len(expected_seeds) == 3
-    assert protocol.get("schema_version") == 1
-    assert protocol.get("engine_version") == "1"
-    assert protocol.get("game_type") == "doudizhu"
+    assert protocol.get("schema_version") == 2
+    assert engine.get("engine_version") == "1"
+    assert engine.get("game_type") == "doudizhu"
 
     with (
         patch(
@@ -88,7 +90,7 @@ async def test_benchmark_collect_uses_fixed_seeds(client: AsyncClient) -> None:
     after_body = after.json()["data"]
     after_sorted = sorted(after_body["games"], key=lambda g: g["created_at"])
     assert [(g.get("metadata") or {}).get("deal_seed") for g in after_sorted] == seeds
-    assert (after_body.get("protocol") or {}).get("deal_seeds") == frozen
+    assert (after_body.get("protocol") or {}).get("dataset", {}).get("deal_seeds") == frozen
 
 
 async def test_free_experiment_has_null_benchmark(client: AsyncClient) -> None:

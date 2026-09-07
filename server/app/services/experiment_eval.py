@@ -46,8 +46,12 @@ def resolve_delta_peer(
     validation: dict[str, Any],
 ) -> tuple[str | None, str | None]:
     """Pick the experiment to diff against: source (if this is a control) or first control."""
+    from app.core.task_protocol import protocol_source_experiment_id
+
     protocol = experiment.get("protocol") or {}
-    source_id = protocol.get("source_experiment_id") if isinstance(protocol, dict) else None
+    source_id = (
+        protocol_source_experiment_id(protocol) if isinstance(protocol, dict) else None
+    )
     if source_id:
         return str(source_id), "vs_source"
     progress = list(validation.get("control_progress") or [])

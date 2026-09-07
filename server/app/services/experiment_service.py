@@ -32,10 +32,17 @@ from app.services.experiment_eval import (
     resolve_delta_peer,
 )
 from app.services.experiment_protocol import (
-    PROTOCOL_SCHEMA_VERSION,
     build_protocol,
     clamp_benchmark_collect_count,
     pick_collect_seed,
+    protocol_collect_mode,
+    protocol_deal_seeds,
+    protocol_pair_deals,
+    protocol_players,
+    protocol_source_experiment_id,
+    set_protocol_deal_seeds,
+    set_protocol_pair_deals,
+    validate_protocol,
 )
 from app.services.game_service import GameService
 from app.utils.exceptions import AppError, ProviderNotConfiguredError
@@ -45,7 +52,6 @@ from app.utils.providers import unconfigured_providers_from_players
 logger = structlog.get_logger()
 
 _ACTIVE_STATUSES = frozenset({"created", "running", "paused", "pending"})
-_PROTOCOL_SCHEMA_VERSION = PROTOCOL_SCHEMA_VERSION
 _VALIDATION_MIN_PAIRED_N = 5
 
 
@@ -183,8 +189,10 @@ class ExperimentService:
                 raise ExperimentValidationError("对照实验的座位数必须与源实验一致")
             source_id = str(source["id"])
             source_protocol = source.get("protocol") or {}
-            raw_seeds = source_protocol.get("deal_seeds") or []
-            deal_seeds = [int(s) for s in raw_seeds]
+            if isinstance(source_protocol, dict):
+                deal_seeds = protocol_deal_seeds(source_protocol)
+            else:
+                deal_seeds = []
 
         if preset_deal_seeds is not None:
             deal_seeds = list(preset_deal_seeds)
@@ -230,7 +238,7 @@ class ExperimentService:
         logger.info(
             "experiment_created",
             experiment_id=experiment_id,
-            pair_deals=protocol["pair_deals"],
+            pair_deals=protocol_pair_deals(protocol),
             deal_seed_count=len(deal_seeds),
         )
         return await self.get_experiment(experiment_id, include_games=False)
@@ -281,9 +289,12 @@ class ExperimentService:
         source = await self.get_experiment(experiment_id, include_games=False)
         protocol = source.get("protocol") or {}
         deal_seeds: list[int] | None = None
-        if copy_deal_seeds:
-            deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
+        if copy_deal_seeds and isinstance(protocol, dict):
+            deal_seeds = protocol_deal_seeds(protocol)
         clone_name = (name or f"{source['name']} (copy)").strip()
+        collect_mode = (
+            protocol_collect_mode(protocol) if isinstance(protocol, dict) else "free"
+        )
         return await self.create_experiment(
             name=clone_name,
             notes=str(source.get("notes") or ""),
@@ -292,7 +303,7 @@ class ExperimentService:
             game_type=str(source["game_type"]),
             player_ids=list(source["player_ids"]),
             target_games=int(source["target_games"]),
-            collect_mode=str(protocol.get("collect_mode") or "free"),
+            collect_mode=collect_mode,
             preset_deal_seeds=deal_seeds,
         )
 
@@ -302,7 +313,7 @@ class ExperimentService:
         protocol = raw_protocol if isinstance(raw_protocol, dict) else {}
         cfg_svc = self._game_service._experiment_config_service
         players: list[dict[str, Any]] = []
-        frozen = list(protocol.get("players") or [])
+        frozen = protocol_players(protocol) if isinstance(protocol, dict) else []
         frozen_by_id = {
             str(item.get("id")): item
             for item in frozen
@@ -492,27 +503,24 @@ class ExperimentService:
         start_index = len(existing_games)
 
         now = datetime.now(tz=UTC).isoformat()
-        protocol = experiment.get("protocol")
-        if not isinstance(protocol, dict) or not protocol.get("players"):
-            raise ExperimentValidationError(
-                "实验协议缺失或不完整，请重新创建实验后再采集"
-            )
+        try:
+            protocol = validate_protocol(experiment.get("protocol"))
+        except ValueError as exc:
+            raise ExperimentValidationError(str(exc)) from exc
         protocol = deepcopy(protocol)
 
         from app.config import Settings
 
         settings = getattr(self._game_service, "_settings", None)
+        frozen_players = protocol_players(protocol)
         if isinstance(settings, Settings):
-            missing = unconfigured_providers_from_players(
-                settings, list(protocol.get("players") or [])
-            )
+            missing = unconfigured_providers_from_players(settings, frozen_players)
             if missing:
                 raise ProviderNotConfiguredError(missing)
 
-        deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
-        pair_deals = bool(protocol.get("pair_deals"))
-        collect_mode = str(protocol.get("collect_mode") or "free")
-        frozen_players = list(protocol.get("players") or [])
+        deal_seeds = protocol_deal_seeds(protocol)
+        pair_deals = protocol_pair_deals(protocol)
+        collect_mode = protocol_collect_mode(protocol)
 
         if collect_mode == "benchmark" and not pair_deals:
             try:
@@ -547,8 +555,8 @@ class ExperimentService:
             await self._game_service.start_game(game["id"], db=db)
             game_ids.append(game["id"])
 
-        protocol["deal_seeds"] = deal_seeds
-        protocol["pair_deals"] = pair_deals
+        set_protocol_deal_seeds(protocol, deal_seeds)
+        set_protocol_pair_deals(protocol, pair_deals)
         conn = await self._conn()
         try:
             repo = ExperimentRepository(conn)
@@ -1019,7 +1027,11 @@ class ExperimentService:
         seed_sets: list[set[int]] = []
         for row in rows:
             protocol = row.get("protocol") or {}
-            seeds = {int(s) for s in (protocol.get("deal_seeds") or [])}
+            seeds = (
+                set(protocol_deal_seeds(protocol))
+                if isinstance(protocol, dict)
+                else set()
+            )
             seed_sets.append(seeds)
         if not seed_sets:
             return
@@ -1094,7 +1106,11 @@ class ExperimentService:
         control_id: str | None = None
         for row in rows:
             protocol = row.get("protocol") or {}
-            src = protocol.get("source_experiment_id")
+            src = (
+                protocol_source_experiment_id(protocol)
+                if isinstance(protocol, dict)
+                else None
+            )
             if src and str(src) in by_id:
                 control_id = str(row["id"])
                 source_id = str(src)
@@ -1105,7 +1121,11 @@ class ExperimentService:
         seed_sets: list[set[int]] = []
         for row in rows:
             protocol = row.get("protocol") or {}
-            seed_sets.append({int(s) for s in (protocol.get("deal_seeds") or [])})
+            seed_sets.append(
+                set(protocol_deal_seeds(protocol))
+                if isinstance(protocol, dict)
+                else set()
+            )
         common = set.intersection(*seed_sets) if seed_sets else set()
         if not common:
             return {

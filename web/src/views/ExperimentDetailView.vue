@@ -6,6 +6,7 @@ import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   experimentStatusLabel,
+  flattenProtocol,
   isBenchmarkExperiment,
   EXPERIMENT_STATUS_VARIANT,
   type Experiment,
@@ -106,7 +107,7 @@ function configLabel(id: string): string {
 const summary = computed(() => experiment.value?.summary)
 const validation = computed(() => experiment.value?.validation ?? null)
 const nextStep = computed(() => experiment.value?.next_step ?? null)
-const protocol = computed(() => experiment.value?.protocol ?? null)
+const protocol = computed(() => flattenProtocol(experiment.value?.protocol ?? null))
 const protocolPlayers = computed(() => protocol.value?.players ?? [])
 const protocolDrift = computed(() => {
   for (const frozen of protocolPlayers.value) {

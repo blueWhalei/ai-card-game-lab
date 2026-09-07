@@ -6,10 +6,11 @@ import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   isBenchmarkExperiment,
+  flattenProtocol,
   type Experiment,
   type ExperimentCompareRow,
   type ExperimentPairedSummary,
-  type ExperimentProtocol,
+  type ExperimentProtocolRaw,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
@@ -343,19 +344,20 @@ const showLowPowerHint = computed(
     pairedSummary.value?.low_power === true,
 )
 
-function protocolFingerprintKey(p: ExperimentProtocol | null | undefined): string {
-  if (!p) return ''
-  const promptKeys = p.prompt_keys
-    ? Object.keys(p.prompt_keys)
+function protocolFingerprintKey(p: ExperimentProtocolRaw | null | undefined): string {
+  const view = flattenProtocol(p)
+  if (!view) return ''
+  const promptKeys = view.prompt_keys
+    ? Object.keys(view.prompt_keys)
         .sort()
-        .map((k) => `${k}=${p.prompt_keys[k]}`)
+        .map((k) => `${k}=${view.prompt_keys[k]}`)
         .join(',')
     : ''
   return [
-    p.game_type ?? '',
-    p.engine_version ?? '',
+    view.game_type ?? '',
+    view.engine_version ?? '',
     promptKeys,
-    String(p.decision_schema_version ?? ''),
+    String(view.decision_schema_version ?? ''),
   ].join('|')
 }
 

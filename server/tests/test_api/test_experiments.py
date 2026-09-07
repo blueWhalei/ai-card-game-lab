@@ -508,8 +508,8 @@ async def test_create_benchmark_experiment(client: AsyncClient) -> None:
         target_games=5,
     )
     protocol = created.get("protocol") or {}
-    assert protocol.get("collect_mode") == "benchmark"
-    assert len(protocol.get("deal_seeds") or []) == 5
+    assert protocol.get("dataset", {}).get("collect_mode") == "benchmark"
+    assert len(protocol.get("dataset", {}).get("deal_seeds") or []) == 5
 
 
 async def test_compare_experiments_returns_wilson_ci(client: AsyncClient) -> None:

@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, MagicMock
 import aiosqlite
 import pytest
 
+from app.core.task_protocol import set_protocol_deal_seeds
 from app.database import init_db
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.experiment_service import ExperimentService
@@ -101,20 +102,20 @@ async def test_create_freezes_player_protocol(db_path: str) -> None:
     )
     protocol = created["protocol"]
     assert protocol is not None
-    assert protocol["schema_version"] == 1
-    assert protocol["pair_deals"] is False
-    assert protocol["deal_seeds"] == []
-    assert [p["id"] for p in protocol["players"]] == ["cfg_a", "cfg_b", "cfg_c"]
-    assert protocol["players"][0]["model_config"]["temperature"] == 0.7
-    assert protocol["game_type"] == "doudizhu"
-    assert protocol["engine_version"] == "1"
+    assert protocol["schema_version"] == 2
+    assert protocol["dataset"]["pair_deals"] is False
+    assert protocol["dataset"]["deal_seeds"] == []
+    assert [p["id"] for p in protocol["solver"]["players"]] == ["cfg_a", "cfg_b", "cfg_c"]
+    assert protocol["solver"]["players"][0]["model_config"]["temperature"] == 0.7
+    assert protocol["engine"]["game_type"] == "doudizhu"
+    assert protocol["engine"]["engine_version"] == "1"
     # 2 since decision points carry ev_loss / evaluator_params.
-    assert protocol["decision_schema_version"] == 2
-    assert protocol["phases"] == ["bidding", "playing"]
-    assert protocol["prompt_keys"]["playing"] == "doudizhu_playing"
-    assert "landlord" in protocol["roles"]
-    assert "role:landlord" in protocol["eval_metric_ids"]
-    assert protocol["supports_deal_seed"] is True
+    assert protocol["engine"]["decision_schema_version"] == 2
+    assert protocol["engine"]["phases"] == ["bidding", "playing"]
+    assert protocol["engine"]["prompt_keys"]["playing"] == "doudizhu_playing"
+    assert "landlord" in protocol["engine"]["roles"]
+    assert "role:landlord" in protocol["scorer"]["eval_metric_ids"]
+    assert protocol["engine"]["supports_deal_seed"] is True
 
 
 async def test_collect_assigns_seeds_and_frozen_players(db_path: str) -> None:
@@ -149,8 +150,8 @@ async def test_collect_assigns_seeds_and_frozen_players(db_path: str) -> None:
     assert created_games[0]["deal_seed"] != created_games[1]["deal_seed"]
 
     refreshed = await service.get_experiment(exp["id"], include_games=False)
-    assert len(refreshed["protocol"]["deal_seeds"]) == 2
-    assert refreshed["protocol"]["deal_seeds"][0] == created_games[0]["deal_seed"]
+    assert len(refreshed["protocol"]["dataset"]["deal_seeds"]) == 2
+    assert refreshed["protocol"]["dataset"]["deal_seeds"][0] == created_games[0]["deal_seed"]
 
 
 async def test_control_copies_deal_seeds(db_path: str) -> None:
@@ -167,7 +168,7 @@ async def test_control_copies_deal_seeds(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         repo = ExperimentRepository(db)
         protocol = dict(source["protocol"])
-        protocol["deal_seeds"] = [111, 222, 333]
+        set_protocol_deal_seeds(protocol, [111, 222, 333])
         await repo.update_protocol(source["id"], protocol, updated_at=now)
 
     control = await service.create_experiment(
@@ -179,9 +180,9 @@ async def test_control_copies_deal_seeds(db_path: str) -> None:
         source_experiment_id=source["id"],
         pair_deals=True,
     )
-    assert control["protocol"]["pair_deals"] is True
-    assert control["protocol"]["source_experiment_id"] == source["id"]
-    assert control["protocol"]["deal_seeds"] == [111, 222, 333]
+    assert control["protocol"]["dataset"]["pair_deals"] is True
+    assert control["protocol"]["dataset"]["source_experiment_id"] == source["id"]
+    assert control["protocol"]["dataset"]["deal_seeds"] == [111, 222, 333]
 
     created_games: list[dict[str, Any]] = []
 
@@ -207,12 +208,20 @@ async def test_compare_paired_wins(db_path: str) -> None:
     players_a = '["cfg_a","cfg_b","cfg_c"]'
     players_b = '["cfg_lora","cfg_b","cfg_c"]'
     protocol_a = (
-        f'{{"schema_version":1,"deal_seeds":[10,20],"pair_deals":false,'
-        f'"players":[],"source_experiment_id":null,"frozen_at":"{now}","prompt_version":"v1"}}'
+        f'{{"schema_version":2,"frozen_at":"{now}",'
+        f'"dataset":{{"deal_seeds":[10,20],"pair_deals":false,'
+        f'"source_experiment_id":null,"collect_mode":"free"}},'
+        f'"solver":{{"players":[],"prompt_version":"v3"}},'
+        f'"scorer":{{"eval_metric_ids":[]}},'
+        f'"engine":{{"game_type":"doudizhu","engine_version":"1"}}}}'
     )
     protocol_b = (
-        f'{{"schema_version":1,"deal_seeds":[10,20],"pair_deals":true,'
-        f'"players":[],"source_experiment_id":"exp-a","frozen_at":"{now}","prompt_version":"v1"}}'
+        f'{{"schema_version":2,"frozen_at":"{now}",'
+        f'"dataset":{{"deal_seeds":[10,20],"pair_deals":true,'
+        f'"source_experiment_id":"exp-a","collect_mode":"free"}},'
+        f'"solver":{{"players":[],"prompt_version":"v3"}},'
+        f'"scorer":{{"eval_metric_ids":[]}},'
+        f'"engine":{{"game_type":"doudizhu","engine_version":"1"}}}}'
     )
     async with aiosqlite.connect(db_path) as db:
         await db.execute(
@@ -276,7 +285,7 @@ async def test_clone_preserves_deal_seeds(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         repo = ExperimentRepository(db)
         protocol = dict(source["protocol"])
-        protocol["deal_seeds"] = [100001, 100002, 100003]
+        set_protocol_deal_seeds(protocol, [100001, 100002, 100003])
         await repo.update_protocol(source["id"], protocol, updated_at=now)
 
     cloned = await service.clone_experiment(
@@ -287,8 +296,8 @@ async def test_clone_preserves_deal_seeds(db_path: str) -> None:
     )
     assert cloned["id"] != source["id"]
     assert cloned["hypothesis"] == "h1"
-    assert cloned["protocol"]["deal_seeds"] == [100001, 100002, 100003]
-    assert cloned["protocol"]["collect_mode"] == "benchmark"
+    assert cloned["protocol"]["dataset"]["deal_seeds"] == [100001, 100002, 100003]
+    assert cloned["protocol"]["dataset"]["collect_mode"] == "benchmark"
 
 
 async def test_validation_lists_control_experiments(db_path: str) -> None:
@@ -305,7 +314,7 @@ async def test_validation_lists_control_experiments(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         repo = ExperimentRepository(db)
         protocol = dict(source["protocol"])
-        protocol["deal_seeds"] = [10, 20, 30, 40, 50]
+        set_protocol_deal_seeds(protocol, [10, 20, 30, 40, 50])
         await repo.update_protocol(source["id"], protocol, updated_at=now)
 
     control = await service.create_experiment(

@@ -219,9 +219,19 @@ class SystemService:
         protocol_ok = True
         seats_ok = True
         if need_collect and experiment_id is not None:
+            from app.core.task_protocol import protocol_players, validate_protocol
+
             proto = protocol if isinstance(protocol, dict) else None
-            players = list((proto or {}).get("players") or []) if proto else []
-            protocol_ok = bool(proto) and bool(players)
+            players: list[Any] = []
+            try:
+                if proto is not None:
+                    validate_protocol(proto)
+                    players = protocol_players(proto)
+                    protocol_ok = True
+                else:
+                    protocol_ok = False
+            except ValueError:
+                protocol_ok = False
             checks.append(
                 _preflight_item(
                     "protocol",

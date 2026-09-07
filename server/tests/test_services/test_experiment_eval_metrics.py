@@ -187,24 +187,32 @@ async def test_compare_eval_fields_and_paired_landlord_win_rate(db_path: str) ->
     players = '["cfg_a","cfg_b","cfg_c"]'
     protocol_base = json.dumps(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "frozen_at": now,
-            "prompt_version": "v1",
-            "players": [],
-            "source_experiment_id": None,
-            "pair_deals": True,
-            "deal_seeds": [10, 20],
+            "dataset": {
+                "collect_mode": "free",
+                "deal_seeds": [10, 20],
+                "pair_deals": True,
+                "source_experiment_id": None,
+            },
+            "solver": {"players": [], "prompt_version": "v3"},
+            "scorer": {"eval_metric_ids": []},
+            "engine": {"game_type": "doudizhu"},
         }
     )
     protocol_ctrl = json.dumps(
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "frozen_at": now,
-            "prompt_version": "v1",
-            "players": [],
-            "source_experiment_id": "exp-base",
-            "pair_deals": True,
-            "deal_seeds": [10, 20],
+            "dataset": {
+                "collect_mode": "free",
+                "deal_seeds": [10, 20],
+                "pair_deals": True,
+                "source_experiment_id": "exp-base",
+            },
+            "solver": {"players": [], "prompt_version": "v3"},
+            "scorer": {"eval_metric_ids": []},
+            "engine": {"game_type": "doudizhu"},
         }
     )
     async with aiosqlite.connect(db_path) as db:

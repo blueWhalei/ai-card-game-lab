@@ -5,6 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.core.task_protocol import (
+    protocol_collect_mode,
+    protocol_deal_seeds,
+    protocol_players,
+)
+
 PACK_SCHEMA_VERSION = 1
 KIND_PLAYER_PACK = "cardlab.player_pack"
 KIND_EXPERIMENT_PACK = "cardlab.experiment_pack"
@@ -109,8 +115,8 @@ def build_experiment_pack(
     collect_mode = "free"
     deal_seeds: list[int] = []
     if isinstance(protocol, dict):
-        collect_mode = str(protocol.get("collect_mode") or "free")
-        deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
+        collect_mode = protocol_collect_mode(protocol)
+        deal_seeds = protocol_deal_seeds(protocol)
     return {
         "kind": KIND_EXPERIMENT_PACK,
         "schema_version": PACK_SCHEMA_VERSION,
@@ -154,7 +160,7 @@ def parse_pack(raw: Any) -> dict[str, Any]:
         protocol = raw.get("protocol") if isinstance(raw.get("protocol"), dict) else None
         players = sanitize_players(list(raw.get("players") or []))
         if not players and isinstance(protocol, dict):
-            players = sanitize_players(list(protocol.get("players") or []))
+            players = sanitize_players(protocol_players(protocol))
         if not experiment.get("name"):
             raise ValueError("experiment pack is missing a name")
         player_ids = list(experiment.get("player_ids") or [p["id"] for p in players])
@@ -162,10 +168,10 @@ def parse_pack(raw: Any) -> dict[str, Any]:
             raise ValueError("experiment pack has no player_ids")
         deal_seeds = [int(s) for s in (raw.get("deal_seeds") or [])]
         if not deal_seeds and isinstance(protocol, dict):
-            deal_seeds = [int(s) for s in (protocol.get("deal_seeds") or [])]
+            deal_seeds = protocol_deal_seeds(protocol)
         collect_mode = str(experiment.get("collect_mode") or "")
         if not collect_mode and isinstance(protocol, dict):
-            collect_mode = str(protocol.get("collect_mode") or "free")
+            collect_mode = protocol_collect_mode(protocol)
         experiment["player_ids"] = player_ids
         experiment["collect_mode"] = collect_mode or "free"
         if not players:

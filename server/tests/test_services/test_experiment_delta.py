@@ -36,7 +36,12 @@ def test_resolve_delta_peer_prefers_source_then_ready_control() -> None:
         None,
     )
     assert resolve_delta_peer(
-        {"protocol": {"source_experiment_id": "exp-base"}},
+        {
+            "protocol": {
+                "schema_version": 2,
+                "dataset": {"source_experiment_id": "exp-base"},
+            }
+        },
         {"control_progress": [{"id": "exp-other", "ready": True}]},
     ) == ("exp-base", "vs_source")
     assert resolve_delta_peer(
@@ -161,20 +166,30 @@ async def _seed_paired(db_path: str) -> None:
     players = '["cfg_a","cfg_b","cfg_c"]'
     protocol_base = json.dumps(
         {
-            "schema_version": 1,
-            "players": [],
-            "source_experiment_id": None,
-            "pair_deals": False,
-            "deal_seeds": [10, 20],
+            "schema_version": 2,
+            "dataset": {
+                "collect_mode": "free",
+                "deal_seeds": [10, 20],
+                "pair_deals": False,
+                "source_experiment_id": None,
+            },
+            "solver": {"players": [], "prompt_version": "v3"},
+            "scorer": {"eval_metric_ids": []},
+            "engine": {"game_type": "doudizhu"},
         }
     )
     protocol_ctrl = json.dumps(
         {
-            "schema_version": 1,
-            "players": [],
-            "source_experiment_id": "exp-base",
-            "pair_deals": True,
-            "deal_seeds": [10, 20],
+            "schema_version": 2,
+            "dataset": {
+                "collect_mode": "free",
+                "deal_seeds": [10, 20],
+                "pair_deals": True,
+                "source_experiment_id": "exp-base",
+            },
+            "solver": {"players": [], "prompt_version": "v3"},
+            "scorer": {"eval_metric_ids": []},
+            "engine": {"game_type": "doudizhu"},
         }
     )
     async with aiosqlite.connect(db_path) as db:

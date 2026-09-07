@@ -1,13 +1,15 @@
 """Coverage of a benchmark experiment's declared deal seeds.
 
 The product number is the declared set written at create time
-(``protocol.deal_seeds``). Extra games outside that set are counted but
+(``protocol.dataset.deal_seeds``). Extra games outside that set are counted but
 never added to the denominator.
 """
 
 from __future__ import annotations
 
 from typing import Any
+
+from app.core.task_protocol import protocol_collect_mode, protocol_deal_seeds
 
 _ACTIVE_STATUSES = frozenset({"created", "running", "paused", "pending"})
 _FAILED_STATUSES = frozenset({"failed", "cancelled", "interrupted", "error"})
@@ -21,7 +23,7 @@ def build_benchmark_coverage(
     """Return seed coverage for a benchmark run, or ``None`` otherwise."""
     if not isinstance(protocol, dict):
         return None
-    if str(protocol.get("collect_mode") or "") != "benchmark":
+    if protocol_collect_mode(protocol) != "benchmark":
         return None
 
     declared = _declared_seeds(protocol)
@@ -60,8 +62,7 @@ def build_benchmark_coverage(
 def _declared_seeds(protocol: dict[str, Any]) -> list[int]:
     seen: set[int] = set()
     ordered: list[int] = []
-    for raw in protocol.get("deal_seeds") or []:
-        seed = int(raw)
+    for seed in protocol_deal_seeds(protocol):
         if seed in seen:
             continue
         seen.add(seed)

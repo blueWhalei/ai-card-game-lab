@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { isBenchmarkExperiment, type Experiment } from '@/api/experimentApi'
+import { isBenchmarkExperiment, flattenProtocol, type Experiment } from '@/api/experimentApi'
 import { remainingBenchmarkSeeds } from '@/utils/experimentBenchmark'
 import { formatWinRate } from '@/utils/experimentWorkbench'
 import {
@@ -128,7 +128,7 @@ const controlAct = computed(() => {
   return {
     claim: t('stage.control.claim'),
     detail: t('stage.control.detail', {
-      seeds: props.experiment.protocol?.deal_seeds?.length ?? summary.value.finished_games,
+      seeds: flattenProtocol(props.experiment.protocol)?.deal_seeds?.length ?? summary.value.finished_games,
       rate: formatWinRate(summary.value.landlord_win_rate ?? 0),
     }),
     actionLabel: t('stage.control.action'),
