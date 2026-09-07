@@ -4,98 +4,61 @@ from __future__ import annotations
 
 from app.core.training.data_quality import evaluate_train_usable
 
+_PROMPT = [{"role": "user", "content": "pick an action"}]
+
 
 class TestEvaluateTrainUsable:
-    def test_valid_play_action(self) -> None:
-        chosen = {"action_type": "SINGLE", "cards": ["C3"]}
-        legal = [
-            {"action_type": "SINGLE", "cards": ["C3"]},
-            {"action_type": "PASS", "cards": []},
-        ]
+    def test_valid_action_id(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking="出最小单张",
+            action_id="SINGLE|C3|",
+            legal_action_ids=["SINGLE|C3|", "PASS||"],
+            prompt_messages=_PROMPT,
         )
         assert usable is True
         assert reason == "ok"
 
-    def test_chosen_not_in_legal(self) -> None:
-        chosen = {"action_type": "BOMB", "cards": ["C3", "D3", "H3", "S3"]}
-        legal = [{"action_type": "PASS", "cards": []}]
+    def test_action_id_not_legal(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking=None,
+            action_id="BOMB|C3 D3 H3 S3|",
+            legal_action_ids=["PASS||"],
+            prompt_messages=_PROMPT,
         )
         assert usable is False
-        assert reason == "chosen_not_in_legal_actions"
+        assert reason == "action_id_not_legal"
 
-    def test_empty_chosen(self) -> None:
+    def test_no_action_id(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action={},
-            legal_actions=[{"action_type": "PASS", "cards": []}],
-            thinking=None,
+            action_id="",
+            legal_action_ids=["PASS||"],
+            prompt_messages=_PROMPT,
         )
         assert usable is False
-        assert reason in {"empty_chosen_action", "missing_action_type"}
+        assert reason == "no_action_id"
 
-    def test_card_order_normalized(self) -> None:
-        chosen = {"action_type": "PAIR", "cards": ["D4", "C4"]}
-        legal = [{"action_type": "PAIR", "cards": ["C4", "D4"]}]
+    def test_no_prompt_recorded(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking=None,
-        )
-        assert usable is True
-        assert reason == "ok"
-
-    def test_thinking_pass_action_play(self) -> None:
-        chosen = {"action_type": "SINGLE", "cards": ["C3"]}
-        legal = [
-            {"action_type": "SINGLE", "cards": ["C3"]},
-            {"action_type": "PASS", "cards": []},
-        ]
-        usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking="选择PASS，保存实力",
+            action_id="PASS||",
+            legal_action_ids=["PASS||"],
+            prompt_messages=None,
         )
         assert usable is False
-        assert reason == "thinking_pass_action_play"
+        assert reason == "no_prompt_recorded"
 
-    def test_thinking_play_action_pass(self) -> None:
-        chosen = {"action_type": "PASS", "cards": []}
-        legal = [
-            {"action_type": "SINGLE", "cards": ["C3"]},
-            {"action_type": "PASS", "cards": []},
-        ]
+    def test_no_legal_actions(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking="决定出单张管上",
+            action_id="PASS||",
+            legal_action_ids=[],
+            prompt_messages=_PROMPT,
         )
         assert usable is False
-        assert reason == "thinking_play_action_pass"
+        assert reason == "no_legal_actions"
 
-    def test_no_thinking_is_usable(self) -> None:
-        chosen = {"action_type": "PASS", "cards": []}
-        legal = [{"action_type": "PASS", "cards": []}]
+    def test_parse_fallback_not_usable(self) -> None:
         usable, reason = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking=None,
+            action_id="PASS||",
+            legal_action_ids=["PASS||"],
+            prompt_messages=_PROMPT,
+            parse_fallback=True,
         )
-        assert usable is True
-        assert reason == "ok"
-
-    def test_type_alias_key(self) -> None:
-        chosen = {"type": "PASS", "cards": []}
-        legal = [{"type": "PASS", "cards": []}]
-        usable, _ = evaluate_train_usable(
-            chosen_action=chosen,
-            legal_actions=legal,
-            thinking="",
-        )
-        assert usable is True
+        assert usable is False
+        assert reason == "rescue_action"

@@ -37,6 +37,8 @@ class DecisionService:
         game_phase: str,
         legal_actions: list[dict[str, Any]],
         chosen_action: dict[str, Any],
+        action_id: str = "",
+        prompt_messages: list[dict[str, str]] | None = None,
         thinking: str | None = None,
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
@@ -52,9 +54,9 @@ class DecisionService:
         decision_id = generate_id("dp")
         now = datetime.now(tz=UTC).isoformat()
         train_usable, reason = evaluate_train_usable(
-            chosen_action=chosen_action,
-            legal_actions=legal_actions,
-            thinking=thinking,
+            action_id=action_id,
+            legal_action_ids=_legal_ids(legal_actions),
+            prompt_messages=prompt_messages,
             parse_fallback=parse_fallback,
         )
 
@@ -71,10 +73,13 @@ class DecisionService:
                 game_phase=game_phase,
                 legal_actions=legal_actions,
                 chosen_action=chosen_action,
+                action_id=action_id,
+                prompt_messages=prompt_messages,
                 thinking=thinking,
                 created_at=now,
                 train_usable=train_usable,
                 train_usable_reason=reason,
+                parse_fallback=parse_fallback,
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
             )
@@ -91,36 +96,6 @@ class DecisionService:
         )
 
         return decision_id
-
-    async def recompute_train_usable(self, game_id: str | None = None) -> int:
-        """Re-evaluate and persist train_usable for existing decision points."""
-        async with connect_or_reuse(self._sqlite_path) as db:
-            repo = DecisionRepository(db)
-            items = await repo.list_for_recompute(game_id=game_id)
-            updated = 0
-            for item in items:
-                usable, reason = evaluate_train_usable(
-                    chosen_action=item.get("chosen_action"),
-                    legal_actions=item.get("legal_actions"),
-                    thinking=item.get("thinking"),
-                )
-                if item.get("train_usable") != usable or item.get("train_usable_reason") != reason:
-                    await repo.update_train_usable(item["id"], usable, reason)
-                    updated += 1
-                    logger.debug(
-                        "train_usable_recomputed",
-                        decision_id=item["id"],
-                        train_usable=usable,
-                        reason=reason,
-                    )
-
-        logger.info(
-            "train_usable_recompute_done",
-            game_id=game_id,
-            scanned=len(items),
-            updated=updated,
-        )
-        return updated
 
     async def update_outcome(
         self,
@@ -338,6 +313,10 @@ class DecisionService:
         return str(filepath), len(train_items), split_meta
 
 
+def _legal_ids(legal_actions: list[dict[str, Any]]) -> list[str]:
+    return [str(entry["id"]) for entry in legal_actions if entry.get("id")]
+
+
 def _write_lines(filepath: Path, lines: list[str]) -> None:
     """Write lines to file synchronously (called via asyncio.to_thread)."""
     with filepath.open("w", encoding="utf-8") as f:
@@ -345,28 +324,22 @@ def _write_lines(filepath: Path, lines: list[str]) -> None:
 
 
 def _to_chatml(item: dict[str, Any], *, include_thinking: bool = False) -> dict[str, Any]:
-    """Convert a decision point to ChatML format."""
-    hand_str = _format_hand(item["hand_cards"])
-    opponent_str = _format_opponent_hands(item["opponent_hands"])
-    last_action_str = _format_action(item["last_action"])
-    legal_actions_str = _format_legal_actions(item["legal_actions"])
-    chosen_action_str = _format_chosen_action(item["chosen_action"])
+    """Replay one stored turn as a ChatML sample.
 
-    user_content = f"""手牌: {hand_str}
-对手剩余: {opponent_str}
-上家出牌: {last_action_str}
-游戏阶段: {item["game_phase"]}
-可选动作: {legal_actions_str}"""
-
-    assistant_content = f"{chosen_action_str}"
-    if include_thinking and item.get("thinking"):
-        assistant_content += f"\n\n原因: {item['thinking']}"
+    The prompt is the one the model actually received and the reply is the one it
+    should have produced, so a fine-tuned model is trained on the protocol it will
+    be asked to speak. Re-rendering the state here instead would be a second
+    implementation of the prompt, free to drift away from the first.
+    """
+    reply: dict[str, str] = {}
+    if include_thinking:
+        reply["thinking"] = str(item.get("thinking") or "")
+    reply["action_id"] = str(item["action_id"])
 
     return {
         "messages": [
-            {"role": "system", "content": "你是斗地主AI,根据当前状态选择最优出牌。"},
-            {"role": "user", "content": user_content},
-            {"role": "assistant", "content": assistant_content},
+            *item["prompt_messages"],
+            {"role": "assistant", "content": json.dumps(reply, ensure_ascii=False)},
         ],
         "metadata": {
             "decision_id": item["id"],
@@ -378,53 +351,3 @@ def _to_chatml(item: dict[str, Any], *, include_thinking: bool = False) -> dict[
             "ev_loss": item.get("ev_loss"),
         },
     }
-
-
-def _format_hand(hand_cards: list[int]) -> str:
-    if not hand_cards:
-        return "无"
-    return str(hand_cards)
-
-
-def _format_opponent_hands(opponent_hands: dict[str, int] | None) -> str:
-    if not opponent_hands:
-        return "未知"
-    return ", ".join(f"{k}({v}张)" for k, v in opponent_hands.items())
-
-
-def _format_action(action: dict[str, Any] | None) -> str:
-    if not action:
-        return "无"
-    action_type = action.get("action_type", action.get("type", "UNKNOWN"))
-    if action_type == "PASS":
-        return "过"
-    cards = action.get("cards", [])
-    if cards:
-        return f"{action_type} {cards}"
-    return str(action_type)
-
-
-def _format_legal_actions(actions: list[dict[str, Any]]) -> str:
-    if not actions:
-        return "无"
-    formatted = []
-    for action in actions:
-        action_type = action.get("action_type", action.get("type", "UNKNOWN"))
-        if action_type == "PASS":
-            formatted.append("过")
-        else:
-            cards = action.get("cards", [])
-            formatted.append(str(cards) if cards else str(action_type))
-    return ", ".join(formatted)
-
-
-def _format_chosen_action(action: dict[str, Any]) -> str:
-    if not action:
-        return "未知"
-    action_type = action.get("action_type", action.get("type", "UNKNOWN"))
-    if action_type == "PASS":
-        return "过"
-    cards = action.get("cards", [])
-    if cards:
-        return f"出 {cards}"
-    return str(action_type)

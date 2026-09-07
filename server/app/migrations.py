@@ -1,15 +1,21 @@
 """Numbered schema migrations tracked by ``PRAGMA user_version``.
 
-Replaces a stack of ``try: ALTER TABLE ... except OperationalError: pass``, which
-could neither tell what version a database was at nor distinguish "column already
-exists" from a read-only disk.
+``_SCHEMA_SQL`` in ``database.py`` creates a database; migrations only change one
+that already exists. The list is empty because the schema has not changed since
+it was first published: there is nothing to migrate *from*.
+
+Adding a column therefore means two edits — the column in ``_SCHEMA_SQL`` so new
+databases get it, and a migration here so existing ones do too:
+
+    async def _v1_thing(db: aiosqlite.Connection) -> None:
+        await _add_column(db, "decision_points", "thing", "TEXT")
+
+    MIGRATIONS = (Migration(1, "decision_points.thing", _v1_thing),)
+
+An index over a migration-added column belongs in the migration as well.
 
 No Alembic: a single-file, single-machine SQLite database does not earn the
 dependency.
-
-``_SCHEMA_SQL`` in ``database.py`` creates a database; migrations only change one.
-Adding a column therefore means two edits: the column in the schema (so fresh
-databases get it) and a migration (so existing ones do too).
 """
 
 from __future__ import annotations
@@ -53,73 +59,9 @@ async def _add_column(db: aiosqlite.Connection, table: str, column: str, definit
     await db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {definition}")
 
 
-async def _v1_baseline(db: aiosqlite.Connection) -> None:
-    """Columns and indexes that used to be added by best-effort ALTER statements.
+MIGRATIONS: tuple[Migration, ...] = ()
 
-    Deliberately idempotent: an existing database sits at ``user_version = 0``
-    whether or not those statements ever ran, so version 1 has to check rather
-    than assume. Fresh databases already have everything from the schema, making
-    this a no-op for them.
-    """
-    for table, column, definition in (
-        ("rounds", "total_tokens", "INTEGER"),
-        ("rounds", "all_hands", "TEXT"),
-        ("decision_points", "train_usable", "INTEGER NOT NULL DEFAULT 1"),
-        ("decision_points", "train_usable_reason", "TEXT NOT NULL DEFAULT ''"),
-        ("games", "experiment_id", "TEXT"),
-        ("training_tasks", "experiment_id", "TEXT"),
-        ("experiments", "protocol", "TEXT"),
-        ("experiments", "hypothesis", "TEXT NOT NULL DEFAULT ''"),
-        ("experiments", "conclusion", "TEXT NOT NULL DEFAULT ''"),
-        ("experiments", "tags", "TEXT NOT NULL DEFAULT '[]'"),
-    ):
-        await _add_column(db, table, column, definition)
-
-    for statement in (
-        "CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable "
-        "ON decision_points(train_usable)",
-        "CREATE INDEX IF NOT EXISTS idx_games_experiment ON games(experiment_id)",
-        "CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment ON training_tasks(experiment_id)",
-    ):
-        await db.execute(statement)
-
-
-async def _v2_ai_players_to_experiment_configs(db: aiosqlite.Connection) -> None:
-    """Fold the retired ``ai_players`` table into ``experiment_configs``."""
-    if not await _has_table(db, "ai_players"):
-        return
-    await db.execute(
-        """
-        INSERT OR IGNORE INTO experiment_configs
-            (id, name, notes, model_config, created_at, updated_at)
-        SELECT id, name, COALESCE(description, ''), model_config, created_at, updated_at
-        FROM ai_players
-        """
-    )
-    await db.execute("DROP TABLE ai_players")
-    logger.info("migrated_ai_players_to_experiment_configs")
-
-
-async def _v3_decision_ev_loss(db: aiosqlite.Connection) -> None:
-    """Per-decision EV loss, replacing the game-outcome proxy as the move signal.
-
-    Nullable on purpose: existing decision points were never evaluated, and
-    "not evaluated" has to stay distinguishable from "gave up nothing".
-    """
-    await _add_column(db, "decision_points", "ev_loss", "REAL")
-    await _add_column(db, "decision_points", "evaluator_params", "TEXT")
-    await db.execute(
-        "CREATE INDEX IF NOT EXISTS idx_decision_points_ev_loss ON decision_points(ev_loss)"
-    )
-
-
-MIGRATIONS: tuple[Migration, ...] = (
-    Migration(1, "baseline columns and indexes", _v1_baseline),
-    Migration(2, "ai_players -> experiment_configs", _v2_ai_players_to_experiment_configs),
-    Migration(3, "decision_points.ev_loss", _v3_decision_ev_loss),
-)
-
-SCHEMA_VERSION = MIGRATIONS[-1].version
+SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0
 
 
 async def get_schema_version(db: aiosqlite.Connection) -> int:

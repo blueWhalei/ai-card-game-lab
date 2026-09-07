@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Query, Response
 
 from app.dependencies import get_data_service
 from app.schemas.common import ApiResponse
-from app.schemas.data import CreateDatasetFromDecisionsRequest, CreateDatasetRequest
+from app.schemas.data import CreateDatasetFromDecisionsRequest
 from app.services.data_service import DataService
 
 router = APIRouter()
@@ -31,22 +31,12 @@ async def list_datasets(
     return ApiResponse(data=datasets)
 
 
-@router.post("/datasets", status_code=201)
-async def create_dataset(
-    body: CreateDatasetRequest,
-    service: DataService = Depends(get_data_service),
-) -> ApiResponse[dict[str, Any]]:
-    """Create a dataset from filtered game data."""
-    dataset = await service.create_dataset(body)
-    return ApiResponse(data=dataset)
-
-
 @router.post("/datasets/from-decisions", status_code=201)
 async def create_dataset_from_decisions(
     body: CreateDatasetFromDecisionsRequest,
     service: DataService = Depends(get_data_service),
 ) -> ApiResponse[dict[str, Any]]:
-    """Create a ChatML dataset from decision_points (preferred SFT path)."""
+    """Register decision points as a ChatML training dataset."""
     dataset = await service.create_dataset_from_decisions(body)
     return ApiResponse(data=dataset)
 

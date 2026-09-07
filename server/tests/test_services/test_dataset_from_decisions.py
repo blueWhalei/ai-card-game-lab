@@ -10,6 +10,13 @@ from httpx import AsyncClient
 
 from app.services.decision_service import DecisionService
 
+_PROMPT = [{"role": "user", "content": "pick an action"}]
+_LEGAL = [
+    {"id": "SINGLE|C3|", "type": "SINGLE", "cards": ["C3"]},
+    {"id": "PASS||", "type": "PASS", "cards": []},
+]
+_CHOSEN = {"id": "SINGLE|C3|", "type": "SINGLE", "cards": ["C3"]}
+
 
 @pytest.mark.asyncio
 async def test_from_decisions_empty_returns_400(client: AsyncClient) -> None:
@@ -40,8 +47,10 @@ async def test_from_decisions_creates_chatml_dataset(
         opponent_hands={"p2": 5, "p3": 5},
         last_action=None,
         game_phase="playing",
-        legal_actions=[{"type": "SINGLE", "cards": [3]}, {"type": "PASS", "cards": []}],
-        chosen_action={"type": "SINGLE", "cards": [3]},
+        legal_actions=_LEGAL,
+        chosen_action=_CHOSEN,
+        action_id="SINGLE|C3|",
+        prompt_messages=_PROMPT,
         thinking="出单张",
     )
 
@@ -84,8 +93,10 @@ async def test_from_decisions_eval_ratio_splits_by_game(
             opponent_hands={"p2": 5, "p3": 5},
             last_action=None,
             game_phase="playing",
-            legal_actions=[{"type": "SINGLE", "cards": [3]}, {"type": "PASS", "cards": []}],
-            chosen_action={"type": "SINGLE", "cards": [3]},
+            legal_actions=_LEGAL,
+            chosen_action=_CHOSEN,
+            action_id="SINGLE|C3|",
+            prompt_messages=_PROMPT,
             thinking="test",
         )
 

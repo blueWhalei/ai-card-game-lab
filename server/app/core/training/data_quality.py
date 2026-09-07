@@ -1,97 +1,37 @@
-"""Heuristics for marking decision points as usable for SFT training.
+"""Whether a decision point is a well-formed SFT sample.
 
-``quality_score`` on decision points is an end-game outcome proxy (win/lose/draw),
-not a measure of reasoning quality. Training filters should use ``train_usable``.
+This is a **structural** test, not a judgement of the move: a legal but weak play
+is still a valid sample, and whether you want it is what ``ev_loss`` is for.
 """
 
 from __future__ import annotations
 
-import re
-from typing import Any
-
-# Thinking that clearly signals PASS / skip
-_PASS_THINKING = re.compile(
-    r"(?:选择)?(?:PASS|过牌|不出|不要|过)\b|选择过|决定过|准备过",
-    re.IGNORECASE,
-)
-
-# Thinking that clearly signals playing cards (not PASS)
-_PLAY_THINKING = re.compile(
-    r"(?:出|打出|选择出|决定出).{0,12}(?:单|对|三|顺|炸|牌)|(?:不能|不该|不要)过",
-    re.IGNORECASE,
-)
-
-
-def _normalize_cards(cards: Any) -> list[str]:
-    if not cards:
-        return []
-    if not isinstance(cards, list):
-        return [str(cards)]
-    return sorted(str(c) for c in cards)
-
-
-def _action_type(action: dict[str, Any] | None) -> str:
-    if not action:
-        return ""
-    raw = action.get("action_type", action.get("type", ""))
-    return str(raw).upper().strip()
-
-
-def _actions_match(a: dict[str, Any], b: dict[str, Any]) -> bool:
-    if _action_type(a) != _action_type(b):
-        return False
-    return _normalize_cards(a.get("cards")) == _normalize_cards(b.get("cards"))
+from collections.abc import Sequence
 
 
 def evaluate_train_usable(
     *,
-    chosen_action: dict[str, Any] | None,
-    legal_actions: list[dict[str, Any]] | None,
-    thinking: str | None,
+    action_id: str | None,
+    legal_action_ids: Sequence[str] | None,
+    prompt_messages: Sequence[dict[str, str]] | None,
     parse_fallback: bool = False,
 ) -> tuple[bool, str]:
-    """Return whether a decision point is suitable for SFT and a short reason.
+    """Return whether a decision point can be trained on, and a short reason.
 
-    Rules (all must pass for usable=True):
-    1. The move did not come from a rescue fallback
-    2. chosen_action is non-empty and matches an entry in legal_actions
-    3. Light reasoning-action consistency when thinking is present
-
-    ``parse_fallback`` is the policy's own report that the model did not choose
-    this move. The thinking-prefix check below is the older, weaker version of the
-    same test and stays only for decision points written before policies reported
-    it structurally -- one reworded prefix used to silently let rescue moves into
-    the training set.
+    A sample is the prompt the model saw plus the reply it should have given, so
+    it needs all three of: a recorded prompt, an action id, and that id being one
+    the menu actually offered. ``parse_fallback`` means the model did not pick
+    this move at all -- the policy rescued the game, and a rescue is not evidence
+    about the model.
     """
     if parse_fallback:
-        return False, "llm_fallback_action"
-
-    if not chosen_action:
-        return False, "empty_chosen_action"
-
-    action_type = _action_type(chosen_action)
-    if not action_type:
-        return False, "missing_action_type"
-
-    legal = legal_actions or []
-    if not legal:
-        return False, "empty_legal_actions"
-
-    if not any(_actions_match(chosen_action, la) for la in legal):
-        return False, "chosen_not_in_legal_actions"
-
-    text = (thinking or "").strip()
-    if text.startswith("[LLM") or "使用默认动作" in text:
-        return False, "llm_fallback_action"
-
-    if text:
-        is_pass = action_type == "PASS"
-        mentions_pass = bool(_PASS_THINKING.search(text))
-        mentions_play = bool(_PLAY_THINKING.search(text))
-
-        if mentions_pass and not is_pass and not mentions_play:
-            return False, "thinking_pass_action_play"
-        if mentions_play and is_pass and not mentions_pass:
-            return False, "thinking_play_action_pass"
-
+        return False, "rescue_action"
+    if not prompt_messages:
+        return False, "no_prompt_recorded"
+    if not action_id:
+        return False, "no_action_id"
+    if not legal_action_ids:
+        return False, "no_legal_actions"
+    if action_id not in legal_action_ids:
+        return False, "action_id_not_legal"
     return True, "ok"

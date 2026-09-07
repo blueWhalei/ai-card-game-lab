@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -13,9 +11,9 @@ import structlog
 from app.database import connect_sqlite
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.stats_repo import StatsRepository
-from app.schemas.data import CreateDatasetFromDecisionsRequest, CreateDatasetRequest
+from app.schemas.data import CreateDatasetFromDecisionsRequest
 from app.services.decision_service import DecisionService
-from app.utils.exceptions import DataExportError, DatasetNotFoundError, NoExportableDataError
+from app.utils.exceptions import DatasetNotFoundError, NoExportableDataError
 from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
@@ -113,31 +111,6 @@ class DataService:
             repo = DatasetRepository(db)
             return await repo.list_all()
 
-    async def create_dataset(self, request: CreateDatasetRequest) -> dict[str, Any]:
-        """Scan JSONL game files, filter, and export a dataset."""
-        dataset_id = generate_id("ds")
-        games_dir = self._data_dir / "games"
-        datasets_dir = self._data_dir / "datasets"
-        datasets_dir.mkdir(parents=True, exist_ok=True)
-
-        output_path = datasets_dir / f"{dataset_id}.jsonl"
-        sample_count = await self._export_filtered_jsonl(
-            games_dir, output_path, request
-        )
-
-        now = datetime.now(tz=UTC).isoformat()
-        async with connect_sqlite(self._sqlite_path) as db:
-            repo = DatasetRepository(db)
-            return await repo.create({
-                "id": dataset_id,
-                "name": request.name,
-                "game_type": request.game_type,
-                "filters": request.filters.model_dump(),
-                "sample_count": sample_count,
-                "file_path": str(output_path.relative_to(self._data_dir)),
-                "created_at": now,
-            })
-
     async def create_dataset_from_decisions(
         self,
         request: CreateDatasetFromDecisionsRequest,
@@ -204,21 +177,6 @@ class DataService:
                 "created_at": now,
             })
 
-    async def _export_filtered_jsonl(
-        self,
-        games_dir: Path,
-        output_path: Path,
-        request: CreateDatasetRequest,
-    ) -> int:
-        """Filter JSONL files and write matching records. Returns sample count."""
-        try:
-            return await asyncio.to_thread(
-                _write_filtered_jsonl, games_dir, output_path, request
-            )
-        except Exception as e:
-            output_path.unlink(missing_ok=True)
-            raise DataExportError(str(e)) from e
-
     async def delete_dataset(self, dataset_id: str) -> None:
         """Delete a dataset and its file."""
         async with connect_sqlite(self._sqlite_path) as db:
@@ -232,40 +190,3 @@ class DataService:
             file_path.unlink(missing_ok=True)
             await repo.delete(dataset_id)
 
-    @staticmethod
-    def _matches_filters(record: dict[str, Any], request: CreateDatasetRequest) -> bool:
-        """Check if a JSONL record matches the dataset filters."""
-        filters = request.filters
-        if record.get("game_type") and record["game_type"] != request.game_type:
-            return False
-        ts = record.get("timestamp", "")
-        if filters.date_from and ts < filters.date_from:
-            return False
-        if filters.date_to and ts > filters.date_to:
-            return False
-        if filters.player_ids:
-            record_player = record.get("player_id", "")
-            record_players = record.get("players", [])
-            if record_player and record_player not in filters.player_ids:
-                return False
-            if record_players and not any(p in filters.player_ids for p in record_players):
-                return False
-        return True
-
-
-def _write_filtered_jsonl(
-    games_dir: Path, output_path: Path, request: CreateDatasetRequest
-) -> int:
-    """Synchronous file I/O for dataset export (called via asyncio.to_thread)."""
-    sample_count = 0
-    with output_path.open("w", encoding="utf-8") as out:
-        for jsonl_file in sorted(games_dir.rglob("*.jsonl")):
-            for line in jsonl_file.read_text(encoding="utf-8").splitlines():
-                if not line.strip():
-                    continue
-                record = json.loads(line)
-                if not DataService._matches_filters(record, request):
-                    continue
-                out.write(json.dumps(record, ensure_ascii=False) + "\n")
-                sample_count += 1
-    return sample_count

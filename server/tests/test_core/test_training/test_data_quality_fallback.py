@@ -1,23 +1,27 @@
-"""train_usable heuristics for LLM fallback paths."""
+"""train_usable heuristics for rescue / parse-fallback paths."""
 
 from app.core.training.data_quality import evaluate_train_usable
 
+_PROMPT = [{"role": "user", "content": "pick an action"}]
 
-def test_llm_call_fallback_not_train_usable() -> None:
+
+def test_parse_fallback_not_train_usable() -> None:
     usable, reason = evaluate_train_usable(
-        chosen_action={"type": "PASS", "cards": []},
-        legal_actions=[{"type": "PASS", "cards": []}],
-        thinking="[LLM调用失败，使用默认动作] timeout",
+        action_id="PASS||",
+        legal_action_ids=["PASS||"],
+        prompt_messages=_PROMPT,
+        parse_fallback=True,
     )
     assert usable is False
-    assert reason == "llm_fallback_action"
+    assert reason == "rescue_action"
 
 
-def test_llm_parse_fallback_not_train_usable() -> None:
+def test_structural_ok_without_fallback() -> None:
     usable, reason = evaluate_train_usable(
-        chosen_action={"type": "PASS", "cards": []},
-        legal_actions=[{"type": "PASS", "cards": []}],
-        thinking="[LLM解析失败，使用默认动作] garbage",
+        action_id="PASS||",
+        legal_action_ids=["PASS||"],
+        prompt_messages=_PROMPT,
+        parse_fallback=False,
     )
-    assert usable is False
-    assert reason == "llm_fallback_action"
+    assert usable is True
+    assert reason == "ok"

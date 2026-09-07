@@ -53,6 +53,7 @@ CREATE TABLE IF NOT EXISTS games (
 CREATE INDEX IF NOT EXISTS idx_games_type         ON games(game_type);
 CREATE INDEX IF NOT EXISTS idx_games_status       ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_created      ON games(created_at);
+CREATE INDEX IF NOT EXISTS idx_games_experiment   ON games(experiment_id);
 
 CREATE TABLE IF NOT EXISTS rounds (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,6 +63,7 @@ CREATE TABLE IF NOT EXISTS rounds (
     action_type      TEXT    NOT NULL,
     cards            TEXT,
     hand_snapshot    TEXT,
+    all_hands        TEXT,
     prompt           TEXT,
     raw_response     TEXT,
     prompt_tokens    INTEGER,
@@ -102,11 +104,13 @@ CREATE TABLE IF NOT EXISTS training_tasks (
     experiment_id TEXT    REFERENCES experiments(id)
 );
 
--- Prompt template versions for A/B testing and version control
+CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment ON training_tasks(experiment_id);
+
+-- Prompt template versions
 CREATE TABLE IF NOT EXISTS prompt_templates (
     id           TEXT PRIMARY KEY,
     template_key TEXT    NOT NULL,  -- e.g., 'doudizhu_playing', 'doudizhu_bidding'
-    version      TEXT    NOT NULL,  -- e.g., 'v1', 'v2'
+    version      TEXT    NOT NULL,  -- e.g. 'v3', 'v3_reasoning'
     content      TEXT    NOT NULL,  -- Full prompt template content
     is_active    INTEGER NOT NULL DEFAULT 1,
     created_at   TEXT    NOT NULL,
@@ -153,6 +157,8 @@ CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
 -- not reasoning quality. Use train_usable for SFT filtering.
 -- ev_loss is the per-decision signal: value given up versus the best evaluated
 -- candidate. NULL means not evaluated, which is not the same as 0.0 (best move).
+-- prompt_messages / action_id hold the exchange verbatim, so an SFT sample is a
+-- transcript of a real turn rather than a second rendering of one.
 CREATE TABLE IF NOT EXISTS decision_points (
     id              TEXT PRIMARY KEY,
     game_id         TEXT    NOT NULL,
@@ -164,11 +170,14 @@ CREATE TABLE IF NOT EXISTS decision_points (
     game_phase      TEXT    NOT NULL,
     legal_actions   TEXT    NOT NULL,
     chosen_action   TEXT    NOT NULL,
+    action_id       TEXT    NOT NULL DEFAULT '',
+    prompt_messages TEXT,
     thinking        TEXT,
     outcome         TEXT,
     quality_score   REAL    DEFAULT 0.5,
     train_usable    INTEGER NOT NULL DEFAULT 1,
     train_usable_reason TEXT NOT NULL DEFAULT '',
+    parse_fallback  INTEGER NOT NULL DEFAULT 0,
     ev_loss         REAL,
     evaluator_params TEXT,
     created_at      TEXT    NOT NULL
@@ -177,8 +186,8 @@ CREATE TABLE IF NOT EXISTS decision_points (
 CREATE INDEX IF NOT EXISTS idx_decision_points_game    ON decision_points(game_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_player  ON decision_points(player_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_quality ON decision_points(quality_score);
--- idx_decision_points_train_usable lives in migration 1: this script also runs
--- against pre-migration databases, where indexing a migration-added column fails.
+CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable ON decision_points(train_usable);
+CREATE INDEX IF NOT EXISTS idx_decision_points_ev_loss ON decision_points(ev_loss);
 
 CREATE TABLE IF NOT EXISTS experiment_configs (
     id            TEXT PRIMARY KEY,

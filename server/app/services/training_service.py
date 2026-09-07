@@ -18,7 +18,6 @@ import structlog
 
 from app.config import Settings
 from app.core.training.deploy import export_deploy_bundle, push_lora_to_ollama
-from app.core.training.exporter import export_sft_dataset
 from app.core.training.sft import run_sft_training
 from app.core.training.verify import (
     ollama_list_tags,
@@ -527,38 +526,18 @@ class TrainingService:
     ) -> None:
         """Background: export → train → complete."""
         try:
-            # Phase 1: Export (or use pre-built ChatML from decisions)
+            # Phase 1: the dataset is already ChatML written by the decision export.
             await self._update(task_id, "exporting", progress=0.0)
-            source_path = str(Path(self._data_dir) / dataset["file_path"])
-            filters = dataset.get("filters") or {}
-            if isinstance(filters, str):
-                try:
-                    filters = json.loads(filters)
-                except json.JSONDecodeError:
-                    filters = {}
-            is_chatml = isinstance(filters, dict) and filters.get("format") == "chatml"
-            if is_chatml:
-                sft_path = source_path
-                sample_count = int(dataset.get("sample_count") or 0)
-                if sample_count <= 0:
-                    # Count lines if DB count missing
-                    sample_count = await asyncio.to_thread(_count_jsonl_lines, sft_path)
-                logger.info(
-                    "pipeline_chatml_dataset",
-                    task_id=task_id,
-                    samples=sample_count,
-                    path=sft_path,
-                )
-            else:
-                sft_path = str(Path(self._data_dir) / "datasets" / f"{task_id}_sft.jsonl")
-                sample_count = await asyncio.to_thread(
-                    export_sft_dataset,
-                    source_path,
-                    sft_path,
-                    None,
-                    False,  # include_thinking: default off for cleaner BC data
-                )
-                logger.info("pipeline_export_done", task_id=task_id, samples=sample_count)
+            sft_path = str(Path(self._data_dir) / dataset["file_path"])
+            sample_count = int(dataset.get("sample_count") or 0)
+            if sample_count <= 0:
+                sample_count = await asyncio.to_thread(_count_jsonl_lines, sft_path)
+            logger.info(
+                "pipeline_chatml_dataset",
+                task_id=task_id,
+                samples=sample_count,
+                path=sft_path,
+            )
 
             if sample_count == 0:
                 await self._update(

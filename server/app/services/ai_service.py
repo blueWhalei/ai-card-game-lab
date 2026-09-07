@@ -19,7 +19,7 @@ import structlog
 from app.core.ai.errors import map_provider_error
 from app.core.ai.prompt import PromptBuilder
 from app.core.ai.stream_chunk import StreamChunk
-from app.core.engine.base import GameAction, GameEngine, GameState
+from app.core.engine.base import GameAction, GameEngine, GameState, LegalAction
 from app.core.policy.base import (
     ActionChosen,
     Budget,
@@ -68,7 +68,8 @@ class AIDecisionResult:
     raw_response_preview: str
     usage: dict[str, int | None]
     response_time_ms: float = 0.0
-    used_langchain_parser: bool = True
+    parser_ok: bool = True
+    prompt_version: str = ""
     tool_results: dict[str, Any] | None = None
 
 
@@ -204,7 +205,7 @@ class AIService:
             logger.error("policy_returned_no_action", player_id=player_id)
             chosen = ActionChosen(
                 action_id=presented[0].id if presented else "",
-                thinking="[策略未给出动作，使用默认动作]",
+                thinking="rescue: policy returned no action",
                 parse_fallback=True,
             )
 
@@ -226,11 +227,11 @@ class AIService:
                 state=state,
                 engine=engine,
                 player_id=player_id,
-                legal_actions=legal_actions,
+                presented=presented,
                 chosen_action=action,
-                thinking=chosen.thinking,
+                chosen=chosen,
+                prompt_messages=trace.messages,
                 game_id=game_id,
-                parse_fallback=chosen.parse_fallback,
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
@@ -243,7 +244,8 @@ class AIService:
             raw_response_preview=self._truncate_text(raw_response),
             usage=trace.usage,
             response_time_ms=response_time_ms,
-            used_langchain_parser=not chosen.parse_fallback,
+            parser_ok=not chosen.parse_fallback,
+            prompt_version=self._prompt_builder.version_for(model_cfg.get("model_name")),
             tool_results=trace.tool_results or None,
         )
 
@@ -298,13 +300,17 @@ class AIService:
         state: GameState,
         engine: GameEngine,
         player_id: str,
-        legal_actions: list[GameAction],
+        presented: list[LegalAction],
         chosen_action: GameAction,
-        thinking: str,
+        chosen: ActionChosen,
+        prompt_messages: list[dict[str, str]],
         game_id: str | None = None,
-        parse_fallback: bool = False,
     ) -> None:
         """Record a decision point for SFT training data.
+
+        The menu stored here is the one the model was shown, not the full legal
+        set: training on options that were never on screen would teach the model
+        to pick ids it will never be offered.
 
         EV loss is scored here, while the live state is still available: a stored
         decision point does not carry enough to rebuild one later.
@@ -313,13 +319,14 @@ class AIService:
             return
 
         try:
-            hand_cards = self._extract_hand_cards(state, player_id)
-            opponent_hands = self._extract_opponent_hands(state, player_id)
-            last_action = self._extract_last_action(state)
-            game_phase = self._determine_game_phase(state)
             legal_actions_data = [
-                {"action_type": str(a.action_type), "cards": a.cards or []}
-                for a in legal_actions
+                {
+                    "id": entry.id,
+                    "label": entry.label,
+                    "action_type": str(entry.action.action_type),
+                    "cards": entry.action.cards or [],
+                }
+                for entry in presented
             ]
             chosen_action_data = {
                 "action_type": str(chosen_action.action_type),
@@ -333,16 +340,18 @@ class AIService:
                 game_id=game_id,
                 round_number=getattr(state, "round", 0),
                 player_id=player_id,
-                hand_cards=hand_cards,
-                opponent_hands=opponent_hands,
-                last_action=last_action,
-                game_phase=game_phase,
+                hand_cards=self._extract_hand_cards(state, player_id),
+                opponent_hands=self._extract_opponent_hands(state, player_id),
+                last_action=self._extract_last_action(state),
+                game_phase=self._determine_game_phase(state),
                 legal_actions=legal_actions_data,
                 chosen_action=chosen_action_data,
-                thinking=thinking,
+                action_id=chosen.action_id,
+                prompt_messages=prompt_messages,
+                thinking=chosen.thinking,
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
-                parse_fallback=parse_fallback,
+                parse_fallback=chosen.parse_fallback,
             )
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)

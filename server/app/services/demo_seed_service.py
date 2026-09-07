@@ -144,9 +144,14 @@ class DemoSeedService:
             all_hands = _hands_after(spec["played"])
             hand_snapshot = all_hands.get(player_id, [])
             chosen = {"action_type": action_type, "cards": cards}
-            legal = [chosen]
+            action_id = f"{action_type}|{' '.join(cards)}|"
+            legal = [{"id": action_id, **chosen}]
             if action_type != "PASS":
-                legal.append({"action_type": "PASS", "cards": []})
+                legal.append({"id": "PASS||", "action_type": "PASS", "cards": []})
+            prompt_messages = [
+                {"role": "system", "content": "demo player"},
+                {"role": "user", "content": _demo_prompt(int(spec["round_num"]))},
+            ]
 
             collector.record_round(
                 DEMO_GAME_ID,
@@ -204,6 +209,8 @@ class DemoSeedService:
                 game_phase="playing",
                 legal_actions=legal,
                 chosen_action=chosen,
+                action_id=action_id,
+                prompt_messages=prompt_messages,
                 thinking=thinking,
                 created_at=_CREATED_AT,
                 train_usable=True,
@@ -219,7 +226,7 @@ class DemoSeedService:
                 output_data={"action": chosen, "thinking": thinking},
                 metrics={
                     "response_time_ms": 420 + int(spec["round_num"]) * 30,
-                    "used_langchain_parser": True,
+                    "parser_ok": True,
                 },
                 created_at=_CREATED_AT,
             )

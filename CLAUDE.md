@@ -179,7 +179,7 @@ GET      /api/v1/system/preflight
 ```
 
 While a collect is in flight (`summary.status=collecting`), Stop games (`cancel-collect`) is available as a ghost secondary on the stage and in the experiment detail ⋯ menu; it is not a second primary CTA. Control experiments (`pair_deals`) keep `collect_mode=free` — same-deal validation, not a benchmark coverage report.
-Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`. Player configs and experiments can be shared as JSON packs (`cardlab.player_pack` / `cardlab.experiment_pack`): packs do not include API keys; existing player ids are reused, not overwritten; import lists providers and Ollama tags that still need to be configured on this machine.
+Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/datasets/from-decisions` accept `experiment_id`. Datasets are registered only from decision points (ChatML that replays the stored prompt + `action_id` reply); there is no JSONL-from-games export path. Dataset registration accepts `eval_ratio` (0–0.5) for train/eval split by `game_id`. Player configs and experiments can be shared as JSON packs (`cardlab.player_pack` / `cardlab.experiment_pack`): packs do not include API keys; existing player ids are reused, not overwritten; import lists providers and Ollama tags that still need to be configured on this machine.
 
 ## Game observer
 

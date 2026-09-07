@@ -31,25 +31,24 @@ export interface ModelWinRate {
   win_rate: number
 }
 
+/** How a dataset was carved out of the decision points, echoed back for display. */
 export interface DatasetFilters {
-  date_from?: string | null
-  date_to?: string | null
-  player_ids?: string[] | null
-  result?: string | null
-  include_chain_of_thought?: boolean
   source?: string
   format?: string
+  train_usable?: boolean | null
   train_usable_only?: boolean
+  max_ev_loss?: number | null
   include_thinking?: boolean
   game_id?: string | null
+  experiment_id?: string | null
+  player_id?: string | null
   min_quality?: number | null
   outcome?: string | null
-}
-
-export interface CreateDatasetRequest {
-  name: string
-  game_type: string
-  filters: DatasetFilters
+  game_phase?: string | null
+  eval_ratio?: number
+  eval_sample_count?: number
+  eval_game_ids?: string[]
+  eval_file_path?: string
 }
 
 export interface CreateDatasetFromDecisionsRequest {
@@ -82,9 +81,6 @@ export const dataApi = {
     apiClient.get<never, ApiResponse<DataStats>>('/api/v1/data/stats', { params }),
 
   listDatasets: () => apiClient.get<never, ApiResponse<DatasetItem[]>>('/api/v1/datasets'),
-
-  createDataset: (data: CreateDatasetRequest) =>
-    apiClient.post<never, ApiResponse<DatasetItem>>('/api/v1/datasets', data),
 
   createDatasetFromDecisions: (data: CreateDatasetFromDecisionsRequest) =>
     apiClient.post<never, ApiResponse<DatasetItem>>('/api/v1/datasets/from-decisions', data),

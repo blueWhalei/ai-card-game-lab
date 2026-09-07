@@ -85,12 +85,13 @@ def test_export_bundle_without_merge(tmp_path: Path) -> None:
 
 
 def test_extract_action_json_variants() -> None:
-    assert _extract_action_json('{"action_type":"PASS","cards":[]}') == {
-        "action_type": "PASS",
-        "cards": [],
+    assert _extract_action_json('{"thinking":"过","action_id":"PASS||"}') == {
+        "action_id": "PASS||",
+        "thinking": "过",
     }
-    nested = _extract_action_json('note {"action":{"type":"SINGLE","cards":["C3"]}}')
-    assert nested == {"action_type": "SINGLE", "cards": ["C3"]}
+    nested = _extract_action_json('note {"thinking":"出","action_id":"SINGLE|C3|"}')
+    assert nested == {"action_id": "SINGLE|C3|", "thinking": "出"}
+    assert _extract_action_json('{"action_type":"PASS","cards":[]}') is None
     assert _extract_action_json("no json here") is None
 
 

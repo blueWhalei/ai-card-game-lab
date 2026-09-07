@@ -9,13 +9,6 @@ import aiosqlite
 
 _TRACE_EXPLAIN_SQL = """
 json_extract((
-    SELECT t.metrics FROM traces t
-    WHERE t.game_id = decision_points.game_id
-      AND t.round_number = decision_points.round_number
-      AND t.player_id = decision_points.player_id
-    ORDER BY t.created_at DESC LIMIT 1
-), '$.used_langchain_parser') AS parser_ok,
-json_extract((
     SELECT t.input_snapshot FROM traces t
     WHERE t.game_id = decision_points.game_id
       AND t.round_number = decision_points.round_number
@@ -50,10 +43,13 @@ class DecisionRepository:
         game_phase: str,
         legal_actions: list[dict[str, Any]],
         chosen_action: dict[str, Any],
+        action_id: str,
+        prompt_messages: list[dict[str, str]] | None,
         thinking: str | None,
         created_at: str,
         train_usable: bool = True,
         train_usable_reason: str = "",
+        parse_fallback: bool = False,
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
     ) -> None:
@@ -67,9 +63,10 @@ class DecisionRepository:
             INSERT INTO decision_points (
                 id, game_id, round_number, player_id, hand_cards,
                 opponent_hands, last_action, game_phase, legal_actions,
-                chosen_action, thinking, train_usable, train_usable_reason,
+                chosen_action, action_id, prompt_messages, thinking,
+                train_usable, train_usable_reason, parse_fallback,
                 ev_loss, evaluator_params, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -82,60 +79,18 @@ class DecisionRepository:
                 game_phase,
                 json.dumps(legal_actions, ensure_ascii=False),
                 json.dumps(chosen_action, ensure_ascii=False),
+                action_id,
+                json.dumps(prompt_messages, ensure_ascii=False) if prompt_messages else None,
                 thinking,
                 1 if train_usable else 0,
                 train_usable_reason,
+                1 if parse_fallback else 0,
                 ev_loss,
                 json.dumps(evaluator_params, ensure_ascii=False) if evaluator_params else None,
                 created_at,
             ),
         )
         await self._db.commit()
-
-    async def update_train_usable(
-        self,
-        decision_id: str,
-        train_usable: bool,
-        train_usable_reason: str = "",
-    ) -> None:
-        """Update train_usable flag and reason for a single decision point."""
-        await self._db.execute(
-            """
-            UPDATE decision_points
-            SET train_usable = ?, train_usable_reason = ?
-            WHERE id = ?
-            """,
-            (1 if train_usable else 0, train_usable_reason, decision_id),
-        )
-        await self._db.commit()
-
-    async def list_for_recompute(
-        self,
-        game_id: str | None = None,
-        limit: int = 10000,
-    ) -> list[dict[str, Any]]:
-        """List decision points for train_usable recomputation."""
-        if game_id:
-            cursor = await self._db.execute(
-                """
-                SELECT * FROM decision_points
-                WHERE game_id = ?
-                ORDER BY created_at ASC
-                LIMIT ?
-                """,
-                (game_id, limit),
-            )
-        else:
-            cursor = await self._db.execute(
-                """
-                SELECT * FROM decision_points
-                ORDER BY created_at ASC
-                LIMIT ?
-                """,
-                (limit,),
-            )
-        rows = await cursor.fetchall()
-        return [_row_to_dict(row) for row in rows]
 
     async def update_outcome_by_winner(
         self,
@@ -196,8 +151,8 @@ class DecisionRepository:
     ) -> tuple[list[dict[str, Any]], int]:
         """List decision points with filters and pagination.
 
-        ``max_ev_loss`` keeps unevaluated points: filtering them out would
-        silently drop every decision recorded before EV scoring existed.
+        ``max_ev_loss`` keeps unevaluated points (``ev_loss IS NULL``): those moves
+        were never scored, which is not the same as a loss of zero.
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -484,12 +439,12 @@ def _parse_json_object(raw: Any) -> dict[str, Any] | None:
 
 
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
-    """Convert a decision_points row to a dictionary with JSON fields parsed."""
+    """Convert a decision_points row to a dictionary with JSON fields parsed.
+
+    The tool columns are optional because only the detail queries join the trace
+    that carries them; every ``decision_points`` column is always present.
+    """
     keys = set(row.keys())
-    train_usable_raw = row["train_usable"] if "train_usable" in keys else 1
-    parser_ok: bool | None = None
-    if "parser_ok" in keys and row["parser_ok"] is not None:
-        parser_ok = bool(int(row["parser_ok"]))
     return {
         "id": row["id"],
         "game_id": row["game_id"],
@@ -501,19 +456,18 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "game_phase": row["game_phase"],
         "legal_actions": json.loads(row["legal_actions"]) if row["legal_actions"] else [],
         "chosen_action": json.loads(row["chosen_action"]) if row["chosen_action"] else {},
+        "action_id": row["action_id"],
+        "prompt_messages": json.loads(row["prompt_messages"]) if row["prompt_messages"] else None,
         "thinking": row["thinking"],
         "outcome": row["outcome"],
         "quality_score": row["quality_score"],
-        "train_usable": bool(train_usable_raw),
-        "train_usable_reason": row["train_usable_reason"]
-        if "train_usable_reason" in keys
-        else "",
-        "ev_loss": row["ev_loss"] if "ev_loss" in keys else None,
-        "evaluator_params": _parse_json_object(
-            row["evaluator_params"] if "evaluator_params" in keys else None
-        ),
+        "train_usable": bool(row["train_usable"]),
+        "train_usable_reason": row["train_usable_reason"],
+        "parse_fallback": bool(row["parse_fallback"]),
+        "parser_ok": not row["parse_fallback"],
+        "ev_loss": row["ev_loss"],
+        "evaluator_params": _parse_json_object(row["evaluator_params"]),
         "created_at": row["created_at"],
-        "parser_ok": parser_ok,
         "win_probability": _parse_json_object(
             row["win_probability_json"] if "win_probability_json" in keys else None
         ),

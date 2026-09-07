@@ -1,7 +1,7 @@
 import { ref } from 'vue'
 import { defineStore } from 'pinia'
 import { dataApi } from '@/api/dataApi'
-import type { DataStats, DatasetItem, CreateDatasetRequest } from '@/api/dataApi'
+import type { DataStats, DatasetItem } from '@/api/dataApi'
 
 export const useDataStore = defineStore('data', () => {
   const stats = ref<DataStats | null>(null)
@@ -50,12 +50,6 @@ export const useDataStore = defineStore('data', () => {
     await fetchDatasets()
   }
 
-  async function createDataset(request: CreateDatasetRequest): Promise<DatasetItem> {
-    const res = await dataApi.createDataset(request)
-    await fetchDatasets()
-    return res.data
-  }
-
   async function deleteDataset(id: string): Promise<void> {
     await dataApi.deleteDataset(id)
     await fetchDatasets()
@@ -70,7 +64,6 @@ export const useDataStore = defineStore('data', () => {
     fetchStatsOnce,
     fetchDatasets,
     fetchDatasetsOnce,
-    createDataset,
     deleteDataset,
   }
 })

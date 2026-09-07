@@ -1,32 +1,19 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
 import { useDataStore } from '@/stores/useDataStore'
-import type { CreateDatasetRequest, DatasetItem } from '@/api/dataApi'
-import { systemApi } from '@/api/systemApi'
+import type { DatasetItem } from '@/api/dataApi'
 import { showApiError } from '@/utils/error'
 import { formatDateTime } from '@/utils/format'
-import { gameTypeLabel } from '@/utils/constants'
-import { defaultEngineId, type EngineInfo } from '@/utils/engineSlots'
 import UiButton from '@/components/ui/Button.vue'
-import UiDialog from '@/components/ui/Dialog.vue'
-import UiInput from '@/components/ui/Input.vue'
-import UiSelect from '@/components/ui/Select.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiTable from '@/components/ui/Table.vue'
 import type { TableColumn } from '@/components/ui/Table.vue'
 
 const { t } = useI18n()
 const store = useDataStore()
-const showCreate = ref(false)
-const engines = ref<EngineInfo[]>([])
-const form = ref<CreateDatasetRequest>({
-  name: '',
-  game_type: '',
-  filters: {},
-})
 
 const columns = computed(
   (): TableColumn<DatasetItem>[] => [
@@ -37,47 +24,13 @@ const columns = computed(
   ],
 )
 
-const gameTypeOptions = computed(() =>
-  engines.value.map((e) => ({
-    label: gameTypeLabel(e.id),
-    value: e.id,
-  })),
-)
-
 onMounted(async () => {
   try {
-    const [, engineRes] = await Promise.all([
-      store.fetchDatasetsOnce(),
-      systemApi.listEngines().catch(() => null),
-    ])
-    engines.value = engineRes?.data ?? []
-    form.value.game_type = defaultEngineId(engines.value)
+    await store.fetchDatasetsOnce()
   } catch (e: unknown) {
     showApiError(e, t('data.loadDatasetsFailed'))
   }
 })
-
-async function handleCreate() {
-  if (!form.value.name.trim()) {
-    toast.warning(t('data.needDatasetName'))
-    return
-  }
-  try {
-    await store.createDataset({
-      ...form.value,
-      name: form.value.name.trim(),
-    })
-    toast.success(t('data.datasetCreated'))
-    showCreate.value = false
-    form.value = {
-      name: '',
-      game_type: defaultEngineId(engines.value),
-      filters: {},
-    }
-  } catch (e: unknown) {
-    showApiError(e, t('error.createFailed'))
-  }
-}
 
 async function handleDelete(id: string) {
   const ok = await confirmDialog({
@@ -98,9 +51,9 @@ async function handleDelete(id: string) {
 <template>
   <div class="relative ink-card">
     <UiSpinner v-if="store.datasetsLoading" overlay :label="t('common.loading')" />
-    <div class="mb-4 flex items-center justify-between">
+    <div class="mb-4 space-y-1">
       <h3 class="text-base font-semibold text-ink-text">{{ t('data.datasets') }}</h3>
-      <UiButton @click="showCreate = true">{{ t('data.createDataset') }}</UiButton>
+      <p class="text-caption text-ink-text-muted">{{ t('data.datasetsFromDecisions') }}</p>
     </div>
 
     <UiTable :columns="columns" :rows="store.datasets" row-key="id">
@@ -108,26 +61,5 @@ async function handleDelete(id: string) {
         <UiButton size="sm" variant="danger" @click="handleDelete(row.id)">{{ t('common.delete') }}</UiButton>
       </template>
     </UiTable>
-
-    <UiDialog
-      :open="showCreate"
-      :title="t('data.createDataset')"
-      @update:open="(v) => (showCreate = v)"
-    >
-      <div class="space-y-4">
-        <label class="block space-y-1">
-          <span class="ink-label">{{ t('data.colName') }}</span>
-          <UiInput v-model="form.name" :placeholder="t('data.namePh')" />
-        </label>
-        <label class="block space-y-1">
-          <span class="ink-label">{{ t('data.gameType') }}</span>
-          <UiSelect v-model="form.game_type" :options="gameTypeOptions" />
-        </label>
-      </div>
-      <template #footer>
-        <UiButton variant="secondary" @click="showCreate = false">{{ t('common.cancel') }}</UiButton>
-        <UiButton @click="handleCreate">{{ t('common.create') }}</UiButton>
-      </template>
-    </UiDialog>
   </div>
 </template>

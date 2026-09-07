@@ -11,6 +11,11 @@ from app.database import connect_or_reuse, init_db
 from app.repositories.trace_repo import TraceRepository
 from app.services.decision_service import DecisionService
 
+_PROMPT = [
+    {"role": "system", "content": "you are a player"},
+    {"role": "user", "content": "pick an action"},
+]
+
 
 @pytest.fixture
 async def decision_service(tmp_path: Path) -> DecisionService:
@@ -24,15 +29,20 @@ async def _create_sample(
     service: DecisionService,
     *,
     game_id: str = "game-1",
-    chosen: dict | None = None,
+    action_id: str = "SINGLE|C3|",
     legal: list[dict] | None = None,
     thinking: str | None = "出最小单张",
+    prompt_messages: list[dict[str, str]] | None = _PROMPT,
+    parse_fallback: bool = False,
 ) -> str:
-    chosen_action = chosen or {"action_type": "SINGLE", "cards": ["C3"]}
     legal_actions = legal or [
-        {"action_type": "SINGLE", "cards": ["C3"]},
-        {"action_type": "PASS", "cards": []},
+        {"id": "SINGLE|C3|", "action_type": "SINGLE", "cards": ["C3"]},
+        {"id": "PASS||", "action_type": "PASS", "cards": []},
     ]
+    chosen = next(
+        (entry for entry in legal_actions if entry.get("id") == action_id),
+        {"id": action_id, "action_type": "UNKNOWN", "cards": []},
+    )
     return await service.create_decision_point(
         game_id=game_id,
         round_number=1,
@@ -42,8 +52,11 @@ async def _create_sample(
         last_action=None,
         game_phase="playing",
         legal_actions=legal_actions,
-        chosen_action=chosen_action,
+        chosen_action=chosen,
+        action_id=action_id,
+        prompt_messages=prompt_messages,
         thinking=thinking,
+        parse_fallback=parse_fallback,
     )
 
 
@@ -79,14 +92,14 @@ class TestDecisionServiceCreate:
     async def test_illegal_action_not_usable(self, decision_service: DecisionService) -> None:
         dp_id = await _create_sample(
             decision_service,
-            chosen={"action_type": "BOMB", "cards": ["C3", "D3", "H3", "S3"]},
-            legal=[{"action_type": "PASS", "cards": []}],
+            action_id="BOMB|C3 D3 H3 S3|",
+            legal=[{"id": "PASS||", "action_type": "PASS", "cards": []}],
             thinking=None,
         )
         item = await decision_service.get_decision_point(dp_id)
         assert item is not None
         assert item["train_usable"] is False
-        assert item["train_usable_reason"] == "chosen_not_in_legal_actions"
+        assert item["train_usable_reason"] == "action_id_not_legal"
 
     @pytest.mark.asyncio
     async def test_legal_action_usable(self, decision_service: DecisionService) -> None:
@@ -100,27 +113,12 @@ class TestDecisionServiceCreate:
     async def test_stats_reason_counts(self, decision_service: DecisionService) -> None:
         await _create_sample(
             decision_service,
-            chosen={"action_type": "BOMB", "cards": ["C3", "D3", "H3", "S3"]},
-            legal=[{"action_type": "PASS", "cards": []}],
+            action_id="BOMB|C3 D3 H3 S3|",
+            legal=[{"id": "PASS||", "action_type": "PASS", "cards": []}],
         )
         stats = await decision_service.get_stats()
         assert stats["not_usable_count"] == 1
-        assert stats["not_usable_reason_counts"]["chosen_not_in_legal_actions"] == 1
-
-    @pytest.mark.asyncio
-    async def test_recompute_backfills_reason(self, decision_service: DecisionService) -> None:
-        dp_id = await _create_sample(decision_service, thinking=None)
-        async with connect_or_reuse(decision_service._sqlite_path) as db:
-            await db.execute(
-                "UPDATE decision_points SET train_usable_reason = '' WHERE id = ?",
-                (dp_id,),
-            )
-            await db.commit()
-        updated = await decision_service.recompute_train_usable()
-        assert updated >= 1
-        item = await decision_service.get_decision_point(dp_id)
-        assert item is not None
-        assert item["train_usable_reason"] == "ok"
+        assert stats["not_usable_reason_counts"]["action_id_not_legal"] == 1
 
 
 class TestDecisionServiceExport:
@@ -139,9 +137,9 @@ class TestDecisionServiceExport:
         assert path
         line = Path(path).read_text(encoding="utf-8").strip()
         sample = json.loads(line)
-        assistant = sample["messages"][2]["content"]
-        assert "原因:" not in assistant
-        assert "出" in assistant or "C3" in assistant
+        assistant = json.loads(sample["messages"][-1]["content"])
+        assert "thinking" not in assistant
+        assert assistant["action_id"] == "SINGLE|C3|"
 
     @pytest.mark.asyncio
     async def test_export_includes_thinking_when_enabled(
@@ -151,7 +149,9 @@ class TestDecisionServiceExport:
         path, count, _ = await decision_service.export_chatml(include_thinking=True)
         assert count == 1
         sample = json.loads(Path(path).read_text(encoding="utf-8").strip())
-        assert "原因: 地主剩3张需管牌" in sample["messages"][2]["content"]
+        assistant = json.loads(sample["messages"][-1]["content"])
+        assert assistant["thinking"] == "地主剩3张需管牌"
+        assert assistant["action_id"] == "SINGLE|C3|"
 
     @pytest.mark.asyncio
     async def test_export_train_usable_only_filters(
@@ -161,8 +161,8 @@ class TestDecisionServiceExport:
         await _create_sample(
             decision_service,
             game_id="game-2",
-            chosen={"action_type": "BOMB", "cards": ["C3"]},
-            legal=[{"action_type": "PASS", "cards": []}],
+            action_id="BOMB|C3|",
+            legal=[{"id": "PASS||", "action_type": "PASS", "cards": []}],
             thinking=None,
         )
         path, count, _ = await decision_service.export_chatml(train_usable_only=True)
@@ -237,7 +237,7 @@ class TestDecisionExplainAttach:
     async def test_list_includes_parser_and_win_probability(
         self, decision_service: DecisionService
     ) -> None:
-        await _create_sample(decision_service)
+        await _create_sample(decision_service, parse_fallback=True)
         async with connect_or_reuse(decision_service._sqlite_path) as db:
             traces = TraceRepository(db)
             await traces.create_trace(
@@ -246,7 +246,7 @@ class TestDecisionExplainAttach:
                 round_number=1,
                 player_id="p1",
                 model="m",
-                prompt_version="v1",
+                prompt_version="v3",
                 input_snapshot={
                     "win_probability": {
                         "probability": 0.62,
@@ -260,11 +260,12 @@ class TestDecisionExplainAttach:
                     },
                 },
                 output_data={},
-                metrics={"used_langchain_parser": 0},
+                metrics={"parser_ok": 0},
                 created_at="2026-09-03T00:00:00+00:00",
             )
         points, total = await decision_service.list_decision_points(game_id="game-1")
         assert total == 1
         assert points[0]["parser_ok"] is False
+        assert points[0]["parse_fallback"] is True
         assert points[0]["win_probability"]["probability"] == 0.62
         assert points[0]["hand_analysis"]["bomb_count"] == 1

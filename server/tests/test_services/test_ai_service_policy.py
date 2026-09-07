@@ -85,7 +85,7 @@ async def test_a_chosen_id_becomes_an_applicable_action(engine: DoudizhuEngine) 
         legal_actions=legal,
     )
 
-    assert result.used_langchain_parser is True
+    assert result.parser_ok is True
     assert result.thinking == "叫3分"
     assert result.usage["total_tokens"] == 10
     assert result.messages, "the prompt has to reach the observer payload"
@@ -142,18 +142,18 @@ async def test_a_rescued_move_is_reported_as_a_parse_failure(engine: DoudizhuEng
         legal_actions=legal,
     )
 
-    assert result.used_langchain_parser is False
+    assert result.parser_ok is False
     engine.apply_action(state, result.action)
 
 
 def test_a_rescued_move_is_never_training_data() -> None:
     """The structural signal decides, not the wording of the thinking text."""
     usable, reason = evaluate_train_usable(
-        chosen_action={"action_type": "PASS", "cards": []},
-        legal_actions=[{"action_type": "PASS", "cards": []}],
-        thinking="看起来完全正常的一段思考",
+        action_id="PASS||",
+        legal_action_ids=["PASS||"],
+        prompt_messages=[{"role": "user", "content": "pick"}],
         parse_fallback=True,
     )
 
     assert usable is False
-    assert reason == "llm_fallback_action"
+    assert reason == "rescue_action"

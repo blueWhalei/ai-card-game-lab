@@ -29,8 +29,9 @@ from app.utils.exceptions import (
 logger = structlog.get_logger()
 
 _DEFAULT_SYSTEM = (
-    "你是一个 AI 卡牌游戏玩家。根据当前局面选择最佳动作，"
-    '按照 JSON 格式输出：{"action": {"type": "...", "cards": [...]}}'
+    "你是一个 AI 卡牌游戏玩家。根据当前局面从可选动作里选一个，"
+    '把它的 id 原样填进 action_id，按 JSON 输出：'
+    '{"thinking":"...","action_id":"..."}'
 )
 
 GGUF_CONVERT_TIMEOUT_S = 1800
