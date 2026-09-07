@@ -181,7 +181,8 @@ class GameService:
 | 模块 | 职责 |
 |------|------|
 | `config.py` | Pydantic Settings 配置管理，从环境变量与项目根目录 `.env` 加载 |
-| `database.py` | SQLite 连接管理（aiosqlite），提供 request-scope 与后台任务统一入口 |
+| `database.py` | SQLite 连接管理（aiosqlite），提供 request-scope 与后台任务统一入口；`_SCHEMA_SQL` 负责建库 |
+| `migrations.py` | `PRAGMA user_version` + 编号迁移列表，负责改库；库版本高于程序时拒绝启动 |
 | `dependencies.py` | FastAPI 依赖注入容器 |
 | `exceptions.py` | 统一异常体系（包含细粒度 AI 错误码） |
 | `logger.py` | 结构化日志（structlog） |
@@ -548,6 +549,12 @@ class ConnectionManager:
 ## 9. 数据库设计（SQLite）
 
 权威 schema 以 `server/app/database.py` 为准。
+
+**改动 schema 的规则**：`_SCHEMA_SQL`（`CREATE TABLE IF NOT EXISTS`）只负责建新库，
+`app/migrations.py` 的编号迁移只负责改已有库，版本号记在 `PRAGMA user_version`。
+新增一列要同时改两处：`_SCHEMA_SQL` 的列定义（新库直接建全）+ 一条新迁移（老库补上）。
+索引若引用迁移新增的列，必须写在迁移里而不是 `_SCHEMA_SQL`——建库脚本也会对老库执行，
+那时列还不存在。库版本高于程序支持的版本时抛 `SchemaVersionError` 拒绝启动，不做静默降级。
 
 ### 9.0 experiments 表
 

@@ -8,6 +8,8 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
+from app.migrations import migrate
+
 _bound_connection: ContextVar[aiosqlite.Connection | None] = ContextVar(
     "bound_sqlite_connection",
     default=None,
@@ -171,7 +173,8 @@ CREATE TABLE IF NOT EXISTS decision_points (
 CREATE INDEX IF NOT EXISTS idx_decision_points_game    ON decision_points(game_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_player  ON decision_points(player_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_quality ON decision_points(quality_score);
-CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable ON decision_points(train_usable);
+-- idx_decision_points_train_usable lives in migration 1: this script also runs
+-- against pre-migration databases, where indexing a migration-added column fails.
 
 CREATE TABLE IF NOT EXISTS experiment_configs (
     id            TEXT PRIMARY KEY,
@@ -184,96 +187,17 @@ CREATE TABLE IF NOT EXISTS experiment_configs (
 """
 
 
-async def _migrate_ai_players_to_experiment_configs(db: aiosqlite.Connection) -> None:
-    cur = await db.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='ai_players'"
-    )
-    if not await cur.fetchone():
-        return
-    await db.execute(
-        """
-        INSERT OR IGNORE INTO experiment_configs (id, name, notes, model_config, created_at, updated_at)
-        SELECT id, name, COALESCE(description, ''), model_config, created_at, updated_at
-        FROM ai_players
-        """
-    )
-    await db.execute("DROP TABLE ai_players")
-    await db.commit()
-    logger.info("migrated_ai_players_to_experiment_configs")
-
-
 async def init_db(sqlite_path: str) -> None:
-    """Create database file and apply schema."""
+    """Create the database file, apply the schema, then run pending migrations."""
     db_dir = Path(sqlite_path).parent
     db_dir.mkdir(parents=True, exist_ok=True)
 
     async with connect_sqlite(sqlite_path) as db:
         await db.executescript(_SCHEMA_SQL)
-        try:
-            await db.execute("ALTER TABLE rounds ADD COLUMN total_tokens INTEGER")
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute("ALTER TABLE rounds ADD COLUMN all_hands TEXT")
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute(
-                "ALTER TABLE decision_points ADD COLUMN train_usable INTEGER NOT NULL DEFAULT 1"
-            )
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable "
-                "ON decision_points(train_usable)"
-            )
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute("ALTER TABLE games ADD COLUMN experiment_id TEXT")
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_games_experiment ON games(experiment_id)"
-            )
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute("ALTER TABLE training_tasks ADD COLUMN experiment_id TEXT")
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute(
-                "CREATE INDEX IF NOT EXISTS idx_training_tasks_experiment "
-                "ON training_tasks(experiment_id)"
-            )
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute(
-                "ALTER TABLE decision_points ADD COLUMN train_usable_reason TEXT NOT NULL DEFAULT ''"
-            )
-        except aiosqlite.OperationalError:
-            pass
-        try:
-            await db.execute("ALTER TABLE experiments ADD COLUMN protocol TEXT")
-        except aiosqlite.OperationalError:
-            pass
-        for col, ddl in (
-            ("hypothesis", "ALTER TABLE experiments ADD COLUMN hypothesis TEXT NOT NULL DEFAULT ''"),
-            ("conclusion", "ALTER TABLE experiments ADD COLUMN conclusion TEXT NOT NULL DEFAULT ''"),
-            ("tags", "ALTER TABLE experiments ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'"),
-        ):
-            try:
-                await db.execute(ddl)
-            except aiosqlite.OperationalError:
-                pass
-        await _migrate_ai_players_to_experiment_configs(db)
         await db.commit()
+        version = await migrate(db)
 
-    logger.info("database_initialized", path=sqlite_path)
+    logger.info("database_initialized", path=sqlite_path, schema_version=version)
 
 
 async def apply_connection_pragmas(db: aiosqlite.Connection) -> None:

@@ -203,7 +203,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - 前端组件测试：把 `CLAUDE.md` 中的产品规则（"不出现 `14/10`"、"Δ 不上色"）变成对
   `ExperimentStage` / `StageVerdict` 的可执行断言
 - Playwright 冒烟：启动 → load demo → 详情 → 看到 verdict
-- 数据库迁移：`PRAGMA user_version` + 编号迁移列表，替代 try/except `ALTER TABLE`
+- ~~数据库迁移：`PRAGMA user_version` + 编号迁移列表，替代 try/except `ALTER TABLE`~~
+  ✅ 已完成（`app/migrations.py`，设计见 `docs/designs/step3-schema-migrations.md`）
 - 统一换行符：`git add --renormalize .`
 - 安全：仅监听 localhost；任何 API 不回显 `.env` 中的 key（Settings 只返回 `configured: true`）
 - 大批未提交改动按功能拆成多个 conventional commits
@@ -220,6 +221,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 0 | 引擎四项新能力（§9.1）+ `Observation` / action id 规范化 —— **已完成 2026-09-06**，设计见 `docs/designs/step0-engine-foundation.md` | 一切抽象的地基；不先做这步，Policy 会绑死在斗地主上 |
 | 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **1a 已完成 2026-09-06**（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b（`LLMPolicy`，`AIService` 退化为事件消费者）与 1c（structured output）待做。设计见 `docs/designs/step1-policy-layer.md` | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
 | 2 | rollout 评估器 → 决策级 EV loss —— **core 部分已完成 2026-09-06**（`core/eval/`，含 determinization 与 common random numbers）；接线到决策点 / SFT 过滤 / highlights 待做（需 `decision_schema_version` 升级）。设计见 `docs/designs/step2-rollout-evaluator.md` | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
+| — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`），设计见 `docs/designs/step3-schema-migrations.md` | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
@@ -294,7 +296,7 @@ Policy.decide(observation: Observation,
 | protocol 新增 `policy`（kind、参数、budget、prompt hash、memory 模式）、`evaluator` 段 | `experiments.protocol` | `schema_version: 1 → 2`；旧版本在 collect 时拒绝，不静默迁移（沿用现规则） |
 | 决策点新增 `policy_kind`、`tool_calls`、`ev_loss`、`evaluator_params` | `decision_points`（JSON 字段） | `decision_schema_version` 升级 |
 | LLM 请求/响应录制 | 新表或 JSONL，按 §8 匹配键索引 | 独立 |
-| 迁移机制 | `PRAGMA user_version` + 编号迁移列表（§5） | 先于以上任一变更落地 |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号迁移列表 | 已落地，`SCHEMA_VERSION = 2` |
 
 ### 9.5 分层与目录
 

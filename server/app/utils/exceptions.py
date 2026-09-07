@@ -20,6 +20,27 @@ class AppError(Exception):
         self.status_code = status_code
 
 
+# ── Database ──────────────────────────────────────────
+
+
+class SchemaVersionError(AppError):
+    """Raised when the database was written by a newer build of the app.
+
+    Running an older build against a newer schema silently corrupts data, so we
+    refuse to start instead.
+    """
+
+    def __init__(self, found: int, supported: int) -> None:
+        super().__init__(
+            message=(
+                f"Database schema version {found} is newer than this build "
+                f"supports ({supported}). Upgrade the app or restore a backup."
+            ),
+            code="SCHEMA_VERSION_UNSUPPORTED",
+            status_code=500,
+        )
+
+
 # ── Game ──────────────────────────────────────────────
 
 
