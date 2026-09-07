@@ -29,13 +29,23 @@ class ToolSpec:
         description: Shown to the model; explains when the tool helps.
         parameters: JSON Schema for the arguments object.
         handler: Runs the tool. Must return a JSON-safe dict and must not mutate
-            the observation.
+            the observation. A ``text`` key, when present, is the one-line human
+            rendering a policy injects into its prompt; everything else is
+            structured detail for traces and the UI.
+        phases: Phases this tool applies to. Empty means every phase. Declaring it
+            here is what keeps phase names out of ``core/policy``: a win-rate
+            estimate is meaningless before roles exist, and only the engine knows
+            that.
     """
 
     name: str
     description: str
     handler: ToolHandler
     parameters: dict[str, Any] = field(default_factory=_empty_schema)
+    phases: tuple[str, ...] = ()
+
+    def applies_to(self, phase: str) -> bool:
+        return not self.phases or phase in self.phases
 
     def to_public_dict(self) -> dict[str, Any]:
         """JSON-safe view (the handler is not serializable)."""
@@ -43,4 +53,5 @@ class ToolSpec:
             "name": self.name,
             "description": self.description,
             "parameters": dict(self.parameters),
+            "phases": list(self.phases),
         }

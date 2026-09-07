@@ -177,30 +177,6 @@ class DoudizhuEngine(GameEngine):
 
         return sorted(actions, key=sort_key, reverse=True)
 
-    def format_legal_actions_for_prompt(
-        self, state: GameState, actions: list[GameAction]
-    ) -> str:
-        if not actions:
-            return "无可选动作"
-
-        ordered = self.order_legal_actions(state, actions)
-        lines: list[str] = []
-        seen: set[str] = set()
-        for a in ordered:
-            action_id = self.action_id(a)
-            if action_id in seen:
-                continue
-            seen.add(action_id)
-            lines.append(f"{len(lines) + 1}. {self.action_label(state, a)}")
-
-            if len(lines) >= 80:
-                remaining = len(ordered) - len(seen)
-                if remaining > 0:
-                    lines.append(f"...还有 {remaining} 个可选动作未列出")
-                break
-
-        return "\n".join(lines)
-
     def initialize(self, player_ids: list[str], **params: Any) -> DoudizhuState:
         if not (self.min_players <= len(player_ids) <= self.max_players):
             raise InvalidActionError(

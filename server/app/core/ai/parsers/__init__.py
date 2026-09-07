@@ -1,10 +1,9 @@
-"""LangChain-based output parsers for AI game decisions.
+"""Parsers turning a model reply into a decision."""
 
-This module provides structured output parsing using LangChain's
-PydanticOutputParser to ensure consistent, validated AI responses.
-"""
+from app.core.ai.parsers.action_id_parser import (
+    ActionIdParser,
+    ParsedDecision,
+    response_format,
+)
 
-from app.core.ai.parsers.action_parser import ActionOutputParser
-from app.core.ai.parsers.bid_parser import BidOutputParser
-
-__all__ = ["ActionOutputParser", "BidOutputParser"]
+__all__ = ["ActionIdParser", "ParsedDecision", "response_format"]

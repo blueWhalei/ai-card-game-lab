@@ -21,6 +21,9 @@ Deterministic and human-readable (not a hash) so it can be embedded in prompts,
 JSON Schema ``enum`` values, JSONL archives, and puzzle definitions.
 """
 
+MAX_PRESENTED_ACTIONS = 80
+"""How many legal actions a prompt may list. Beyond this the menu stops being read."""
+
 
 @dataclass(frozen=True)
 class LegalAction:
@@ -259,6 +262,45 @@ class GameEngine(ABC):
             )
         return result
 
+    def present_legal_actions(
+        self, state: GameState, player_id: str, limit: int = MAX_PRESENTED_ACTIONS
+    ) -> tuple[list[LegalAction], int]:
+        """The subset of legal actions to show a model, plus how many were dropped.
+
+        A late-game Dou Dizhu hand can have several hundred legal plays, more than
+        fits in a prompt. Truncating the presentation order would cut whole
+        categories from the tail -- ``PASS`` sorts last, so a big hand would be
+        offered a menu with no way to pass. Round-robin over action types instead:
+        every category survives, and the strongest of each comes first.
+
+        Returns:
+            ``(presented, omitted_count)``. ``presented`` keeps presentation order.
+        """
+        legal = self.legal_actions(state, player_id)
+        if len(legal) <= limit:
+            return legal, 0
+
+        groups: dict[str, list[LegalAction]] = {}
+        for entry in legal:
+            groups.setdefault(str(entry.action.action_type), []).append(entry)
+
+        picked: set[ActionId] = set()
+        while len(picked) < limit:
+            added = False
+            for bucket in groups.values():
+                if len(picked) >= limit:
+                    break
+                for entry in bucket:
+                    if entry.id not in picked:
+                        picked.add(entry.id)
+                        added = True
+                        break
+            if not added:
+                break
+
+        presented = [entry for entry in legal if entry.id in picked]
+        return presented, len(legal) - len(presented)
+
     def resolve_action(
         self, state: GameState, player_id: str, action_id: ActionId
     ) -> GameAction:
@@ -323,6 +365,18 @@ class GameEngine(ABC):
         del observation, legal_actions
         return None
 
+    def tool_names(self, phase: str | None = None) -> list[str]:
+        """Names of declared tools, optionally narrowed to one phase.
+
+        A policy uses this to discover what it may call without reading
+        ``capability``, which would drag game semantics into ``core/policy``.
+        """
+        return [
+            tool.name
+            for tool in self.capability.tools
+            if phase is None or tool.applies_to(phase)
+        ]
+
     def run_tool(
         self, name: str, observation: Observation, arguments: dict[str, Any] | None = None
     ) -> dict[str, Any]:
@@ -352,29 +406,6 @@ class GameEngine(ABC):
             raise InvalidActionError("terminal_rewards", "Game has not finished")
         winner = self.get_winner(state)
         return {pid: 1.0 if pid == winner else 0.0 for pid in state.player_ids}
-
-    def format_legal_actions_for_prompt(
-        self, state: GameState, actions: list[GameAction]
-    ) -> str:
-        """Format legal actions for LLM prompts. Override for game-specific ordering."""
-        del state  # unused in generic formatter
-        if not actions:
-            return "无可选动作"
-        lines: list[str] = []
-        for i, action in enumerate(actions, start=1):
-            cards_str = " ".join(action.cards) if action.cards else ""
-            if cards_str:
-                lines.append(f"{i}. {action.action_type}: [{cards_str}]")
-            elif action.target:
-                lines.append(f"{i}. {action.action_type} {action.target}")
-            else:
-                lines.append(f"{i}. {action.action_type}")
-            if i >= 80:
-                remaining = len(actions) - i
-                if remaining > 0:
-                    lines.append(f"...还有 {remaining} 个可选动作未列出")
-                break
-        return "\n".join(lines)
 
     @property
     @abstractmethod

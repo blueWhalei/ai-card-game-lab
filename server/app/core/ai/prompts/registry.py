@@ -75,7 +75,71 @@ class PromptTemplateRegistry:
     """
 
     # Default templates (fallback when DB is unavailable) - class variable
+    #
+    # v3 is the current protocol: the model picks an ``action_id`` off the menu.
+    # v1 / v2 / reasoning spell out the older ``action_type`` + ``cards`` format and
+    # are kept because experiments that ran on them are still on file -- a stored
+    # template must keep meaning what it meant when the run happened. Templates are
+    # seeded into the database once, so a changed protocol has to be a new version
+    # rather than an edit, or existing installs would keep the contradictory copy.
     DEFAULTS: dict[str, str] = {
+        # === 动作 id 协议 (v3) ===
+        "doudizhu_playing_v3": """你是斗地主 AI 玩家。
+
+## 核心规则
+{rules}
+
+## 决策要点
+- 地主：主动压制，优先出组合牌型消耗手牌
+- 农民：配合队友，队友牌少时让牌，地主牌少时管牌
+- 有炸弹时，关键时刻才使用
+
+{format_instructions}""",
+        "doudizhu_bidding_v3": """你是斗地主 AI 玩家，正在进行叫地主阶段。
+
+## 叫地主规则
+- 可叫1/2/3分或选择不叫，叫分必须高于当前最高
+- 叫3分立即成为地主（获得3张底牌，共20张）
+- 三人都不叫则重新发牌
+
+## 手牌评估
+| 条件 | 叫分 |
+|------|------|
+| 有炸弹/王炸 或 ≥2张2 | 3分 |
+| 有1张2 + 牌型好 | 2分 |
+| 牌型一般但有大牌 | 1分 |
+| 牌散且无大牌 | 不叫 |
+
+{format_instructions}""",
+        "doudizhu_playing_v3_reasoning": """你是斗地主 AI 玩家。
+
+## 核心规则
+{rules}
+
+## 决策要点
+- 地主：主动压制，优先出组合牌型消耗手牌
+- 农民：配合队友，队友牌少时让牌，地主牌少时管牌
+- 有炸弹时，关键时刻才使用
+
+思考请控制在 50 字以内，然后给出结果。
+
+{format_instructions}""",
+        "doudizhu_bidding_v3_reasoning": """你是斗地主 AI 玩家，正在进行叫地主阶段。
+
+## 叫地主规则
+- 可叫1/2/3分或选择不叫，叫分必须高于当前最高
+- 叫3分立即成为地主（获得3张底牌，共20张）
+
+## 手牌评估（快速判断）
+- 有炸弹/王炸 或 ≥2张2 → 叫3分
+- 有1张2 + 牌型好 → 叫2分
+- 牌型一般但有大牌 → 叫1分
+- 牌散且无大牌 → 不叫
+
+思考请控制在 30 字以内，然后给出结果。
+
+{format_instructions}""",
+
         # === 通用 LLM 模板 (v1) ===
         "doudizhu_playing_v1": """你是斗地主 AI 玩家。
 
@@ -448,8 +512,12 @@ class PromptTemplateRegistry:
 
 
 def _split_default_key(full_key: str) -> tuple[str, str]:
-    """Split ``doudizhu_playing_v1`` → (``doudizhu_playing``, ``v1``)."""
-    for suffix in ("_reasoning", "_v2", "_v1"):
+    """Split ``doudizhu_playing_v1`` → (``doudizhu_playing``, ``v1``).
+
+    Longer suffixes are matched first so ``_v3_reasoning`` does not read as
+    ``_reasoning``.
+    """
+    for suffix in ("_v3_reasoning", "_reasoning", "_v3", "_v2", "_v1"):
         if full_key.endswith(suffix):
             return full_key[: -len(suffix)], suffix[1:]
     raise ValueError(f"Unrecognized default prompt key: {full_key}")

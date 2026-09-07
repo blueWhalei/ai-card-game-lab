@@ -1,31 +1,38 @@
-"""AI invocation service -- manages LLM calls for game decisions."""
+"""AI invocation service -- runs a policy for one decision and records it.
+
+The decision procedure itself lives in ``core/policy``. This service picks the
+policy, supplies what the policy is not allowed to reach (prompt templates, the
+database, the live ``GameState``), consumes the resulting event stream, and turns
+it into the payload the rest of the app expects.
+"""
 
 from __future__ import annotations
 
-import asyncio
+import random
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.core.ai.parsers.action_parser import ActionOutputParser
-from app.core.ai.parsers.bid_parser import BidOutputParser
+from app.core.ai.errors import map_provider_error
 from app.core.ai.prompt import PromptBuilder
 from app.core.ai.stream_chunk import StreamChunk
-from app.core.ai.tools.hand_analyzer import HandAnalyzerTool
-from app.core.ai.tools.win_probability import WinProbabilityTool
 from app.core.engine.base import GameAction, GameEngine, GameState
-from app.core.stats.scenarios import classify_game_phase
-from app.database import get_db_connection
-from app.utils.exceptions import (
-    AIProviderError,
-    AIProviderUnavailableError,
-    AIRateLimitExceededError,
-    AITimeoutError,
-    AppError,
+from app.core.policy.base import (
+    ActionChosen,
+    Budget,
+    LlmRequest,
+    LlmUsage,
+    PolicyContext,
+    ThinkingDelta,
+    ToolResult,
 )
+from app.core.policy.llm import LLMPolicy
+from app.core.stats.scenarios import classify_game_phase
+from app.services.prompt_source import EnginePromptSource
+from app.utils.exceptions import AppError
 
 if TYPE_CHECKING:
     from app.core.ai.base import LLMClient
@@ -35,22 +42,18 @@ if TYPE_CHECKING:
 
 logger = structlog.get_logger()
 
-RATE_LIMIT_ERROR_MARKERS = (
-    "rate limit",
-    "too many requests",
-    "429",
-    "quota exceeded",
-)
-UNAVAILABLE_ERROR_MARKERS = (
-    "service unavailable",
-    "temporarily unavailable",
-    "bad gateway",
-    "gateway error",
-    "503",
-)
-
 MAX_RETRIES = 3
 DEFAULT_TIMEOUT = 60.0
+MAX_TOOL_CALLS = 2
+
+EMPTY_USAGE: dict[str, int | None] = {
+    "prompt_tokens": None,
+    "completion_tokens": None,
+    "total_tokens": None,
+}
+
+# Engine tool names mapped onto the keys the WS / trace payloads already use.
+_TOOL_RESULT_KEYS = {"analyze_hand": "hand_analysis", "win_probability": "win_probability"}
 
 
 @dataclass(frozen=True)
@@ -69,8 +72,19 @@ class AIDecisionResult:
     tool_results: dict[str, Any] | None = None
 
 
+@dataclass
+class _DecisionTrace:
+    """What the service scrapes off one policy run."""
+
+    messages: list[dict[str, str]] = field(default_factory=list)
+    reply_parts: list[str] = field(default_factory=list)
+    usage: dict[str, int | None] = field(default_factory=lambda: dict(EMPTY_USAGE))
+    tool_results: dict[str, Any] = field(default_factory=dict)
+    chosen: ActionChosen | None = None
+
+
 class AIService:
-    """Manages LLM calls for game decision-making with retry and timeout."""
+    """Runs a policy for one decision and records it."""
 
     def __init__(
         self,
@@ -86,78 +100,17 @@ class AIService:
         self._sqlite_path = sqlite_path
         self._decision_evaluator = decision_evaluator
         self._client_cache: dict[str, LLMClient] = {}
-        self._action_parser = ActionOutputParser()
-        self._bid_parser = BidOutputParser()
-        self._hand_analyzer = HandAnalyzerTool()
-        self._win_probability = WinProbabilityTool()
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
         provider = model_cfg.get("provider", "openai")
-        cache_key = provider
-        if cache_key not in self._client_cache:
-            self._client_cache[cache_key] = self._llm_factory.create(provider)
-        return self._client_cache[cache_key]
+        if provider not in self._client_cache:
+            self._client_cache[provider] = self._llm_factory.create(provider)
+        return self._client_cache[provider]
 
     @staticmethod
     def _map_provider_error(provider: str, error: Exception) -> AppError:
-        if isinstance(error, AppError):
-            return error
-
-        detail = str(error).strip() or error.__class__.__name__
-        detail_lower = detail.lower()
-
-        if any(marker in detail_lower for marker in RATE_LIMIT_ERROR_MARKERS):
-            return AIRateLimitExceededError(provider, detail)
-        if any(marker in detail_lower for marker in UNAVAILABLE_ERROR_MARKERS):
-            return AIProviderUnavailableError(provider, detail)
-        return AIProviderError(provider, detail)
-
-    async def _build_prompt_messages(
-        self,
-        *,
-        state: GameState,
-        legal_actions: list[GameAction],
-        engine: GameEngine,
-        player_id: str,
-        model_name: str | None,
-        game_id: str | None,
-        tool_analysis: str | None,
-    ) -> list[dict[str, str]]:
-        """Build prompt via registry, preferring DB-backed templates when available."""
-        if not self._sqlite_path:
-            return await self._prompt_builder.build_async(
-                state=state,
-                legal_actions=legal_actions,
-                engine=engine,
-                player_id=player_id,
-                db=None,
-                session_id=game_id,
-                model_name=model_name,
-                tool_analysis=tool_analysis,
-            )
-
-        async for db in get_db_connection(self._sqlite_path):
-            return await self._prompt_builder.build_async(
-                state=state,
-                legal_actions=legal_actions,
-                engine=engine,
-                player_id=player_id,
-                db=db,
-                session_id=game_id,
-                model_name=model_name,
-                tool_analysis=tool_analysis,
-            )
-        return await self._prompt_builder.build_async(
-            state=state,
-            legal_actions=legal_actions,
-            engine=engine,
-            player_id=player_id,
-            db=None,
-            session_id=game_id,
-            model_name=model_name,
-            tool_analysis=tool_analysis,
-        )
+        return map_provider_error(provider, error)
 
     async def get_decision(
         self,
@@ -168,140 +121,16 @@ class AIService:
         legal_actions: list[GameAction],
         game_id: str | None = None,
     ) -> AIDecisionResult:
-        """Get AI decision with retry logic and structured metadata."""
-        start_time = time.perf_counter()
-
-        model_cfg = player_config.get("model_config", {})
-        model_name = model_cfg.get("model_name")
-
-        # Run analysis tools (skip during bidding phase)
-        phase = getattr(state, "phase", "playing")
-        tool_data: dict[str, Any] | None = None
-        if phase != "bidding":
-            tool_data = self._run_tools(state, player_id)
-
-        messages = await self._build_prompt_messages(
+        """Decide without streaming. Used for batch runs with no observers."""
+        return await self._decide(
             state=state,
-            legal_actions=legal_actions,
             engine=engine,
             player_id=player_id,
-            model_name=model_name,
+            player_config=player_config,
+            legal_actions=legal_actions,
             game_id=game_id,
-            tool_analysis=tool_data.get("tool_analysis") if tool_data else None,
-        )
-        client = self._get_client(player_config)
-
-        kwargs: dict[str, Any] = {}
-        if model_cfg.get("model_name"):
-            kwargs["model"] = model_cfg["model_name"]
-        if model_cfg.get("temperature") is not None:
-            kwargs["temperature"] = model_cfg["temperature"]
-        if model_cfg.get("max_tokens") is not None:
-            kwargs["max_tokens"] = model_cfg["max_tokens"]
-
-        raw_response = ""
-        last_error: Exception | None = None
-        prompt_preview = self._build_prompt_preview(messages)
-
-        provider = model_cfg.get("provider", "unknown")
-        used_langchain_parser = True
-
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                response = await asyncio.wait_for(
-                    client.chat(messages, **kwargs),
-                    timeout=DEFAULT_TIMEOUT,
-                )
-                raw_response = response.content
-
-                thinking, action, used_langchain_parser = self._parse_with_metrics(
-                    raw_response, legal_actions, phase, engine=engine
-                )
-                response_time_ms = (time.perf_counter() - start_time) * 1000
-
-                logger.info(
-                    "ai_decision",
-                    player_id=player_id,
-                    action_type=str(action.action_type),
-                    cards=action.cards,
-                    attempt=attempt,
-                    response_time_ms=response_time_ms,
-                    used_langchain_parser=used_langchain_parser,
-                )
-
-                if self._decision_service:
-                    await self._record_decision_point(
-                        state=state,
-                        engine=engine,
-                        player_id=player_id,
-                        legal_actions=legal_actions,
-                        chosen_action=action,
-                        thinking=thinking,
-                        game_id=game_id,
-                    )
-
-                return AIDecisionResult(
-                    action=action,
-                    thinking=thinking,
-                    raw_response=raw_response,
-                    messages=messages,
-                    prompt_preview=prompt_preview,
-                    raw_response_preview=self._truncate_text(raw_response),
-                    usage=response.usage,
-                    response_time_ms=response_time_ms,
-                    used_langchain_parser=used_langchain_parser,
-                    tool_results=tool_data,
-                )
-
-            except TimeoutError:
-                last_error = AITimeoutError(provider, f"Timeout on attempt {attempt}")
-                logger.warning("ai_timeout", player_id=player_id, attempt=attempt)
-            except AppError as e:
-                last_error = e
-                logger.warning("ai_error", player_id=player_id, attempt=attempt, error=str(e))
-            except Exception as e:
-                last_error = self._map_provider_error(provider, e)
-                logger.warning(
-                    "ai_unexpected_error",
-                    player_id=player_id,
-                    attempt=attempt,
-                    error=str(last_error),
-                )
-
-            if attempt < MAX_RETRIES:
-                await asyncio.sleep(1.0 * attempt)
-
-        response_time_ms = (time.perf_counter() - start_time) * 1000
-        logger.error(
-            "ai_all_retries_failed",
-            player_id=player_id,
-            error=str(last_error),
-        )
-        fallback = legal_actions[0] if legal_actions else GameAction(
-            player_id=player_id, action_type="PASS"
-        )
-        fallback_thinking = f"[LLM调用失败，使用默认动作] {last_error}"
-        if self._decision_service:
-            await self._record_decision_point(
-                state=state,
-                engine=engine,
-                player_id=player_id,
-                legal_actions=legal_actions,
-                chosen_action=fallback,
-                thinking=fallback_thinking,
-                game_id=game_id,
-            )
-        return AIDecisionResult(
-            action=fallback,
-            thinking=fallback_thinking,
-            raw_response=raw_response,
-            messages=messages,
-            prompt_preview=prompt_preview,
-            raw_response_preview=self._truncate_text(raw_response),
-            usage={"prompt_tokens": None, "completion_tokens": None, "total_tokens": None},
-            response_time_ms=response_time_ms,
-            used_langchain_parser=False,
-            tool_results=tool_data,
+            stream=False,
+            on_chunk=None,
         )
 
     async def get_decision_streaming(
@@ -314,186 +143,155 @@ class AIService:
         game_id: str | None = None,
         on_chunk: Callable[[StreamChunk], None] | None = None,
     ) -> AIDecisionResult:
-        """Get AI decision with streaming output.
-
-        This method streams the LLM response chunk by chunk, calling the
-        on_chunk callback for each chunk. Useful for real-time display
-        of AI thinking process.
-
-        Args:
-            state: Current game state
-            engine: Game engine instance
-            player_id: ID of the player making the decision
-            player_config: Player configuration including model settings
-            legal_actions: List of legal actions available
-            game_id: Optional game ID for logging
-            on_chunk: Optional callback function called for each text chunk
-
-        Returns:
-            AIDecisionResult with the final action and metadata
-        """
-        start_time = time.perf_counter()
-
-        model_cfg = player_config.get("model_config", {})
-        model_name = model_cfg.get("model_name")
-
-        # Run analysis tools (skip during bidding phase)
-        phase = getattr(state, "phase", "playing")
-        tool_data: dict[str, Any] | None = None
-        if phase != "bidding":
-            tool_data = self._run_tools(state, player_id)
-
-        messages = await self._build_prompt_messages(
+        """Decide, forwarding reply text to *on_chunk* as it arrives."""
+        return await self._decide(
             state=state,
-            legal_actions=legal_actions,
             engine=engine,
             player_id=player_id,
-            model_name=model_name,
+            player_config=player_config,
+            legal_actions=legal_actions,
             game_id=game_id,
-            tool_analysis=tool_data.get("tool_analysis") if tool_data else None,
+            stream=True,
+            on_chunk=on_chunk,
         )
 
-        client = self._get_client(player_config)
+    async def _decide(
+        self,
+        *,
+        state: GameState,
+        engine: GameEngine,
+        player_id: str,
+        player_config: dict[str, Any],
+        legal_actions: list[GameAction],
+        game_id: str | None,
+        stream: bool,
+        on_chunk: Callable[[StreamChunk], None] | None,
+    ) -> AIDecisionResult:
+        start_time = time.perf_counter()
+        model_cfg = player_config.get("model_config", {})
 
-        kwargs: dict[str, Any] = {}
-        if model_cfg.get("model_name"):
-            kwargs["model"] = model_cfg["model_name"]
-        if model_cfg.get("temperature") is not None:
-            kwargs["temperature"] = model_cfg["temperature"]
-        if model_cfg.get("max_tokens") is not None:
-            kwargs["max_tokens"] = model_cfg["max_tokens"]
-
-        prompt_preview = self._build_prompt_preview(messages)
-        raw_parts: list[str] = []
-        stream_usage: dict[str, int | None] | None = None
-        provider = model_cfg.get("provider", "unknown")
-        phase = getattr(state, "phase", "playing")
-
-        last_error: Exception | None = None
-        try:
-            # Stream the response
-            async for chunk in client.chat_stream(messages, **kwargs):
-                raw_parts.append(chunk.text)
-                if chunk.usage is not None:
-                    stream_usage = chunk.usage
-                if on_chunk:
-                    on_chunk(chunk)
-
-            # Parse the complete response
-            raw_response = "".join(raw_parts)
-            if not raw_response.strip():
-                raise AIProviderError(provider, "Empty streaming response")
-
-            thinking, action, used_langchain_parser = self._parse_with_metrics(
-                raw_response, legal_actions, phase, engine=engine
-            )
-            response_time_ms = (time.perf_counter() - start_time) * 1000
-
-            logger.info(
-                "ai_decision_streaming",
-                player_id=player_id,
-                action_type=str(action.action_type),
-                cards=action.cards,
-                response_time_ms=response_time_ms,
-                used_langchain_parser=used_langchain_parser,
-            )
-
-            if self._decision_service:
-                await self._record_decision_point(
-                    state=state,
-                    engine=engine,
-                    player_id=player_id,
-                    legal_actions=legal_actions,
-                    chosen_action=action,
-                    thinking=thinking,
-                    game_id=game_id,
-                )
-
-            return AIDecisionResult(
-                action=action,
-                thinking=thinking,
-                raw_response=raw_response,
-                messages=messages,
-                prompt_preview=prompt_preview,
-                raw_response_preview=self._truncate_text(raw_response),
-                usage=stream_usage or {"prompt_tokens": None, "completion_tokens": None, "total_tokens": None},
-                response_time_ms=response_time_ms,
-                used_langchain_parser=used_langchain_parser,
-                tool_results=tool_data,
-            )
-
-        except TimeoutError:
-            last_error = AITimeoutError(provider, "Timeout during streaming")
-            logger.warning("ai_streaming_timeout", player_id=player_id)
-        except AppError as e:
-            last_error = e
-            logger.warning("ai_streaming_error", player_id=player_id, error=str(e))
-        except Exception as e:
-            last_error = self._map_provider_error(provider, e)
-            logger.warning(
-                "ai_streaming_unexpected_error",
-                player_id=player_id,
-                error=str(last_error),
-            )
-
-        # Streaming failed / empty → retry once with non-streaming chat
-        # (batch e2e and some providers are more reliable without SSE).
-        logger.warning(
-            "ai_streaming_fallback_to_chat",
-            player_id=player_id,
-            error=str(last_error),
+        policy = LLMPolicy(
+            self._get_client(player_config),
+            provider=model_cfg.get("provider", "unknown"),
+            model_name=model_cfg.get("model_name"),
+            temperature=model_cfg.get("temperature"),
+            max_tokens=model_cfg.get("max_tokens"),
+            stream=stream,
         )
-        try:
-            return await self.get_decision(
-                state=state,
-                engine=engine,
-                player_id=player_id,
-                player_config=player_config,
-                legal_actions=legal_actions,
-                game_id=game_id,
-            )
-        except Exception as e:
-            last_error = e
-            logger.warning(
-                "ai_nonstream_fallback_failed",
-                player_id=player_id,
-                error=str(e),
+        ctx = PolicyContext(
+            advisor=engine,
+            rng=random.Random(),
+            session_id=game_id,
+            prompts=EnginePromptSource(self._prompt_builder, engine, self._sqlite_path),
+        )
+        budget = Budget(
+            max_llm_calls=MAX_RETRIES,
+            max_tool_calls=MAX_TOOL_CALLS,
+            timeout_s=DEFAULT_TIMEOUT,
+        )
+
+        observation = engine.observe(state, player_id)
+        presented, _omitted = engine.present_legal_actions(state, player_id)
+
+        trace = _DecisionTrace()
+        async for event in policy.decide(observation, presented, budget, ctx):
+            self._absorb(event, trace, on_chunk)
+
+        chosen = trace.chosen
+        if chosen is None:
+            # ``Policy.decide`` guarantees a terminal ActionChosen; a policy that
+            # breaks that contract must not take the game down with it.
+            logger.error("policy_returned_no_action", player_id=player_id)
+            chosen = ActionChosen(
+                action_id=presented[0].id if presented else "",
+                thinking="[策略未给出动作，使用默认动作]",
+                parse_fallback=True,
             )
 
-        # Last resort: legal default (still record so export is not empty)
-        raw_response = "".join(raw_parts)
+        action = self._resolve(engine, state, player_id, chosen, legal_actions)
+        raw_response = "".join(trace.reply_parts)
         response_time_ms = (time.perf_counter() - start_time) * 1000
-        logger.error(
-            "ai_streaming_failed",
+
+        logger.info(
+            "ai_decision",
             player_id=player_id,
-            error=str(last_error),
+            action_type=str(action.action_type),
+            cards=action.cards,
+            response_time_ms=response_time_ms,
+            parse_fallback=chosen.parse_fallback,
         )
-        fallback = legal_actions[0] if legal_actions else GameAction(
-            player_id=player_id, action_type="PASS"
-        )
-        fallback_thinking = f"[LLM流式调用失败，使用默认动作] {last_error}"
+
         if self._decision_service:
             await self._record_decision_point(
                 state=state,
                 engine=engine,
                 player_id=player_id,
                 legal_actions=legal_actions,
-                chosen_action=fallback,
-                thinking=fallback_thinking,
+                chosen_action=action,
+                thinking=chosen.thinking,
                 game_id=game_id,
+                parse_fallback=chosen.parse_fallback,
             )
+
+        prompt_preview = self._build_prompt_preview(trace.messages)
         return AIDecisionResult(
-            action=fallback,
-            thinking=fallback_thinking,
+            action=action,
+            thinking=chosen.thinking,
             raw_response=raw_response,
-            messages=messages,
+            messages=trace.messages,
             prompt_preview=prompt_preview,
             raw_response_preview=self._truncate_text(raw_response),
-            usage={"prompt_tokens": None, "completion_tokens": None, "total_tokens": None},
+            usage=trace.usage,
             response_time_ms=response_time_ms,
-            used_langchain_parser=False,
-            tool_results=tool_data,
+            used_langchain_parser=not chosen.parse_fallback,
+            tool_results=trace.tool_results or None,
         )
+
+    @staticmethod
+    def _absorb(
+        event: Any,
+        trace: _DecisionTrace,
+        on_chunk: Callable[[StreamChunk], None] | None,
+    ) -> None:
+        """Fold one policy event into the payload the app expects."""
+        if isinstance(event, LlmRequest):
+            trace.messages = event.messages
+        elif isinstance(event, ThinkingDelta):
+            trace.reply_parts.append(event.text)
+            if on_chunk:
+                on_chunk(StreamChunk(type=event.channel, text=event.text))
+        elif isinstance(event, LlmUsage):
+            trace.usage = dict(event.usage)
+        elif isinstance(event, ToolResult):
+            key = _TOOL_RESULT_KEYS.get(event.name, event.name)
+            trace.tool_results[key] = event.result
+            text = event.result.get("text")
+            if isinstance(text, str) and text:
+                existing = trace.tool_results.get("tool_analysis")
+                trace.tool_results["tool_analysis"] = (
+                    f"{existing}\n{text}" if existing else text
+                )
+        elif isinstance(event, ActionChosen):
+            trace.chosen = event
+
+    @staticmethod
+    def _resolve(
+        engine: GameEngine,
+        state: GameState,
+        player_id: str,
+        chosen: ActionChosen,
+        legal_actions: list[GameAction],
+    ) -> GameAction:
+        """Turn the chosen id back into a move the engine can apply."""
+        try:
+            return engine.resolve_action(state, player_id, chosen.action_id)
+        except Exception:
+            logger.warning(
+                "action_id_not_resolvable", player_id=player_id, action_id=chosen.action_id
+            )
+            if legal_actions:
+                return legal_actions[0]
+            return GameAction(player_id=player_id, action_type="PASS")
 
     async def _record_decision_point(
         self,
@@ -504,6 +302,7 @@ class AIService:
         chosen_action: GameAction,
         thinking: str,
         game_id: str | None = None,
+        parse_fallback: bool = False,
     ) -> None:
         """Record a decision point for SFT training data.
 
@@ -543,6 +342,7 @@ class AIService:
                 thinking=thinking,
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
+                parse_fallback=parse_fallback,
             )
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)
@@ -557,57 +357,10 @@ class AIService:
         """EV loss for the move, or ``(None, None)`` when scoring is off or fails."""
         if self._decision_evaluator is None:
             return None, None
-        result = await self._decision_evaluator.score(
-            engine, state, player_id, chosen_action
-        )
+        result = await self._decision_evaluator.score(engine, state, player_id, chosen_action)
         if result is None:
             return None, None
         return result.loss, result.params
-
-    def _run_tools(
-        self,
-        state: GameState,
-        player_id: str,
-    ) -> dict[str, Any]:
-        """Run analysis tools and return results for prompt enrichment.
-
-        Returns a dict with 'hand_analysis', 'win_probability', and 'tool_analysis' keys.
-        """
-        hand_cards = self._extract_hand_cards(state, player_id)
-        opponent_hands = self._extract_opponent_hands(state, player_id)
-        card_strs = [
-            str(c) for c in hand_cards
-        ]  # HandAnalyzerTool expects card codes like 'S3', 'H4'
-
-        # Hand analysis
-        hand_analysis = self._hand_analyzer.analyze(card_strs)
-
-        # Win probability — determine role from state
-        is_landlord = False
-        if hasattr(state, "landlord_id"):
-            is_landlord = getattr(state, "landlord_id", None) == player_id
-        current_turn = getattr(state, "round", 0)
-
-        win_prob = self._win_probability.estimate(
-            my_card_count=len(hand_cards),
-            opponent_card_counts=opponent_hands,
-            has_bomb=hand_analysis.bomb_count > 0,
-            has_rocket=hand_analysis.rocket,
-            is_landlord=is_landlord,
-            current_turn=current_turn,
-        )
-
-        # Format for prompt injection
-        tool_analysis = self._prompt_builder.format_tool_results(
-            hand_analysis=hand_analysis,
-            win_probability=win_prob,
-        )
-
-        return {
-            "hand_analysis": hand_analysis,
-            "win_probability": win_prob,
-            "tool_analysis": tool_analysis,
-        }
 
     def _extract_hand_cards(self, state: GameState, player_id: str) -> list[int]:
         """Extract hand cards for a player from game state."""
@@ -658,42 +411,6 @@ class AIService:
             return "endgame"
         return "unknown"
 
-    def _parse_with_metrics(
-        self,
-        raw_response: str,
-        legal_actions: list[GameAction],
-        phase: str,
-        *,
-        engine: GameEngine | None = None,
-    ) -> tuple[str, GameAction, bool]:
-        """Parse response and return whether LangChain parser was used."""
-        bidding_phases = (
-            set(engine.capability.phases) & {"bidding"}
-            if engine is not None
-            else {"bidding"}
-        )
-        try:
-            if phase in bidding_phases or phase == "bidding":
-                thinking, action = self._bid_parser.parse(raw_response, legal_actions)
-            else:
-                thinking, action = self._action_parser.parse(raw_response, legal_actions)
-            return thinking, action, True
-        except Exception:
-            thinking, action = self._fallback_parse(raw_response, legal_actions)
-            return thinking, action, False
-
-    def _fallback_parse(
-        self,
-        raw_response: str,
-        legal_actions: list[GameAction],
-    ) -> tuple[str, GameAction]:
-        """Fallback parsing when LangChain parser fails."""
-        # Prefix so evaluate_train_usable marks train_usable=false
-        thinking = f"[LLM解析失败，使用默认动作] {raw_response[:200]}"
-        if legal_actions:
-            return thinking, legal_actions[0]
-        return thinking, GameAction(player_id="", action_type="PASS")
-
     @staticmethod
     def _truncate_text(text: str, limit: int = 400) -> str:
         if len(text) <= limit:
@@ -701,8 +418,5 @@ class AIService:
         return text[:limit] + "..."
 
     def _build_prompt_preview(self, messages: list[dict[str, str]]) -> str:
-        preview_parts = [
-            f"[{message['role']}]\n{message['content']}"
-            for message in messages
-        ]
+        preview_parts = [f"[{message['role']}]\n{message['content']}" for message in messages]
         return self._truncate_text("\n\n".join(preview_parts), limit=800)

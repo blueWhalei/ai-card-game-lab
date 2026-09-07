@@ -5,7 +5,7 @@ import random
 
 import pytest
 
-from app.core.ai.prompt import PromptBuilder
+from app.core.ai.action_menu import render_menu
 from app.core.engine.base import GameAction
 from app.core.engine.doudizhu.cards import FULL_DECK, ActionType
 from app.core.engine.doudizhu.engine import DoudizhuEngine, DoudizhuState
@@ -189,24 +189,57 @@ def test_parse_action_pass() -> None:
     assert parsed.action_type == ActionType.PASS
 
 
-def test_prompt_builder_formats_bid_actions_in_descending_order() -> None:
+def test_the_bid_menu_offers_the_highest_bid_first() -> None:
     engine = DoudizhuEngine()
     state = engine.initialize(["a", "b", "c"])
     current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
 
-    messages = PromptBuilder().build(
-        state=state,
-        legal_actions=actions,
-        engine=engine,
-        player_id=current,
+    presented, omitted = engine.present_legal_actions(state, current)
+    menu = render_menu(presented, omitted)
+
+    assert omitted == 0
+    assert [entry.label for entry in presented] == [
+        "BID 3分（叫3分）",
+        "BID 2分（叫2分）",
+        "BID 1分（叫1分）",
+        "BID_PASS（不叫）",
+    ]
+    # Each line carries the id the model has to echo back.
+    assert "`BID||3` — BID 3分（叫3分）" in menu
+
+
+def test_a_truncated_menu_still_offers_every_action_type() -> None:
+    """A hand with hundreds of plays must not lose PASS to the 80-line cap.
+
+    PASS sorts last by presentation priority, so plain truncation would drop the
+    one action that is always available.
+    """
+    engine = DoudizhuEngine()
+    state = engine.initialize(["a", "b", "c"])
+    state = engine.apply_action(
+        state,
+        next(
+            action
+            for action in engine.get_legal_actions(state, engine.get_current_player(state))
+            if action.action_type == ActionType.BID and action.target == "3"
+        ),
     )
+    landlord = engine.get_current_player(state)
+    # Someone has to have played for PASS to be legal at all.
+    first_play = next(
+        action
+        for action in engine.get_legal_actions(state, landlord)
+        if action.action_type == ActionType.SINGLE
+    )
+    state = engine.apply_action(state, first_play)
+    responder = engine.get_current_player(state)
 
-    content = messages[1]["content"]
-    assert "1. BID 3分（叫3分）" in content
-    assert "2. BID 2分（叫2分）" in content
-    assert "3. BID 1分（叫1分）" in content
-    assert "4. BID_PASS（不叫）" in content
+    all_legal = engine.legal_actions(state, responder)
+    presented, omitted = engine.present_legal_actions(state, responder, limit=3)
+
+    assert len(presented) == 3
+    assert omitted == len(all_legal) - 3
+    assert any(entry.action.action_type == ActionType.PASS for entry in presented)
 
 
 def test_is_terminal_false_initially() -> None:

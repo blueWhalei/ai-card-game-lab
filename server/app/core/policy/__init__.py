@@ -5,10 +5,12 @@ from app.core.policy.base import (
     ActionSelector,
     Budget,
     EngineAdvisor,
+    LlmRequest,
     LlmUsage,
     Policy,
     PolicyContext,
     PolicyEvent,
+    PromptSource,
     ThinkingDelta,
     ToolCall,
     ToolResult,
@@ -19,6 +21,7 @@ from app.core.policy.baselines import (
     HeuristicPolicy,
     RandomPolicy,
 )
+from app.core.policy.llm import LLMPolicy
 from app.core.policy.registry import PolicyRegistry
 
 __all__ = [
@@ -29,11 +32,14 @@ __all__ = [
     "EngineAdvisor",
     "FirstActionPolicy",
     "HeuristicPolicy",
+    "LLMPolicy",
+    "LlmRequest",
     "LlmUsage",
     "Policy",
     "PolicyContext",
     "PolicyEvent",
     "PolicyRegistry",
+    "PromptSource",
     "RandomPolicy",
     "ThinkingDelta",
     "ToolCall",

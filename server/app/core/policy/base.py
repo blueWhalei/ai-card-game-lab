@@ -25,9 +25,14 @@ from app.utils.exceptions import InvalidActionError
 
 @dataclass(frozen=True)
 class ThinkingDelta:
-    """Incremental reasoning text, forwarded to the observer UI."""
+    """Incremental reasoning text, forwarded to the observer UI.
+
+    ``channel`` separates a model's chain-of-thought from its answer; the
+    observer renders them differently.
+    """
 
     text: str
+    channel: Literal["reasoning", "content"] = "content"
     type: Literal["thinking_delta"] = "thinking_delta"
 
 
@@ -50,6 +55,19 @@ class ToolResult:
 
 
 @dataclass(frozen=True)
+class LlmRequest:
+    """The messages sent to a model.
+
+    The observer shows the exact prompt behind a move, and a trace stores it, so
+    what was sent has to leave the policy. Policies that never call a model
+    simply never emit this.
+    """
+
+    messages: list[dict[str, str]] = field(default_factory=list)
+    type: Literal["llm_request"] = "llm_request"
+
+
+@dataclass(frozen=True)
 class LlmUsage:
     """Token accounting for one model call."""
 
@@ -69,7 +87,9 @@ class ActionChosen:
     type: Literal["action_chosen"] = "action_chosen"
 
 
-PolicyEvent: TypeAlias = ThinkingDelta | ToolCall | ToolResult | LlmUsage | ActionChosen
+PolicyEvent: TypeAlias = (
+    ThinkingDelta | ToolCall | ToolResult | LlmRequest | LlmUsage | ActionChosen
+)
 
 
 @dataclass(frozen=True)
@@ -92,6 +112,8 @@ class EngineAdvisor(Protocol):
     ``GameState`` -- and therefore hidden information -- out of reach.
     """
 
+    def tool_names(self, phase: str | None = None) -> list[str]: ...
+
     def run_tool(
         self, name: str, observation: Observation, arguments: dict[str, Any] | None = None
     ) -> dict[str, Any]: ...
@@ -99,6 +121,25 @@ class EngineAdvisor(Protocol):
     def suggest_action(
         self, observation: Observation, legal_actions: list[LegalAction]
     ) -> ActionId | None: ...
+
+
+class PromptSource(Protocol):
+    """Resolves the system message for one decision.
+
+    Template lookup means a database read, an A/B assignment, and reading the
+    engine's rules file -- all infrastructure a policy must not own. The service
+    layer implements this and hands over rendered text; the policy supplies
+    ``format_instructions`` because the output protocol is its concern.
+    """
+
+    async def system_message(
+        self,
+        *,
+        phase: str,
+        model_name: str | None,
+        session_id: str | None,
+        format_instructions: str,
+    ) -> str: ...
 
 
 @dataclass(frozen=True)
@@ -112,6 +153,7 @@ class PolicyContext:
     advisor: EngineAdvisor
     rng: random.Random
     session_id: str | None = None
+    prompts: PromptSource | None = None
 
 
 class ActionSelector(Protocol):

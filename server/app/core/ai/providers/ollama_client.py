@@ -36,6 +36,17 @@ class OllamaClient(LLMClient):
             options["num_predict"] = max_tokens
         return options
 
+    @staticmethod
+    def _ollama_format(response_format: dict[str, Any] | None) -> dict[str, Any] | None:
+        """Translate an OpenAI ``response_format`` into Ollama's ``format`` field.
+
+        Ollama takes the bare JSON Schema where OpenAI wraps it in ``json_schema``.
+        """
+        if not response_format:
+            return None
+        schema = response_format.get("json_schema", {}).get("schema")
+        return schema if isinstance(schema, dict) else None
+
     def _http_timeout(self) -> httpx.Timeout:
         # read applies between stream chunks (prompt eval can be slow on local CPU)
         return httpx.Timeout(
@@ -64,6 +75,7 @@ class OllamaClient(LLMClient):
         model = kwargs.pop("model", self._model)
         temperature = kwargs.pop("temperature", 0.7)
         max_tokens = kwargs.pop("max_tokens", None)
+        schema = self._ollama_format(kwargs.pop("response_format", None))
 
         payload: dict[str, Any] = {
             "model": model,
@@ -71,6 +83,8 @@ class OllamaClient(LLMClient):
             "stream": False,
             "options": self._build_options(temperature, max_tokens),
         }
+        if schema is not None:
+            payload["format"] = schema
 
         url = f"{self._base_url}/api/chat"
 
@@ -107,6 +121,7 @@ class OllamaClient(LLMClient):
         model = kwargs.pop("model", self._model)
         temperature = kwargs.pop("temperature", 0.7)
         max_tokens = kwargs.pop("max_tokens", None)
+        schema = self._ollama_format(kwargs.pop("response_format", None))
 
         payload: dict[str, Any] = {
             "model": model,
@@ -114,6 +129,8 @@ class OllamaClient(LLMClient):
             "stream": True,
             "options": self._build_options(temperature, max_tokens),
         }
+        if schema is not None:
+            payload["format"] = schema
 
         url = f"{self._base_url}/api/chat"
 
