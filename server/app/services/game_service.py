@@ -311,6 +311,10 @@ class GameService:
         """
         await self._orchestration_service.resume_game(game_id)
 
+    async def cancel_game(self, game_id: str) -> bool:
+        """Cancel an active in-memory game loop."""
+        return await self._orchestration_service.cancel_game(game_id)
+
     def get_game_state(self, game_id: str) -> GameState | None:
         """Get the current state of an active game.
 

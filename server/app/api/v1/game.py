@@ -11,7 +11,6 @@ from fastapi import APIRouter, Depends, Query, WebSocket
 from app.dependencies import (
     get_db,
     get_decision_service,
-    get_engine_registry,
     get_game_orchestration_service,
     get_game_service,
 )
@@ -172,6 +171,5 @@ async def game_websocket(
     websocket: WebSocket,
     game_id: str,
     orchestration: GameOrchestrationService = Depends(get_game_orchestration_service),
-    registry=Depends(get_engine_registry),
 ) -> None:
-    await handle_game_websocket(websocket, game_id, orchestration, registry)
+    await handle_game_websocket(websocket, game_id, orchestration)

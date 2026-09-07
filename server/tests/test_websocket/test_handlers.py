@@ -22,13 +22,8 @@ def mock_websocket() -> AsyncMock:
 @pytest.fixture
 def orchestration() -> MagicMock:
     svc = MagicMock()
-    svc.get_game_state.return_value = None
+    svc.observer_snapshot.return_value = None
     return svc
-
-
-@pytest.fixture
-def engine_registry() -> MagicMock:
-    return MagicMock()
 
 
 class TestWebSocketHandlers:
@@ -37,15 +32,12 @@ class TestWebSocketHandlers:
         self,
         mock_websocket: AsyncMock,
         orchestration: MagicMock,
-        engine_registry: MagicMock,
     ) -> None:
         with patch("app.websocket.handlers.ws_manager") as mock_manager:
             mock_manager.connect = AsyncMock()
             mock_manager.disconnect = AsyncMock()
 
-            await handle_game_websocket(
-                mock_websocket, "test_game_id", orchestration, engine_registry
-            )
+            await handle_game_websocket(mock_websocket, "test_game_id", orchestration)
 
             mock_manager.connect.assert_called_once_with("test_game_id", mock_websocket)
             mock_manager.disconnect.assert_called_once_with("test_game_id", mock_websocket)
@@ -54,7 +46,6 @@ class TestWebSocketHandlers:
     async def test_handle_game_websocket_replies_pong(
         self,
         orchestration: MagicMock,
-        engine_registry: MagicMock,
     ) -> None:
         mock_ws = AsyncMock(spec=WebSocket)
         mock_ws.receive_json = AsyncMock(
@@ -66,9 +57,7 @@ class TestWebSocketHandlers:
             mock_manager.connect = AsyncMock()
             mock_manager.disconnect = AsyncMock()
 
-            await handle_game_websocket(
-                mock_ws, "game-ping", orchestration, engine_registry
-            )
+            await handle_game_websocket(mock_ws, "game-ping", orchestration)
 
             mock_ws.send_json.assert_called_with({"type": "pong"})
 
@@ -77,12 +66,33 @@ class TestWebSocketHandlers:
         self,
         mock_websocket: AsyncMock,
         orchestration: MagicMock,
-        engine_registry: MagicMock,
     ) -> None:
         with patch("app.websocket.handlers.ws_manager") as mock_manager:
             mock_manager.connect = AsyncMock(side_effect=ConnectionError("Failed"))
 
             with pytest.raises(ConnectionError):
                 await handle_game_websocket(
-                    mock_websocket, "test_game_id", orchestration, engine_registry
+                    mock_websocket, "test_game_id", orchestration
                 )
+
+    @pytest.mark.asyncio
+    async def test_handle_game_websocket_sends_observer_snapshot(
+        self,
+        orchestration: MagicMock,
+    ) -> None:
+        mock_ws = AsyncMock(spec=WebSocket)
+        mock_ws.receive_json = AsyncMock(side_effect=WebSocketDisconnect())
+        mock_ws.send_json = AsyncMock()
+        orchestration.observer_snapshot.return_value = {"game_type": "doudizhu"}
+
+        with patch("app.websocket.handlers.ws_manager") as mock_manager:
+            mock_manager.connect = AsyncMock()
+            mock_manager.disconnect = AsyncMock()
+
+            await handle_game_websocket(mock_ws, "game-snap", orchestration)
+
+            mock_ws.send_json.assert_called_once_with({
+                "type": "state_update",
+                "game_id": "game-snap",
+                "data": {"game_type": "doudizhu"},
+            })

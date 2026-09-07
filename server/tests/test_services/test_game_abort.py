@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -39,3 +39,20 @@ async def test_abort_game_clears_memory_and_updates_status() -> None:
     assert "g1" not in svc._tasks
     assert "g1" not in svc._pause_events
     assert "g1" not in svc._frozen_players
+
+
+@pytest.mark.asyncio
+async def test_cancel_game_cancels_running_task() -> None:
+    svc = GameOrchestrationService.__new__(GameOrchestrationService)
+
+    async def _noop() -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            raise
+
+    task = asyncio.create_task(_noop())
+    svc._tasks = {"g1": task}
+    assert await svc.cancel_game("g1") is True
+    assert task.cancelled() or task.done()
+    assert await svc.cancel_game("missing") is False

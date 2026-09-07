@@ -10,7 +10,6 @@ from fastapi import WebSocket, WebSocketDisconnect
 from app.websocket.manager import ws_manager
 
 if TYPE_CHECKING:
-    from app.core.engine.registry import GameEngineRegistry
     from app.services.game_orchestration_service import GameOrchestrationService
 
 logger = structlog.get_logger()
@@ -20,7 +19,6 @@ async def handle_game_websocket(
     websocket: WebSocket,
     game_id: str,
     orchestration_service: GameOrchestrationService,
-    engine_registry: GameEngineRegistry,
 ) -> None:
     """Handle a game observation WebSocket connection.
 
@@ -30,18 +28,16 @@ async def handle_game_websocket(
     """
     await ws_manager.connect(game_id, websocket)
 
-    state = orchestration_service.get_game_state(game_id)
-    if state is not None:
-        try:
-            engine = engine_registry.get(state.game_type)
-            public_info = engine.get_public_info(state, "observer", is_observer=True)
+    try:
+        public_info = orchestration_service.observer_snapshot(game_id)
+        if public_info is not None:
             await websocket.send_json({
                 "type": "state_update",
                 "game_id": game_id,
                 "data": public_info,
             })
-        except Exception:
-            logger.warning("ws_state_snapshot_failed", game_id=game_id, exc_info=True)
+    except Exception:
+        logger.warning("ws_state_snapshot_failed", game_id=game_id, exc_info=True)
 
     try:
         while True:

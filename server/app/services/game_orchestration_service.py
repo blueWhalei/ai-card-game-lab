@@ -23,9 +23,9 @@ if TYPE_CHECKING:
     from app.core.collector.jsonl_writer import JsonlWriter
     from app.core.engine.base import GameState
     from app.core.engine.registry import GameEngineRegistry
-    from app.services.experiment_config_service import ExperimentConfigService
     from app.services.ai_service import AIService
     from app.services.decision_service import DecisionService
+    from app.services.experiment_config_service import ExperimentConfigService
     from app.services.trace_service import TraceService
 
 logger = structlog.get_logger()
@@ -66,6 +66,8 @@ class GameOrchestrationService:
         self._pause_events: dict[str, asyncio.Event] = {}
         self._frozen_players: dict[str, dict[str, dict[str, Any]]] = {}
         self._game_slots = asyncio.Semaphore(max(1, max_concurrent_games))
+        # Keep strong refs to fire-and-forget WS chunk broadcast tasks.
+        self._chunk_broadcast_tasks: set[asyncio.Task[None]] = set()
 
     def has_active_game(self, game_id: str) -> bool:
         """Check if a game is currently active."""
@@ -74,6 +76,14 @@ class GameOrchestrationService:
     def get_game_state(self, game_id: str) -> GameState | None:
         """Get the current state of an active game."""
         return self._states.get(game_id)
+
+    def observer_snapshot(self, game_id: str) -> dict[str, Any] | None:
+        """Public observer payload for an active game, or None if not running."""
+        state = self._states.get(game_id)
+        if state is None:
+            return None
+        engine = self._engine_registry.get(state.game_type)
+        return engine.get_public_info(state, "observer", is_observer=True)
 
     def _resolve_player_config(self, game_id: str, player_id: str) -> dict[str, Any] | None:
         """Prefer frozen per-game snapshot; fall back to live experiment configs."""
@@ -147,54 +157,53 @@ class GameOrchestrationService:
         """Execute one game; concurrency slot is held only during each AI round."""
         logger.info("game_loop_entering", game_id=game_id)
 
-        async with connect_sqlite(self._sqlite_path) as db:
-            async with bind_game_connection(db):
-                logger.info("game_loop_db_connected", game_id=game_id)
+        async with connect_sqlite(self._sqlite_path) as db, bind_game_connection(db):
+            logger.info("game_loop_db_connected", game_id=game_id)
 
-                bg_game_repo = GameRepository(db)
-                bg_round_repo = RoundRepository(db)
+            bg_game_repo = GameRepository(db)
+            bg_round_repo = RoundRepository(db)
 
-                state = self._states.get(game_id)
-                if state is None:
-                    logger.error("game_loop_state_not_found", game_id=game_id)
-                    return
+            state = self._states.get(game_id)
+            if state is None:
+                logger.error("game_loop_state_not_found", game_id=game_id)
+                return
 
-                engine = self._engine_registry.get(state.game_type)
-                logger.info("game_loop_starting", game_id=game_id, game_type=state.game_type)
+            engine = self._engine_registry.get(state.game_type)
+            logger.info("game_loop_starting", game_id=game_id, game_type=state.game_type)
 
-                try:
-                    while not engine.is_terminal(state):
-                        event = self._pause_events.get(game_id)
-                        if event:
-                            await event.wait()
+            try:
+                while not engine.is_terminal(state):
+                    event = self._pause_events.get(game_id)
+                    if event:
+                        await event.wait()
 
-                        logger.info("game_loop_waiting_slot", game_id=game_id)
-                        async with self._game_slots:
-                            state = await self._run_round(
-                                game_id, state, engine, bg_round_repo
-                            )
-                        self._states[game_id] = state
+                    logger.info("game_loop_waiting_slot", game_id=game_id)
+                    async with self._game_slots:
+                        state = await self._run_round(
+                            game_id, state, engine, bg_round_repo
+                        )
+                    self._states[game_id] = state
 
-                        await asyncio.sleep(0.5)
+                    await asyncio.sleep(0.5)
 
-                    await self._finish_game(game_id, state, engine, bg_game_repo)
-                except asyncio.CancelledError:
-                    logger.info("game_loop_cancelled", game_id=game_id)
-                    await self._abort_game(
-                        game_id,
-                        bg_game_repo,
-                        status="cancelled",
-                        message="对局已取消",
-                    )
-                    raise
-                except Exception as exc:
-                    logger.exception("game_loop_error", game_id=game_id)
-                    await self._abort_game(
-                        game_id,
-                        bg_game_repo,
-                        status="failed",
-                        message=f"对局循环出错: {type(exc).__name__}: {exc}",
-                    )
+                await self._finish_game(game_id, state, engine, bg_game_repo)
+            except asyncio.CancelledError:
+                logger.info("game_loop_cancelled", game_id=game_id)
+                await self._abort_game(
+                    game_id,
+                    bg_game_repo,
+                    status="cancelled",
+                    message="对局已取消",
+                )
+                raise
+            except Exception as exc:
+                logger.exception("game_loop_error", game_id=game_id)
+                await self._abort_game(
+                    game_id,
+                    bg_game_repo,
+                    status="failed",
+                    message=f"对局循环出错: {type(exc).__name__}: {exc}",
+                )
 
     async def _abort_game(
         self,
@@ -272,7 +281,10 @@ class GameOrchestrationService:
                     })
                 except Exception:
                     logger.warning("broadcast_chunk_failed", game_id=game_id, exc_info=True)
-            asyncio.create_task(_broadcast_chunk())
+            # Fire-and-forget WS chunk; keep a ref so the task is not GC'd mid-flight.
+            task = asyncio.create_task(_broadcast_chunk())
+            self._chunk_broadcast_tasks.add(task)
+            task.add_done_callback(self._chunk_broadcast_tasks.discard)
 
         t0 = time.monotonic()
         if use_streaming:
@@ -625,3 +637,13 @@ class GameOrchestrationService:
             "type": "game_resumed",
             "game_id": game_id,
         })
+
+    async def cancel_game(self, game_id: str) -> bool:
+        """Cancel an in-memory game loop. Returns False if the game was not active."""
+        task = self._tasks.get(game_id)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
+        return True

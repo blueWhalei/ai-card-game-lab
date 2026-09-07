@@ -135,3 +135,13 @@ async def collect_experiment(
 ) -> ApiResponse[dict[str, Any]]:
     result = await service.collect(experiment_id, count=body.count, db=db)
     return ApiResponse(data=result)
+
+
+@router.post("/{experiment_id}/cancel-collect")
+async def cancel_experiment_collect(
+    experiment_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Stop in-flight collect by cancelling active games for this experiment."""
+    result = await service.cancel_collect(experiment_id)
+    return ApiResponse(data=result)
