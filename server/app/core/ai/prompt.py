@@ -13,7 +13,11 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from app.core.ai.prompts.registry import PromptTemplateRegistry
+from app.core.ai.prompts.registry import (
+    DEFAULT_TEMPLATE_VERSION,
+    REASONING_TEMPLATE_VERSION,
+    PromptTemplateRegistry,
+)
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -36,10 +40,6 @@ REASONING_MODEL_PATTERNS = [
     r"qwen-qwq",
     r"qwq",
 ]
-
-DEFAULT_TEMPLATE_VERSION = "v3"
-REASONING_TEMPLATE_VERSION = "v3_reasoning"
-
 
 def is_reasoning_model(model_name: str | None) -> bool:
     """Check if the model is a reasoning/thinking model.
@@ -133,10 +133,8 @@ def get_prompt_registry() -> PromptTemplateRegistry:
 class PromptBuilder:
     """Resolves the system message for one decision.
 
-    Features:
-    - Version-controlled prompt templates via Registry
-    - A/B testing support
-    - Automatic reasoning model detection
+    Picks the template version from the model (reasoning models get a variant),
+    reads the stored template, and fills in the engine's rules.
     """
 
     def __init__(
@@ -147,11 +145,12 @@ class PromptBuilder:
         self._registry = registry or _registry
         self._default_version = default_version
 
-    def _select_version_for_model(self, model_name: str | None) -> str:
+    def version_for(self, model_name: str | None) -> str:
         """Pick the template version for a model.
 
         Reasoning models get a variant that caps how long they think before
-        answering; everything else gets the configured default.
+        answering; everything else gets the default. Public because a trace has to
+        record the version a decision actually used, not a placeholder.
         """
         if is_reasoning_model(model_name):
             return REASONING_TEMPLATE_VERSION
@@ -180,22 +179,20 @@ class PromptBuilder:
         phase: str,
         format_instructions: str,
         model_name: str | None = None,
-        session_id: str | None = None,
         db: aiosqlite.Connection | None = None,
     ) -> str:
         """Render the system message for one decision.
 
         This is the half of prompt building a policy cannot do for itself: it
-        needs the template registry, the A/B assignment, and the engine's rules
-        file. The user message is assembled by the caller from the observation.
+        needs the template registry and the engine's rules file. The user message
+        is assembled by the caller from the observation.
         """
         template_key = self._template_key_for(engine, phase)
         try:
             template_content = await self._registry.get_template(
                 template_key=template_key,
                 db=db,
-                version=self._select_version_for_model(model_name),
-                session_id=session_id,
+                version=self.version_for(model_name),
             )
         except ValueError:
             template_content = BIDDING_SYSTEM_TEMPLATE if phase == "bidding" else SYSTEM_TEMPLATE

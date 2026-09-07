@@ -18,9 +18,6 @@ export type SystemConfig = {
   data_dir: string
   sqlite_path: string
   models_dir: string
-  prompt_version?: string
-  prompt_ab_test_enabled?: boolean
-  prompt_ab_test_ratio?: number
   max_concurrent_games?: number
   training_deps_available?: boolean
   default_base_models?: string[]

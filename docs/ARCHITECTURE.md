@@ -537,7 +537,7 @@ class ConnectionManager:
 | `game_started` | 对局开始 | `{players, current_player, landlord_cards}` |
 | `thinking` | AI 开始思考 | `{player_id, player_name, legal_actions}` |
 | `thinking_chunk` | AI 思考流式输出 | `{player_id, chunk, chunk_type}` |
-| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name, legal_actions, used_langchain_parser, win_probability, hand_analysis}` |
+| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name, legal_actions, parser_ok, win_probability, hand_analysis}` |
 | `action` | AI 完成出牌 | `{round, player_id, action_type, cards}` |
 | `state_update` | 全局状态更新 | `{players, hands, current_player, landlord_cards}` |
 | `game_paused` | 对局暂停 | `{}` |

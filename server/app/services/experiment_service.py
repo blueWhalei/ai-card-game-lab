@@ -85,10 +85,9 @@ class ExperimentService:
         return await open_db_connection(self._sqlite_path)
 
     def _prompt_version(self) -> str:
-        settings = getattr(self._game_service, "_settings", None)
-        if settings is not None:
-            return str(getattr(settings, "prompt_version", "v1") or "v1")
-        return "v1"
+        from app.core.ai.prompts.registry import DEFAULT_TEMPLATE_VERSION
+
+        return DEFAULT_TEMPLATE_VERSION
 
     def _snapshot_players(self, player_ids: list[str]) -> list[dict[str, Any]]:
         cfg_svc = self._game_service._experiment_config_service

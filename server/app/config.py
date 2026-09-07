@@ -68,6 +68,3 @@ class Settings(BaseSettings):
     ev_loss_determinizations: int = 4
     ev_loss_max_candidates: int = 8
 
-    prompt_version: str = "v1"
-    prompt_ab_test_enabled: bool = False
-    prompt_ab_test_ratio: float = 0.5

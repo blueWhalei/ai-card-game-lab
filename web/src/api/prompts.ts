@@ -29,19 +29,6 @@ export interface DeactivatePromptRequest {
   version: string
 }
 
-export interface ABTestConfig {
-  enabled: boolean
-  ratio: number
-}
-
-export interface ABStatsResponse {
-  enabled: boolean
-  ratio: number
-  total_assignments: number
-  v1_count: number
-  v2_count: number
-}
-
 export interface ListPromptsParams {
   template_key?: string
   active_only?: boolean
@@ -74,10 +61,4 @@ export const promptsApi = {
       `/api/v1/prompts/${template_key}/deactivate`,
       data,
     ),
-
-  getAbStats: () =>
-    apiClient.get<never, ApiResponse<ABStatsResponse>>('/api/v1/prompts/ab-stats'),
-
-  updateAbConfig: (data: ABTestConfig) =>
-    apiClient.put<never, ApiResponse<ABStatsResponse>>('/api/v1/prompts/ab-config', data),
 }

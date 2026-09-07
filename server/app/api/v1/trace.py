@@ -35,7 +35,7 @@ class MetricsResponse(BaseModel):
     avg_response_time_ms: float
     min_response_time_ms: float
     max_response_time_ms: float
-    langchain_success_count: int | None = None
+    parser_success_count: int | None = None
 
 
 class VersionStats(BaseModel):
@@ -44,7 +44,7 @@ class VersionStats(BaseModel):
     version: str
     total_traces: int
     avg_response_time_ms: float
-    langchain_success_count: int
+    parser_success_count: int
     success_rate: float
 
 
@@ -64,7 +64,7 @@ async def list_traces(
     player_id: str | None = Query(None, description="Filter by player ID"),
     model: str | None = Query(None, description="Filter by model"),
     parser_ok: bool | None = Query(
-        None, description="Filter by langchain parser success (true/false)"
+        None, description="Filter by parser success (true/false)"
     ),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=200),
@@ -100,7 +100,7 @@ async def get_metrics(
     player_id: str | None = Query(None, description="Filter by player ID"),
     model: str | None = Query(None, description="Filter by model"),
     parser_ok: bool | None = Query(
-        None, description="Filter by langchain parser success (true/false)"
+        None, description="Filter by parser success (true/false)"
     ),
     start_time: str | None = Query(None, description="Start time (ISO format)"),
     end_time: str | None = Query(None, description="End time (ISO format)"),

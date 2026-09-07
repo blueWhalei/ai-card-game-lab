@@ -106,8 +106,7 @@ ai-card-game-lab/
 │   │   │   │   │   ├── openai_client.py  # Chat Completions 客户端（OpenAI、DashScope、DeepSeek 等）
 │   │   │   │   │   └── ollama_client.py
 │   │   │   │   ├── parsers/            # AI 响应解析
-│   │   │   │   │   ├── action_parser.py  # 出牌动作解析
-│   │   │   │   │   └── bid_parser.py     # 叫分解析
+│   │   │   │   │   └── action_id_parser.py  # ActionId 结构化解析
 │   │   │   │   ├── prompts/            # 提示词模板
 │   │   │   │   │   └── registry.py      # 模板注册中心
 │   │   │   │   ├── tools/              # AI 工具

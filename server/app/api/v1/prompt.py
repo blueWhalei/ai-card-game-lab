@@ -5,8 +5,6 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from app.dependencies import get_prompt_service
 from app.schemas.common import ApiResponse
 from app.schemas.prompt import (
-    ABStatsResponse,
-    ABTestConfig,
     ActivatePromptRequest,
     CreatePromptRequest,
     DeactivatePromptRequest,
@@ -125,25 +123,3 @@ async def deactivate_template(
     return ApiResponse(data=template)
 
 
-@router.get("/ab-stats", response_model=ApiResponse[ABStatsResponse])
-async def get_ab_stats(
-    service: PromptService = Depends(_get_prompt_service),
-) -> ApiResponse[ABStatsResponse]:
-    """Get current A/B test statistics."""
-    stats = service.get_ab_stats()
-    return ApiResponse(data=stats)
-
-
-@router.put("/ab-config", response_model=ApiResponse[ABStatsResponse])
-async def update_ab_config(
-    body: ABTestConfig,
-    service: PromptService = Depends(_get_prompt_service),
-) -> ApiResponse[ABStatsResponse]:
-    """Update A/B test configuration."""
-    if not (0.0 <= body.ratio <= 1.0):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ratio must be between 0.0 and 1.0",
-        )
-    stats = service.update_ab_config(body)
-    return ApiResponse(data=stats)

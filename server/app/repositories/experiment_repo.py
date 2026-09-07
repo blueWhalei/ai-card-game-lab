@@ -355,7 +355,7 @@ class ExperimentRepository:
             SELECT
                 COUNT(*) AS total,
                 SUM(
-                    CASE WHEN json_extract(t.metrics, '$.used_langchain_parser') = 1
+                    CASE WHEN json_extract(t.metrics, '$.parser_ok') = 1
                     THEN 1 ELSE 0 END
                 ) AS parser_ok
             FROM traces t
@@ -481,7 +481,7 @@ class ExperimentRepository:
                 CASE WHEN dp.train_usable = 1 THEN 1 ELSE 0 END AS usable,
                 MAX(CASE WHEN t.id IS NOT NULL THEN 1 ELSE 0 END) AS has_trace,
                 MAX(
-                  CASE WHEN json_extract(t.metrics, '$.used_langchain_parser') = 1
+                  CASE WHEN json_extract(t.metrics, '$.parser_ok') = 1
                   THEN 1 ELSE 0 END
                 ) AS parser_ok
               FROM decision_points dp

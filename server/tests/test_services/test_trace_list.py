@@ -134,7 +134,7 @@ async def test_list_filtered_parser_ok(db_path: str) -> None:
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"response_time_ms": 10, "used_langchain_parser": True},
+            metrics={"response_time_ms": 10, "parser_ok": True},
             created_at=now,
         )
         await repo.create_trace(
@@ -146,7 +146,7 @@ async def test_list_filtered_parser_ok(db_path: str) -> None:
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"response_time_ms": 20, "used_langchain_parser": False},
+            metrics={"response_time_ms": 20, "parser_ok": False},
             created_at=now,
         )
         ok_rows, ok_total = await repo.list_filtered(parser_ok=True)
@@ -185,6 +185,6 @@ async def test_version_stats_empty_version_does_not_divide_none(db_path: str) ->
         repo = TraceRepository(db)
         stats = await repo.get_version_stats("missing")
     assert stats["total_traces"] == 0
-    assert stats["langchain_success_count"] == 0
+    assert stats["parser_success_count"] == 0
     assert stats["avg_response_time_ms"] == 0.0
     assert stats["success_rate"] == 0.0

@@ -174,7 +174,6 @@ class LLMPolicy(Policy):
             await ctx.prompts.system_message(
                 phase=observation.phase,
                 model_name=self._model_name,
-                session_id=ctx.session_id,
                 format_instructions=instructions,
             )
             if ctx.prompts is not None
@@ -274,6 +273,6 @@ class LLMPolicy(Policy):
         )
         return ActionChosen(
             action_id=chosen,
-            thinking=f"[LLM调用失败，使用默认动作] {error}",
+            thinking=f"rescue: {error}",
             parse_fallback=True,
         )

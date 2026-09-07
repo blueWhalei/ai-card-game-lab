@@ -1,23 +1,14 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import {
-  promptsApi,
-  type PromptTemplateResponse,
-  type ABTestConfig,
-  type ABStatsResponse,
-} from '@/api/prompts'
+import { promptsApi, type PromptTemplateResponse } from '@/api/prompts'
 import PromptComparePanel from '@/components/prompt/PromptComparePanel.vue'
 import PromptList from '@/components/prompt/PromptList.vue'
 import PromptEditor from '@/components/prompt/PromptEditor.vue'
-import KpiStrip from '@/components/common/KpiStrip.vue'
-import type { KpiItem } from '@/components/common/KpiStrip.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
-import UiSwitch from '@/components/ui/Switch.vue'
-import UiSlider from '@/components/ui/Slider.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiEmpty from '@/components/ui/Empty.vue'
 
@@ -28,10 +19,6 @@ const showEditorDialog = ref(false)
 const isEditing = ref(false)
 const selectedTemplate = ref<PromptTemplateResponse | null>(null)
 const selectedTemplateKey = ref<string | undefined>(undefined)
-
-const abStats = ref<ABStatsResponse | null>(null)
-const abConfig = ref<ABTestConfig>({ enabled: false, ratio: 0.5 })
-const showABPanel = ref(false)
 
 const editorForm = ref({
   template_key: '',
@@ -48,29 +35,6 @@ const promptVersions = computed(() =>
   [...new Set(templates.value.map((item) => item.version).filter(Boolean))],
 )
 
-const abKpiItems = computed((): KpiItem[] => {
-  if (!abStats.value) return []
-  return [
-    {
-      id: 'total',
-      label: t('prompt.totalAlloc'),
-      value: String(abStats.value.total_assignments),
-    },
-    {
-      id: 'v1',
-      label: t('prompt.v1'),
-      value: String(abStats.value.v1_count),
-      tone: 'primary',
-    },
-    {
-      id: 'v2',
-      label: t('prompt.v2'),
-      value: String(abStats.value.v2_count),
-      tone: 'default',
-    },
-  ]
-})
-
 async function fetchTemplates() {
   loading.value = true
   try {
@@ -80,19 +44,6 @@ async function fetchTemplates() {
     showApiError(e, t('prompt.listFailed'))
   } finally {
     loading.value = false
-  }
-}
-
-async function fetchABStats() {
-  try {
-    const res = await promptsApi.getAbStats()
-    abStats.value = res.data
-    abConfig.value = {
-      enabled: res.data.enabled,
-      ratio: res.data.ratio,
-    }
-  } catch (e: unknown) {
-    showApiError(e, t('prompt.abStatsFailed'))
   }
 }
 
@@ -201,22 +152,6 @@ function handleSelect(templateKey: string, version: string) {
   }
 }
 
-async function handleABConfigUpdate() {
-  try {
-    await promptsApi.updateAbConfig(abConfig.value)
-    toast.success(t('prompt.abUpdated'))
-    await fetchABStats()
-  } catch (e: unknown) {
-    showApiError(e, t('prompt.abUpdateFailed'))
-  }
-}
-
-watch(showABPanel, (val) => {
-  if (val && !abStats.value) {
-    fetchABStats()
-  }
-})
-
 onMounted(() => {
   fetchTemplates()
 })
@@ -225,40 +160,7 @@ onMounted(() => {
 <template>
   <div class="page-container">
     <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
-      <UiButton variant="secondary" @click="showABPanel = !showABPanel">
-        {{ showABPanel ? t('common.hide') : t('prompt.abTest') }}
-      </UiButton>
       <UiButton @click="openCreateDialog()">{{ t('prompt.newTemplate') }}</UiButton>
-    </div>
-
-    <div v-if="showABPanel" class="mb-5 rounded-ink-md border border-ink-border bg-ink-surface px-3 py-3">
-      <div class="mb-3 flex items-center justify-between">
-        <h3 class="text-sm font-semibold text-ink-text">{{ t('prompt.abConfig') }}</h3>
-      </div>
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div class="space-y-3">
-          <div>
-            <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('prompt.enableAb') }}</label>
-            <div class="flex items-center gap-2">
-              <UiSwitch v-model="abConfig.enabled" />
-              <span class="text-sm text-ink-text-muted">{{
-                abConfig.enabled ? t('common.enabled') : t('common.disabled')
-              }}</span>
-            </div>
-          </div>
-          <div v-if="abConfig.enabled">
-            <label class="mb-1.5 block text-sm font-medium text-ink-text">
-              {{ t('prompt.v2Ratio', { n: (abConfig.ratio * 100).toFixed(0) }) }}
-            </label>
-            <UiSlider v-model="abConfig.ratio" :min="0" :max="1" :step="0.1" />
-          </div>
-          <UiButton size="sm" @click="handleABConfigUpdate">{{ t('prompt.saveConfig') }}</UiButton>
-        </div>
-        <div v-if="abStats" class="space-y-2">
-          <h4 class="text-xs font-medium text-ink-text-muted">{{ t('prompt.allocStats') }}</h4>
-          <KpiStrip :items="abKpiItems" class="md:!grid-cols-3" />
-        </div>
-      </div>
     </div>
 
     <PromptComparePanel class="mb-6" :versions="promptVersions" />

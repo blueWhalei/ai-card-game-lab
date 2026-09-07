@@ -533,7 +533,7 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
         "prompt_version": "v2",
         "metrics": {
           "response_time_ms": 1234,
-          "used_langchain_parser": true
+          "parser_ok": true
         },
         "created_at": "2024-01-01T10:00:00Z"
       }
@@ -571,7 +571,7 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
     },
     "metrics": {
       "response_time_ms": 1234,
-      "used_langchain_parser": true
+      "parser_ok": true
     },
     "spans": [],
     "created_at": "2024-01-01T10:00:00Z"
@@ -579,7 +579,7 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
 }
 ```
 
-> `used_langchain_parser` 表示模型自己给出了一个合法的 `action_id`。自动作 id 协议
+> `parser_ok` 表示模型自己给出了一个合法的 `action_id`。自动作 id 协议
 > （`prompt_version` `v3`）起，解析器不再做"猜一个动作还算成功"的软兜底：猜出来的动作记为
 > `false` 并标记 `parse_fallback`，该决策点不进训练集。因此 `parser_success_rate` 在协议切换处
 > **不连续**，比旧值低但更诚实；跨越这条线的实验不能直接比较解析率，需要重跑对照组。
@@ -604,7 +604,7 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
     "avg_response_time_ms": 1234.56,
     "min_response_time_ms": 500,
     "max_response_time_ms": 3000,
-    "langchain_success_count": 145
+    "parser_success_count": 145
   }
 }
 ```
@@ -627,14 +627,14 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
       "version": "v1",
       "total_traces": 50,
       "avg_response_time_ms": 1500,
-      "langchain_success_count": 45,
+      "parser_success_count": 45,
       "success_rate": 90.0
     },
     "version2": {
       "version": "v2",
       "total_traces": 50,
       "avg_response_time_ms": 1200,
-      "langchain_success_count": 48,
+      "parser_success_count": 48,
       "success_rate": 96.0
     },
     "response_time_diff": -300,
@@ -711,7 +711,7 @@ WS /api/v1/games/ws/{game_id}
     "model_provider": "deepseek",
     "model_name": "deepseek-chat",
     "legal_actions": [{"action_type": "PAIR", "cards": ["HK", "SK"]}, {"action_type": "PASS", "cards": []}],
-    "used_langchain_parser": true,
+    "parser_ok": true,
     "win_probability": {"probability": 0.62, "confidence": "中", "reasoning": "局势均衡"}
   }
 }

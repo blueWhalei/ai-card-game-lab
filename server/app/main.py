@@ -49,12 +49,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     await get_experiment_config_service().initialize()
 
-    # Wire env A/B settings into the in-process prompt registry
-    registry = get_registry()
-    registry._default_version = settings.prompt_version
-    registry._ab_test_enabled = settings.prompt_ab_test_enabled
-    registry._ab_test_ratio = settings.prompt_ab_test_ratio
-
     yield
 
     logger.info("application_shutdown")

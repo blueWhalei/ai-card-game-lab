@@ -16,7 +16,7 @@ const showSpans = ref(false)
 
 const decision = computed(() => parseTraceDecision(props.trace.output_data))
 const actionLabel = computed(() => actionTypeLabel(decision.value.actionType))
-const parserOk = computed(() => Boolean(props.trace.metrics.used_langchain_parser))
+const parserOk = computed(() => Boolean(props.trace.metrics.parser_ok))
 const snapshot = computed(() =>
   props.trace.input_snapshot && typeof props.trace.input_snapshot === 'object'
     ? props.trace.input_snapshot

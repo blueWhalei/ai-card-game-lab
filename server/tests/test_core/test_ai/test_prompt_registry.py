@@ -4,7 +4,12 @@ from __future__ import annotations
 
 import pytest
 
-from app.core.ai.prompts.registry import PromptTemplate, PromptTemplateRegistry
+from app.core.ai.prompts.registry import (
+    DEFAULT_TEMPLATE_VERSION,
+    REASONING_TEMPLATE_VERSION,
+    PromptTemplate,
+    PromptTemplateRegistry,
+)
 
 
 class TestPromptTemplate:
@@ -14,13 +19,13 @@ class TestPromptTemplate:
         """Should create template with auto-generated fields."""
         template = PromptTemplate.create(
             template_key="doudizhu_playing",
-            version="v1",
+            version="v3",
             content="Test content",
         )
 
         assert template.id  # Should have UUID
         assert template.template_key == "doudizhu_playing"
-        assert template.version == "v1"
+        assert template.version == "v3"
         assert template.content == "Test content"
         assert template.is_active is True
         assert template.created_at  # Should have timestamp
@@ -31,7 +36,7 @@ class TestPromptTemplate:
         template = PromptTemplate(
             id="test-id",
             template_key="test_key",
-            version="v1",
+            version="v3",
             content="Test content",
             is_active=True,
             created_at="2024-01-01T00:00:00Z",
@@ -42,7 +47,7 @@ class TestPromptTemplate:
 
         assert result["id"] == "test-id"
         assert result["template_key"] == "test_key"
-        assert result["version"] == "v1"
+        assert result["version"] == "v3"
         assert result["content"] == "Test content"
         assert result["is_active"] is True
 
@@ -53,14 +58,6 @@ class TestPromptTemplateRegistry:
     @pytest.fixture
     def registry(self) -> PromptTemplateRegistry:
         return PromptTemplateRegistry()
-
-    @pytest.fixture
-    def ab_registry(self) -> PromptTemplateRegistry:
-        return PromptTemplateRegistry(
-            default_version="v1",
-            ab_test_enabled=True,
-            ab_test_ratio=0.5,
-        )
 
     @pytest.mark.asyncio
     async def test_get_default_template(self, registry: PromptTemplateRegistry) -> None:
@@ -82,104 +79,40 @@ class TestPromptTemplateRegistry:
     @pytest.mark.asyncio
     async def test_get_specific_version(self, registry: PromptTemplateRegistry) -> None:
         """Should get specific version when requested."""
-        content_v1 = await registry.get_template("doudizhu_playing", version="v1")
-        content_v2 = await registry.get_template("doudizhu_playing", version="v2")
+        content_v3 = await registry.get_template("doudizhu_playing", version="v3")
+        content_reasoning = await registry.get_template(
+            "doudizhu_playing", version="v3_reasoning"
+        )
 
-        assert content_v1 != content_v2
-        assert "地主主动压制" in content_v2 or "农民配合队友" in content_v2
+        assert content_v3 != content_reasoning
+        assert "思考请控制" in content_reasoning
 
     @pytest.mark.asyncio
     async def test_missing_template_raises(self, registry: PromptTemplateRegistry) -> None:
         """Should raise ValueError for missing template."""
-        with pytest.raises(ValueError, match="No template found"):
+        with pytest.raises(ValueError, match="No template"):
             await registry.get_template("nonexistent_template")
 
-    def test_select_version_explicit(self, registry: PromptTemplateRegistry) -> None:
-        """Should use explicitly requested version."""
-        version = registry._select_version(
-            template_key="doudizhu_playing",
-            requested_version="v2",
-            session_id=None,
-        )
-        assert version == "v2"
+    @pytest.mark.asyncio
+    async def test_missing_old_version_raises(self, registry: PromptTemplateRegistry) -> None:
+        """v1/v2 are not built-in defaults under the action-id protocol."""
+        with pytest.raises(ValueError, match="No template"):
+            await registry.get_template("doudizhu_playing", version="v1")
 
-    def test_select_version_default(self, registry: PromptTemplateRegistry) -> None:
-        """Should use default version when nothing specified."""
-        version = registry._select_version(
-            template_key="doudizhu_playing",
-            requested_version=None,
-            session_id=None,
-        )
-        assert version == "v1"
-
-    def test_select_version_ab_test_consistent(self, ab_registry: PromptTemplateRegistry) -> None:
-        """Should consistently assign same version for same session."""
-        # Same session should get same version
-        v1 = ab_registry._select_version(
-            template_key="doudizhu_playing",
-            requested_version=None,
-            session_id="session-123",
-        )
-        v2 = ab_registry._select_version(
-            template_key="doudizhu_playing",
-            requested_version=None,
-            session_id="session-123",
-        )
-
-        assert v1 == v2
-
-    def test_select_version_ab_test_different_sessions(self, ab_registry: PromptTemplateRegistry) -> None:
-        """Should potentially assign different versions for different sessions."""
-        versions = set()
-        for i in range(100):
-            version = ab_registry._select_version(
-                template_key="doudizhu_playing",
-                requested_version=None,
-                session_id=f"session-{i}",
-            )
-            versions.add(version)
-
-        # With 100 sessions and 50% ratio, we should see both versions
-        assert len(versions) == 2
-
-    def test_ab_test_disabled(self, registry: PromptTemplateRegistry) -> None:
-        """Should always return default when A/B testing disabled."""
-        for i in range(10):
-            version = registry._select_version(
-                template_key="doudizhu_playing",
-                requested_version=None,
-                session_id=f"session-{i}",
-            )
-            assert version == "v1"
+    def test_default_version_is_v3(self, registry: PromptTemplateRegistry) -> None:
+        assert registry._default_version == DEFAULT_TEMPLATE_VERSION
+        assert DEFAULT_TEMPLATE_VERSION == "v3"
+        assert REASONING_TEMPLATE_VERSION == "v3_reasoning"
 
     def test_clear_cache(self, registry: PromptTemplateRegistry) -> None:
-        """Should clear cache and A/B assignments."""
+        """Should clear cache."""
         registry._cache["test"] = PromptTemplate(
-            id="", template_key="test", version="v1", content="test"
+            id="", template_key="test", version="v3", content="test"
         )
-        registry._ab_assignments["session-1"] = "v1"
 
         registry.clear_cache()
 
         assert not registry._cache
-        assert not registry._ab_assignments
-
-    def test_get_ab_stats(self, ab_registry: PromptTemplateRegistry) -> None:
-        """Should return A/B test statistics."""
-        # Assign some sessions
-        for i in range(10):
-            ab_registry._select_version(
-                template_key="doudizhu_playing",
-                requested_version=None,
-                session_id=f"session-{i}",
-            )
-
-        stats = ab_registry.get_ab_stats()
-
-        assert stats["enabled"] is True
-        assert stats["ratio"] == 0.5
-        assert stats["total_assignments"] == 10
-        assert stats["v1_count"] + stats["v2_count"] == 10
 
 
 class TestPromptTemplateRegistryDefaults:
@@ -190,20 +123,23 @@ class TestPromptTemplateRegistryDefaults:
         return PromptTemplateRegistry()
 
     @pytest.mark.asyncio
-    async def test_playing_v1_has_required_sections(self, registry: PromptTemplateRegistry) -> None:
-        """v1 playing template should have required sections."""
-        content = await registry.get_template("doudizhu_playing", version="v1")
+    async def test_playing_v3_has_required_sections(self, registry: PromptTemplateRegistry) -> None:
+        """v3 playing template should have required sections."""
+        content = await registry.get_template("doudizhu_playing", version="v3")
 
         assert "核心规则" in content
         assert "决策要点" in content
         assert "format_instructions" in content
 
     @pytest.mark.asyncio
-    async def test_playing_v2_has_extra_strategy(self, registry: PromptTemplateRegistry) -> None:
-        """v2 playing template should have extra strategy hints."""
-        content = await registry.get_template("doudizhu_playing", version="v2")
+    async def test_playing_v3_reasoning_has_budget(
+        self, registry: PromptTemplateRegistry
+    ) -> None:
+        """v3_reasoning playing template should spell out the thinking budget."""
+        content = await registry.get_template("doudizhu_playing", version="v3_reasoning")
 
-        assert "地主主动压制" in content or "农民配合队友" in content
+        assert "思考请控制" in content
+        assert "format_instructions" in content
 
     @pytest.mark.asyncio
     async def test_bidding_template_has_evaluation(self, registry: PromptTemplateRegistry) -> None:

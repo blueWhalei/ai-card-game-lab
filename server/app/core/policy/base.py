@@ -126,10 +126,10 @@ class EngineAdvisor(Protocol):
 class PromptSource(Protocol):
     """Resolves the system message for one decision.
 
-    Template lookup means a database read, an A/B assignment, and reading the
-    engine's rules file -- all infrastructure a policy must not own. The service
-    layer implements this and hands over rendered text; the policy supplies
-    ``format_instructions`` because the output protocol is its concern.
+    Template lookup means a database read and reading the engine's rules file --
+    infrastructure a policy must not own. The service layer implements this and
+    hands over rendered text; the policy supplies ``format_instructions`` because
+    the output protocol is its concern.
     """
 
     async def system_message(
@@ -137,7 +137,6 @@ class PromptSource(Protocol):
         *,
         phase: str,
         model_name: str | None,
-        session_id: str | None,
         format_instructions: str,
     ) -> str: ...
 

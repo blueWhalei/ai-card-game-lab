@@ -163,7 +163,7 @@ const metricsParams = computed(() => {
 
 const parserRate = computed(() => {
   if (!metrics.value || metrics.value.total_traces === 0) return 0
-  return (metrics.value.langchain_success_count ?? 0) / metrics.value.total_traces
+  return (metrics.value.parser_success_count ?? 0) / metrics.value.total_traces
 })
 
 function decisionOf(trace: Trace): string {
@@ -203,8 +203,8 @@ const compactRecords = computed((): CompactRecord[] =>
     secondary: `R${trace.round_number} · ${trace.player_id}`,
     meta: formatDateTime(trace.created_at),
     trailing: `${Math.round(trace.metrics.response_time_ms)}ms`,
-    badge: trace.metrics.used_langchain_parser ? t('filter.parseOk') : t('filter.ruleFallback'),
-    badgeTone: trace.metrics.used_langchain_parser ? 'success' : 'warning',
+    badge: trace.metrics.parser_ok ? t('filter.parseOk') : t('filter.ruleFallback'),
+    badgeTone: trace.metrics.parser_ok ? 'success' : 'warning',
   })),
 )
 

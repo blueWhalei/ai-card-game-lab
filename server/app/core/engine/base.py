@@ -555,31 +555,6 @@ class GameEngine(ABC):
             "你的手牌: [♠A, ♥K, ♦Q]\\n对手剩余: 5张\\n..."
         """
 
-    @abstractmethod
-    def parse_action(
-        self, llm_output: str, legal_actions: list[GameAction]
-    ) -> GameAction:
-        """将 LLM 输出解析为游戏动作。
-
-        将 LLM 生成的文本响应映射到合法动作之一。
-        解析器应该尽可能宽松地处理各种格式的输出。
-
-        Args:
-            llm_output: LLM 生成的原始文本输出。
-            legal_actions: 当前合法动作列表。
-
-        Returns:
-            解析得到的 GameAction 对象。
-
-        Raises:
-            InvalidActionError: 如果无法将输出映射到任何合法动作。
-
-        Example:
-            >>> output = "我出对子：33"
-            >>> action = engine.parse_action(output, legal_actions)
-            >>> action.action_type  # 'play'
-            >>> action.cards  # ['3', '3']
-        """
 
     @abstractmethod
     def get_public_info(

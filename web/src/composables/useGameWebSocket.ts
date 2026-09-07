@@ -196,7 +196,7 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponseFull.value = data.raw_response_full || ''
       if (data.legal_actions) currentLegalActions.value = data.legal_actions
       currentParserOk.value =
-        typeof data.used_langchain_parser === 'boolean' ? data.used_langchain_parser : null
+        typeof data.parser_ok === 'boolean' ? data.parser_ok : null
       currentWinProbability.value = data.win_probability
       currentHandAnalysis.value = data.hand_analysis
 

@@ -1,7 +1,7 @@
 """Service layer for prompt template management.
 
-This service provides a unified interface for prompt template CRUD operations
-and A/B test configuration, wrapping both PromptRepository and PromptTemplateRegistry.
+CRUD for versioned prompt templates, coordinating PromptRepository and the
+in-process PromptTemplateRegistry cache.
 """
 
 from __future__ import annotations
@@ -20,8 +20,6 @@ from app.core.ai.prompts.registry import (
 )
 from app.repositories.prompt_repo import PromptRepository
 from app.schemas.prompt import (
-    ABStatsResponse,
-    ABTestConfig,
     ActivatePromptRequest,
     CreatePromptRequest,
     DeactivatePromptRequest,
@@ -33,14 +31,7 @@ logger = structlog.get_logger()
 
 
 class PromptService:
-    """Service for managing prompt templates with persistence and A/B testing.
-
-    Features:
-    - CRUD operations for prompt templates
-    - A/B test configuration management
-    - A/B test statistics tracking
-    - Registry cache coordination
-    """
+    """Service for managing prompt templates with persistence."""
 
     def __init__(
         self,
@@ -198,41 +189,6 @@ class PromptService:
         )
 
         return self._to_response(template)
-
-    def get_ab_stats(self) -> ABStatsResponse:
-        """Get current A/B test statistics."""
-        stats = self._registry.get_ab_stats()
-        return ABStatsResponse(
-            enabled=stats["enabled"],
-            ratio=stats["ratio"],
-            total_assignments=stats["total_assignments"],
-            v1_count=stats["v1_count"],
-            v2_count=stats["v2_count"],
-        )
-
-    def update_ab_config(self, config: ABTestConfig) -> ABStatsResponse:
-        """Update A/B test configuration."""
-        self._registry._ab_test_enabled = config.enabled
-        self._registry._ab_test_ratio = config.ratio
-
-        logger.info(
-            "ab_config_updated",
-            enabled=config.enabled,
-            ratio=config.ratio,
-        )
-
-        return self.get_ab_stats()
-
-    def get_registry_config(self) -> dict[str, object]:
-        """Get the registry instance for AI service to use.
-
-        This allows the AI service to access the current registry
-        with A/B testing and caching enabled.
-        """
-        return {
-            "registry": self._registry,
-            "ab_enabled": self._registry._ab_test_enabled,
-        }
 
     @staticmethod
     def _to_response(template: PromptTemplate) -> PromptTemplateResponse:

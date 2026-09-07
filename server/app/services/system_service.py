@@ -160,9 +160,6 @@ class SystemService:
             "data_dir": self._settings.data_dir,
             "sqlite_path": self._settings.sqlite_path,
             "models_dir": self._settings.models_dir,
-            "prompt_version": self._settings.prompt_version,
-            "prompt_ab_test_enabled": self._settings.prompt_ab_test_enabled,
-            "prompt_ab_test_ratio": self._settings.prompt_ab_test_ratio,
             "max_concurrent_games": self._settings.max_concurrent_games,
             "training_deps_available": _cached_training_deps_available(),
             "default_base_models": [

@@ -134,7 +134,7 @@ async def test_summary_eval_metrics_and_seat_landlord_win_rate(db_path: str) -> 
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"used_langchain_parser": 1},
+            metrics={"parser_ok": 1},
             created_at=now,
         )
         await traces.create_trace(
@@ -146,7 +146,7 @@ async def test_summary_eval_metrics_and_seat_landlord_win_rate(db_path: str) -> 
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"used_langchain_parser": 0},
+            metrics={"parser_ok": 0},
             created_at=now,
         )
 
@@ -353,7 +353,7 @@ async def test_summary_scenario_scores_split_buckets(db_path: str) -> None:
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"used_langchain_parser": 1},
+            metrics={"parser_ok": 1},
             created_at=now,
         )
         await traces.create_trace(
@@ -365,7 +365,7 @@ async def test_summary_scenario_scores_split_buckets(db_path: str) -> None:
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"used_langchain_parser": 0},
+            metrics={"parser_ok": 0},
             created_at=now,
         )
 

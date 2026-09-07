@@ -365,9 +365,7 @@ class GameOrchestrationService:
                 "model_provider": model_cfg.get("provider"),
                 "model_name": model_cfg.get("model_name"),
                 "legal_actions": actions_as_dicts(legal_actions),
-                "used_langchain_parser": bool(
-                    getattr(decision, "used_langchain_parser", True)
-                ),
+                "parser_ok": decision.parser_ok,
                 **explain,
             },
         })
@@ -467,7 +465,7 @@ class GameOrchestrationService:
                 round_number=new_state.round,
                 player_id=current_player,
                 model=model_cfg.get("model_name", "unknown"),
-                prompt_version="default",
+                prompt_version=decision.prompt_version or "v3",
                 input_snapshot={
                     "legal_actions": legal,
                     "hand_snapshot": hand_snapshot,
@@ -486,7 +484,7 @@ class GameOrchestrationService:
                 },
                 metrics={
                     "response_time_ms": elapsed_ms,
-                    "used_langchain_parser": decision.used_langchain_parser,
+                    "parser_ok": decision.parser_ok,
                     **decision.usage,
                 },
             )

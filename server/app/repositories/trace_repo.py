@@ -212,8 +212,8 @@ class TraceRepository:
                 AVG(json_extract(t.metrics, '$.response_time_ms')) as avg_response_time,
                 MIN(json_extract(t.metrics, '$.response_time_ms')) as min_response_time,
                 MAX(json_extract(t.metrics, '$.response_time_ms')) as max_response_time,
-                SUM(CASE WHEN json_extract(t.metrics, '$.used_langchain_parser') = 1
-                    THEN 1 ELSE 0 END) as langchain_success
+                SUM(CASE WHEN json_extract(t.metrics, '$.parser_ok') = 1
+                    THEN 1 ELSE 0 END) as parser_success
             {from_sql}
             {where_sql}
             """,
@@ -232,7 +232,7 @@ class TraceRepository:
             "max_response_time_ms": round(
                 metrics_row["max_response_time"] if metrics_row and metrics_row["max_response_time"] else 0, 2
             ),
-            "langchain_success_count": metrics_row["langchain_success"] if metrics_row else 0,
+            "parser_success_count": metrics_row["parser_success"] if metrics_row else 0,
         }
 
     async def get_version_stats(self, version: str) -> dict[str, Any]:
@@ -242,23 +242,23 @@ class TraceRepository:
             SELECT
                 COUNT(*) as total,
                 AVG(json_extract(metrics, '$.response_time_ms')) as avg_response_time,
-                SUM(CASE WHEN json_extract(metrics, '$.used_langchain_parser') = 1
-                    THEN 1 ELSE 0 END) as langchain_success
+                SUM(CASE WHEN json_extract(metrics, '$.parser_ok') = 1
+                    THEN 1 ELSE 0 END) as parser_success
             FROM traces WHERE prompt_version = ?
             """,
             (version,),
         )
         row = await cursor.fetchone()
         total = int(row["total"]) if row and row["total"] is not None else 0
-        raw_success = row["langchain_success"] if row else None
-        langchain_success = int(raw_success) if raw_success is not None else 0
+        raw_success = row["parser_success"] if row else None
+        parser_success = int(raw_success) if raw_success is not None else 0
         avg_raw = row["avg_response_time"] if row else None
         return {
             "version": version,
             "total_traces": total,
             "avg_response_time_ms": round(float(avg_raw) if avg_raw is not None else 0, 2),
-            "langchain_success_count": langchain_success,
-            "success_rate": round(langchain_success / max(total, 1) * 100, 2),
+            "parser_success_count": parser_success,
+            "success_rate": round(parser_success / max(total, 1) * 100, 2),
         }
 
 
@@ -298,12 +298,12 @@ def _trace_filter_sql(
         params.append(model)
     if parser_ok is True:
         conditions.append(
-            f"json_extract({a}.metrics, '$.used_langchain_parser') = 1"
+            f"json_extract({a}.metrics, '$.parser_ok') = 1"
         )
     elif parser_ok is False:
         conditions.append(
-            f"(json_extract({a}.metrics, '$.used_langchain_parser') IS NULL "
-            f"OR json_extract({a}.metrics, '$.used_langchain_parser') = 0)"
+            f"(json_extract({a}.metrics, '$.parser_ok') IS NULL "
+            f"OR json_extract({a}.metrics, '$.parser_ok') = 0)"
         )
     if start_time:
         conditions.append(f"{a}.created_at >= ?")

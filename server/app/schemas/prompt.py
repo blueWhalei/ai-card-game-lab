@@ -33,27 +33,6 @@ class UpdatePromptRequest(BaseModel):
     content: str = Field(..., description="Updated template content", min_length=1)
 
 
-class ABTestConfig(BaseModel):
-    """A/B test configuration for prompt templates."""
-
-    enabled: bool = Field(description="Whether A/B testing is enabled")
-    ratio: float = Field(
-        description="Ratio of requests assigned to treatment group (0.0-1.0)",
-        ge=0.0,
-        le=1.0,
-    )
-
-
-class ABStatsResponse(BaseModel):
-    """Response model for A/B test statistics."""
-
-    enabled: bool = Field(description="Whether A/B testing is enabled")
-    ratio: float = Field(description="A/B test ratio")
-    total_assignments: int = Field(description="Total number of session assignments")
-    v1_count: int = Field(description="Number of sessions assigned to v1")
-    v2_count: int = Field(description="Number of sessions assigned to v2")
-
-
 class ActivatePromptRequest(BaseModel):
     """Request model for activating a prompt template."""
 

@@ -135,7 +135,7 @@ export interface ThinkingCompletePayload {
   prompt_messages?: Array<{ role: string; content: string }>
   raw_response_full?: string
   legal_actions?: Array<{ action_type?: string; cards?: string[] }>
-  used_langchain_parser?: boolean
+  parser_ok?: boolean
   win_probability?: {
     probability?: number
     confidence?: string

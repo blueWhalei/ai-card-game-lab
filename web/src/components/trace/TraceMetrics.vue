@@ -10,7 +10,7 @@ const props = defineProps<{
 
 const { t } = useI18n()
 
-const successCount = computed(() => props.metrics.langchain_success_count ?? 0)
+const successCount = computed(() => props.metrics.parser_success_count ?? 0)
 
 const successRate = computed(() => {
   if (props.metrics.total_traces === 0) return 0

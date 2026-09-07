@@ -31,7 +31,7 @@ async def _fake_decision(
         prompt_preview="",
         raw_response_preview="",
         usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
-        used_langchain_parser=True,
+        parser_ok=True,
     )
 
 

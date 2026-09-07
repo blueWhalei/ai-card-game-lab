@@ -1,6 +1,5 @@
 """Tests for the Doudizhu game engine."""
 
-import json
 import random
 
 import pytest
@@ -109,84 +108,9 @@ def test_apply_bid_rejects_bid_not_exceeding_current_highest() -> None:
         engine.apply_action(state, invalid_bid)
 
 
-def test_parse_action_json() -> None:
-    engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
-    current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
-    # Build a JSON response matching the first non-pass action
-    non_pass = [a for a in actions if a.action_type != ActionType.PASS]
-    target = non_pass[0]
-    llm_output = json.dumps({
-        "thinking": "test",
-        "action": {"type": str(target.action_type), "cards": list(target.cards)},
-    }, ensure_ascii=False)
-    parsed = engine.parse_action(llm_output, actions)
-    assert sorted(parsed.cards) == sorted(target.cards)
 
 
-def test_parse_action_bid_json_value() -> None:
-    engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
-    current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
 
-    parsed = engine.parse_action(
-        '{"thinking": "叫3分", "action": {"type": "BID", "value": 3}}',
-        actions,
-    )
-
-    assert parsed.action_type == ActionType.BID
-    assert parsed.target == "3"
-
-
-def test_parse_action_bid_json_target() -> None:
-    engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
-    current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
-
-    parsed = engine.parse_action(
-        '{"thinking": "叫2分", "action": {"type": "BID", "target": 2}}',
-        actions,
-    )
-
-    assert parsed.action_type == ActionType.BID
-    assert parsed.target == "2"
-
-
-def test_parse_action_bidding_pass() -> None:
-    engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
-    current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
-
-    parsed = engine.parse_action(
-        '{"thinking": "不叫", "action": {"type": "BID_PASS"}}',
-        actions,
-    )
-
-    assert parsed.action_type == ActionType.BID_PASS
-
-
-def test_parse_action_pass() -> None:
-    engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
-    current = engine.get_current_player(state)
-    bid_three = next(
-        action
-        for action in engine.get_legal_actions(state, current)
-        if action.action_type == ActionType.BID and action.target == "3"
-    )
-    state = engine.apply_action(state, bid_three)
-    current = engine.get_current_player(state)
-    actions = engine.get_legal_actions(state, current)
-    action = next(a for a in actions if a.action_type != ActionType.PASS)
-    state = engine.apply_action(state, action)
-    next_player = engine.get_current_player(state)
-    next_actions = engine.get_legal_actions(state, next_player)
-    parsed = engine.parse_action("不出", next_actions)
-    assert parsed.action_type == ActionType.PASS
 
 
 def test_the_bid_menu_offers_the_highest_bid_first() -> None:

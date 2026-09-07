@@ -80,7 +80,7 @@ async def _seed_pair(db_path: str) -> tuple[str, str]:
             prompt_version="v1",
             input_snapshot={},
             output_data={},
-            metrics={"response_time_ms": 200, "used_langchain_parser": 0},
+            metrics={"response_time_ms": 200, "parser_ok": 0},
             created_at=now,
         )
         await traces.create_trace(
@@ -92,7 +92,7 @@ async def _seed_pair(db_path: str) -> tuple[str, str]:
             prompt_version="v2",
             input_snapshot={},
             output_data={},
-            metrics={"response_time_ms": 80, "used_langchain_parser": 1},
+            metrics={"response_time_ms": 80, "parser_ok": 1},
             created_at=now,
         )
     return "exp-base", "exp-lora"

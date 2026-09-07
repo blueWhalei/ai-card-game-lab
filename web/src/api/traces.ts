@@ -27,7 +27,7 @@ export interface Span {
 
 export interface TraceMetrics {
   response_time_ms: number
-  used_langchain_parser: boolean
+  parser_ok: boolean
 }
 
 export interface AggregatedMetrics {
@@ -35,14 +35,14 @@ export interface AggregatedMetrics {
   avg_response_time_ms: number
   min_response_time_ms: number
   max_response_time_ms: number
-  langchain_success_count: number | null
+  parser_success_count: number | null
 }
 
 export interface VersionStats {
   version: string
   total_traces: number
   avg_response_time_ms: number
-  langchain_success_count: number
+  parser_success_count: number
   success_rate: number
 }
 

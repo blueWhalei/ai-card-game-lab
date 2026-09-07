@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import json
 import random
-import re
 from copy import deepcopy
 from dataclasses import dataclass, field
 from typing import Any
@@ -726,97 +724,6 @@ class DoudizhuEngine(GameEngine):
 
         return "\n".join(lines)
 
-    def _parse_json_action(
-        self, llm_output: str, legal_actions: list[GameAction]
-    ) -> GameAction | None:
-        """Try to parse action from JSON format."""
-        json_match = re.search(r'\{[\s\S]*\}', llm_output)
-        if not json_match:
-            return None
-
-        try:
-            data = json.loads(json_match.group())
-        except (json.JSONDecodeError, KeyError, TypeError, AttributeError, ValueError):
-            return None
-
-        action_data = data.get("action", data)
-        action_type = str(action_data.get("type", action_data.get("action_type", ""))).upper()
-        cards = action_data.get("cards", [])
-
-        # Handle PASS action
-        if action_type == ActionType.PASS:
-            return next((a for a in legal_actions if a.action_type == ActionType.PASS), None)
-
-        # Handle bidding actions
-        if action_type in (ActionType.BID, ActionType.BID_PASS):
-            value = action_data.get("value", action_data.get("target", 0))
-            for a in legal_actions:
-                if str(a.action_type).upper() == action_type:
-                    if action_type == ActionType.BID_PASS:
-                        return a
-                    if a.target == str(value):
-                        return a
-            # Fallback: return any BID action
-            return next(
-                (a for a in legal_actions if str(a.action_type).upper() == action_type),
-                None,
-            )
-
-        # Find matching legal action
-        for a in legal_actions:
-            if (
-                str(a.action_type).upper() == action_type
-                and sorted(a.cards) == sorted(cards)
-            ):
-                return a
-
-        # Try matching just by cards
-        if cards:
-            for a in legal_actions:
-                if sorted(a.cards) == sorted(cards):
-                    return a
-
-        return None
-
-    def _find_action_by_keyword(
-        self, llm_output: str, legal_actions: list[GameAction]
-    ) -> GameAction | None:
-        """Find action using keyword matching."""
-        # Look for PASS keyword
-        if "不出" in llm_output or "PASS" in llm_output.upper():
-            return next((a for a in legal_actions if a.action_type == ActionType.PASS), None)
-
-        # Try to find card codes in text
-        card_pattern = re.findall(r'[SHDC][3-9TJQKA2]|BJ|RJ', llm_output)
-        if card_pattern:
-            for a in legal_actions:
-                if a.action_type != ActionType.PASS and sorted(a.cards) == sorted(card_pattern):
-                    return a
-
-        return None
-
-    def _find_fallback_action(self, legal_actions: list[GameAction]) -> GameAction:
-        """Return a fallback action when all parsing fails."""
-        non_pass = [a for a in legal_actions if a.action_type != ActionType.PASS]
-        if non_pass:
-            return non_pass[0]
-        return legal_actions[0]
-
-    def parse_action(self, llm_output: str, legal_actions: list[GameAction]) -> GameAction:
-        """Parse LLM output into a legal action.
-
-        Tries JSON parsing first, then falls back to text matching.
-        If all fails, picks PASS or a random legal action.
-        """
-        action = self._parse_json_action(llm_output, legal_actions)
-        if action:
-            return action
-
-        action = self._find_action_by_keyword(llm_output, legal_actions)
-        if action:
-            return action
-
-        return self._find_fallback_action(legal_actions)
 
     def get_public_info(
         self, state: GameState, viewer_id: str, is_observer: bool = False
