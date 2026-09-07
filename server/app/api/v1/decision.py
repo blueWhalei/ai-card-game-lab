@@ -30,6 +30,9 @@ class DecisionPointResponse(BaseModel):
     quality_score: float
     train_usable: bool = True
     train_usable_reason: str = ""
+    # None means the move was never scored, which is not the same as 0.0.
+    ev_loss: float | None = None
+    evaluator_params: dict[str, Any] | None = None
     created_at: str
     parser_ok: bool | None = None
     win_probability: dict[str, Any] | None = None
@@ -49,6 +52,10 @@ class DecisionStatsResponse(BaseModel):
     not_usable_count: int = 0
     usable_rate: float = 0.0
     not_usable_reason_counts: dict[str, int] = Field(default_factory=dict)
+    evaluated_count: int = 0
+    avg_ev_loss: float | None = None
+    max_ev_loss: float | None = None
+    blunder_count: int = 0
 
 
 class ExportRequest(BaseModel):
@@ -67,6 +74,13 @@ class ExportRequest(BaseModel):
     train_usable_only: bool = Field(
         default=True,
         description="Only export samples marked train_usable=true (ignored if train_usable set)",
+    )
+    max_ev_loss: float | None = Field(
+        default=None,
+        description=(
+            "Drop moves that gave up more than this much value. "
+            "Unevaluated moves are kept, so old data is not silently excluded."
+        ),
     )
     include_thinking: bool = Field(
         default=False,
@@ -93,6 +107,9 @@ async def list_decision_points(
     train_usable: bool | None = Query(
         None, description="Filter by train_usable flag (true/false)"
     ),
+    max_ev_loss: float | None = Query(
+        None, description="Keep moves at or below this EV loss (unevaluated moves are kept)"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=200),
     service: DecisionService = Depends(get_decision_service),
@@ -108,6 +125,7 @@ async def list_decision_points(
         game_phase=game_phase,
         outcome=outcome,
         train_usable=train_usable,
+        max_ev_loss=max_ev_loss,
         limit=page_size,
         offset=offset,
     )
@@ -148,6 +166,7 @@ async def export_chatml(
         game_phase=request.game_phase,
         train_usable=request.train_usable,
         train_usable_only=request.train_usable_only,
+        max_ev_loss=request.max_ev_loss,
         include_thinking=request.include_thinking,
     )
 

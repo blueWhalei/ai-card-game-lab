@@ -1,6 +1,5 @@
 """Pydantic models for data management endpoints."""
 
-from datetime import datetime
 
 from pydantic import BaseModel, Field
 
@@ -33,5 +32,8 @@ class CreateDatasetFromDecisionsRequest(BaseModel):
     game_phase: str | None = None
     train_usable: bool | None = None
     train_usable_only: bool = True
+    # Structural validity (train_usable) and move quality (ev_loss) are separate
+    # questions, so they stay separate filters. Unevaluated moves are kept.
+    max_ev_loss: float | None = None
     include_thinking: bool = False
     eval_ratio: float = Field(default=0.0, ge=0.0, le=0.5)

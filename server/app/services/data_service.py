@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -125,7 +125,7 @@ class DataService:
             games_dir, output_path, request
         )
 
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
             return await repo.create({
@@ -157,6 +157,7 @@ class DataService:
             game_phase=request.game_phase,
             train_usable=request.train_usable,
             train_usable_only=request.train_usable_only,
+            max_ev_loss=request.max_ev_loss,
             include_thinking=request.include_thinking,
             output_path=str(output_path),
             eval_ratio=request.eval_ratio,
@@ -165,12 +166,13 @@ class DataService:
             output_path.unlink(missing_ok=True)
             raise NoExportableDataError("No decision points to export into a dataset")
 
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
         filters: dict[str, Any] = {
             "source": "decisions",
             "format": "chatml",
             "train_usable": request.train_usable,
             "train_usable_only": request.train_usable_only,
+            "max_ev_loss": request.max_ev_loss,
             "include_thinking": request.include_thinking,
             "game_id": request.game_id,
             "experiment_id": request.experiment_id,
@@ -215,7 +217,7 @@ class DataService:
             )
         except Exception as e:
             output_path.unlink(missing_ok=True)
-            raise DataExportError(str(e))
+            raise DataExportError(str(e)) from e
 
     async def delete_dataset(self, dataset_id: str) -> None:
         """Delete a dataset and its file."""
@@ -224,7 +226,7 @@ class DataService:
             try:
                 ds = await repo.get_by_id(dataset_id)
             except KeyError:
-                raise DatasetNotFoundError(dataset_id)
+                raise DatasetNotFoundError(dataset_id) from None
 
             file_path = self._data_dir / ds["file_path"]
             file_path.unlink(missing_ok=True)

@@ -23,7 +23,9 @@ async def test_a_fresh_database_is_stamped_at_the_current_version(tmp_path: Path
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
         assert "all_hands" in await _columns(db, "rounds")
-        assert "train_usable_reason" in await _columns(db, "decision_points")
+        assert {"train_usable_reason", "ev_loss", "evaluator_params"} <= await _columns(
+            db, "decision_points"
+        )
 
 
 async def test_initialising_twice_changes_nothing(tmp_path: Path) -> None:
@@ -86,7 +88,12 @@ async def test_a_legacy_database_gains_columns_without_losing_rows(tmp_path: Pat
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
         decision_columns = await _columns(db, "decision_points")
-        assert {"train_usable", "train_usable_reason"} <= decision_columns
+        assert {
+            "train_usable",
+            "train_usable_reason",
+            "ev_loss",
+            "evaluator_params",
+        } <= decision_columns
         assert {"protocol", "hypothesis", "conclusion", "tags"} <= await _columns(db, "experiments")
 
         kept = await (await db.execute("SELECT id FROM decision_points")).fetchall()

@@ -6,10 +6,10 @@ import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decision'
-import { dataApi } from '@/api/dataApi'
 import { systemApi } from '@/api/systemApi'
 import { formatDateTime } from '@/utils/format'
 import { defaultEngineId } from '@/utils/engineSlots'
+import { useRegisterAndTrain } from '@/composables/useRegisterAndTrain'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
 import type { WorkbenchLocalFilters } from '@/components/common/WorkbenchFilterBar.vue'
 import MetricHint from '@/components/common/MetricHint.vue'
@@ -41,6 +41,7 @@ const props = withDefaults(
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const { registerDataset } = useRegisterAndTrain()
 const defaultGameType = ref('')
 const lastRegisteredName = ref('')
 const decisionPoints = ref<DecisionPoint[]>([])
@@ -329,15 +330,15 @@ async function registerAsDataset(evalRatio = 0): Promise<void> {
     `decisions-${new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-')}`
   registering.value = true
   try {
-    const res = await dataApi.createDatasetFromDecisions({
+    const dataset = await registerDataset({
       name,
       game_type: defaultGameType.value,
       eval_ratio: evalRatio,
       ...exportScopeParams(),
     })
-    lastRegisteredName.value = res.data.name
+    lastRegisteredName.value = dataset.name
     toast.success(
-      t('decision.savedChatml', { name: res.data.name, count: res.data.sample_count }),
+      t('decision.savedChatml', { name: dataset.name, count: dataset.sample_count }),
     )
     datasetName.value = ''
   } catch (e: unknown) {
@@ -582,6 +583,14 @@ onMounted(async () => {
       >
         <span>{{ t('decision.total', { n: stats.total }) }}</span>
         <span>{{ t('decision.avgQuality', { n: stats.avg_quality.toFixed(2) }) }}</span>
+        <span v-if="stats.avg_ev_loss != null">
+          {{
+            t('decision.avgEvLoss', {
+              n: stats.avg_ev_loss.toFixed(2),
+              evaluated: stats.evaluated_count ?? 0,
+            })
+          }}
+        </span>
         <span class="text-ink-success">{{ t('decision.wins', { n: stats.outcome_counts.win || 0 }) }}</span>
         <span class="text-ink-danger">{{ t('decision.losses', { n: stats.outcome_counts.lose || 0 }) }}</span>
       </p>
@@ -702,6 +711,17 @@ onMounted(async () => {
                     <MetricHint
                       :plain="t('metricHint.quality.plain')"
                       :formula="t('metricHint.quality.formula')"
+                    />
+                  </span>
+                  <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
+                    {{
+                      selectedPoint.ev_loss == null
+                        ? t('decision.evLossUnknown')
+                        : t('decision.evLossLabel', { n: selectedPoint.ev_loss.toFixed(2) })
+                    }}
+                    <MetricHint
+                      :plain="t('metricHint.evLoss.plain')"
+                      :formula="t('metricHint.evLoss.formula')"
                     />
                   </span>
                 </div>

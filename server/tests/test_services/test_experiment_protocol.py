@@ -108,7 +108,8 @@ async def test_create_freezes_player_protocol(db_path: str) -> None:
     assert protocol["players"][0]["model_config"]["temperature"] == 0.7
     assert protocol["game_type"] == "doudizhu"
     assert protocol["engine_version"] == "1"
-    assert protocol["decision_schema_version"] == 1
+    # 2 since decision points carry ev_loss / evaluator_params.
+    assert protocol["decision_schema_version"] == 2
     assert protocol["phases"] == ["bidding", "playing"]
     assert protocol["prompt_keys"]["playing"] == "doudizhu_playing"
     assert "landlord" in protocol["roles"]
@@ -206,14 +207,12 @@ async def test_compare_paired_wins(db_path: str) -> None:
     players_a = '["cfg_a","cfg_b","cfg_c"]'
     players_b = '["cfg_lora","cfg_b","cfg_c"]'
     protocol_a = (
-        '{"schema_version":1,"deal_seeds":[10,20],"pair_deals":false,'
-        '"players":[],"source_experiment_id":null,"frozen_at":"%s","prompt_version":"v1"}'
-        % now
+        f'{{"schema_version":1,"deal_seeds":[10,20],"pair_deals":false,'
+        f'"players":[],"source_experiment_id":null,"frozen_at":"{now}","prompt_version":"v1"}}'
     )
     protocol_b = (
-        '{"schema_version":1,"deal_seeds":[10,20],"pair_deals":true,'
-        '"players":[],"source_experiment_id":"exp-a","frozen_at":"%s","prompt_version":"v1"}'
-        % now
+        f'{{"schema_version":1,"deal_seeds":[10,20],"pair_deals":true,'
+        f'"players":[],"source_experiment_id":"exp-a","frozen_at":"{now}","prompt_version":"v1"}}'
     )
     async with aiosqlite.connect(db_path) as db:
         await db.execute(

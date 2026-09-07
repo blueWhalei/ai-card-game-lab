@@ -140,8 +140,10 @@ class DoudizhuEngine(GameEngine):
                 "parser_success",
                 "train_usable",
                 "latency_p50_p95",
+                "ev_loss",
             ),
-            decision_schema_version=1,
+            # 2: decision points carry ev_loss / evaluator_params.
+            decision_schema_version=2,
             rules_ref=_DOUDIZHU_RULES_REF,
             supports_hidden_state_sampling=True,
             tools=DOUDIZHU_TOOLS,

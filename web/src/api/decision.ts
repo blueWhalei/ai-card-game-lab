@@ -27,6 +27,9 @@ export interface DecisionPoint {
   quality_score: number
   train_usable: boolean
   train_usable_reason?: string
+  /** Value given up versus the best evaluated move. null = never evaluated, not 0. */
+  ev_loss?: number | null
+  evaluator_params?: Record<string, number | string> | null
   parser_ok?: boolean | null
   win_probability?: {
     probability: number
@@ -53,6 +56,10 @@ export interface DecisionStats {
   not_usable_count?: number
   usable_rate?: number
   not_usable_reason_counts?: Record<string, number>
+  evaluated_count?: number
+  avg_ev_loss?: number | null
+  max_ev_loss?: number | null
+  blunder_count?: number
 }
 
 export interface ExportResult {
@@ -69,6 +76,7 @@ export interface DecisionExportParams {
   game_phase?: string
   train_usable?: boolean
   train_usable_only?: boolean
+  max_ev_loss?: number
   include_thinking?: boolean
 }
 
@@ -82,6 +90,7 @@ export const decisionApi = {
     game_phase?: string
     outcome?: string
     train_usable?: boolean
+    max_ev_loss?: number
     page?: number
     page_size?: number
   }) =>

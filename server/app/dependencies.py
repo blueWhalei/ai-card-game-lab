@@ -43,14 +43,17 @@ from app.core.ai.providers.openai_client import OpenAICompatibleClient
 from app.core.collector.jsonl_writer import JsonlWriter
 from app.core.engine.doudizhu import DoudizhuEngine
 from app.core.engine.registry import GameEngineRegistry
+from app.core.eval.rollout import EvaluatorParams
 from app.core.events import get_event_bus
 from app.database import get_db_connection
+from app.services.ai_service import AIService
+from app.services.archive_service import ArchiveService
+from app.services.data_service import DataService
+from app.services.decision_eval import DecisionEvaluator
+from app.services.decision_service import DecisionService
 from app.services.experiment_config_service import ExperimentConfigService
 from app.services.experiment_config_stats_service import ExperimentConfigStatsService
 from app.services.experiment_service import ExperimentService
-from app.services.ai_service import AIService
-from app.services.data_service import DataService
-from app.services.decision_service import DecisionService
 from app.services.game_orchestration_service import GameOrchestrationService
 from app.services.game_replay_service import GameReplayService
 from app.services.game_service import GameService
@@ -186,6 +189,20 @@ def get_jsonl_writer() -> JsonlWriter:
 
 
 @lru_cache
+def get_decision_evaluator() -> DecisionEvaluator | None:
+    """Singleton rollout evaluator, or ``None`` when EV scoring is off."""
+    settings = get_settings()
+    if not settings.ev_loss_enabled:
+        return None
+    return DecisionEvaluator(
+        EvaluatorParams(
+            determinizations=settings.ev_loss_determinizations,
+            max_candidates=settings.ev_loss_max_candidates,
+        )
+    )
+
+
+@lru_cache
 def get_ai_service() -> AIService:
     """Singleton AI service."""
     settings = get_settings()
@@ -194,6 +211,7 @@ def get_ai_service() -> AIService:
         prompt_builder=get_prompt_builder(),
         decision_service=get_decision_service(),
         sqlite_path=settings.sqlite_path,
+        decision_evaluator=get_decision_evaluator(),
     )
 
 
@@ -314,10 +332,8 @@ def get_decision_service() -> DecisionService:
 
 
 @lru_cache
-def get_archive_service() -> "ArchiveService":
+def get_archive_service() -> ArchiveService:
     """Singleton archive service."""
-    from app.services.archive_service import ArchiveService
-
     settings = get_settings()
     return ArchiveService(
         sqlite_path=settings.sqlite_path,

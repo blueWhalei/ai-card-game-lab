@@ -3,9 +3,8 @@
 from __future__ import annotations
 
 import asyncio
-import re
 import time
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -31,6 +30,7 @@ from app.utils.exceptions import (
 if TYPE_CHECKING:
     from app.core.ai.base import LLMClient
     from app.core.ai.factory import LLMClientFactory
+    from app.services.decision_eval import DecisionEvaluator
     from app.services.decision_service import DecisionService
 
 logger = structlog.get_logger()
@@ -78,11 +78,13 @@ class AIService:
         prompt_builder: PromptBuilder,
         decision_service: DecisionService | None = None,
         sqlite_path: str | None = None,
+        decision_evaluator: DecisionEvaluator | None = None,
     ) -> None:
         self._llm_factory = llm_factory
         self._prompt_builder = prompt_builder
         self._decision_service = decision_service
         self._sqlite_path = sqlite_path
+        self._decision_evaluator = decision_evaluator
         self._client_cache: dict[str, LLMClient] = {}
         self._action_parser = ActionOutputParser()
         self._bid_parser = BidOutputParser()
@@ -230,6 +232,7 @@ class AIService:
                 if self._decision_service:
                     await self._record_decision_point(
                         state=state,
+                        engine=engine,
                         player_id=player_id,
                         legal_actions=legal_actions,
                         chosen_action=action,
@@ -250,7 +253,7 @@ class AIService:
                     tool_results=tool_data,
                 )
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 last_error = AITimeoutError(provider, f"Timeout on attempt {attempt}")
                 logger.warning("ai_timeout", player_id=player_id, attempt=attempt)
             except AppError as e:
@@ -281,6 +284,7 @@ class AIService:
         if self._decision_service:
             await self._record_decision_point(
                 state=state,
+                engine=engine,
                 player_id=player_id,
                 legal_actions=legal_actions,
                 chosen_action=fallback,
@@ -397,6 +401,7 @@ class AIService:
             if self._decision_service:
                 await self._record_decision_point(
                     state=state,
+                    engine=engine,
                     player_id=player_id,
                     legal_actions=legal_actions,
                     chosen_action=action,
@@ -417,7 +422,7 @@ class AIService:
                 tool_results=tool_data,
             )
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             last_error = AITimeoutError(provider, "Timeout during streaming")
             logger.warning("ai_streaming_timeout", player_id=player_id)
         except AppError as e:
@@ -470,6 +475,7 @@ class AIService:
         if self._decision_service:
             await self._record_decision_point(
                 state=state,
+                engine=engine,
                 player_id=player_id,
                 legal_actions=legal_actions,
                 chosen_action=fallback,
@@ -492,13 +498,18 @@ class AIService:
     async def _record_decision_point(
         self,
         state: GameState,
+        engine: GameEngine,
         player_id: str,
         legal_actions: list[GameAction],
         chosen_action: GameAction,
         thinking: str,
         game_id: str | None = None,
     ) -> None:
-        """Record a decision point for SFT training data."""
+        """Record a decision point for SFT training data.
+
+        EV loss is scored here, while the live state is still available: a stored
+        decision point does not carry enough to rebuild one later.
+        """
         if not self._decision_service or not game_id:
             return
 
@@ -515,6 +526,9 @@ class AIService:
                 "action_type": str(chosen_action.action_type),
                 "cards": chosen_action.cards or [],
             }
+            ev_loss, evaluator_params = await self._score_decision(
+                engine, state, player_id, chosen_action
+            )
 
             await self._decision_service.create_decision_point(
                 game_id=game_id,
@@ -527,9 +541,28 @@ class AIService:
                 legal_actions=legal_actions_data,
                 chosen_action=chosen_action_data,
                 thinking=thinking,
+                ev_loss=ev_loss,
+                evaluator_params=evaluator_params,
             )
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)
+
+    async def _score_decision(
+        self,
+        engine: GameEngine,
+        state: GameState,
+        player_id: str,
+        chosen_action: GameAction,
+    ) -> tuple[float | None, dict[str, Any] | None]:
+        """EV loss for the move, or ``(None, None)`` when scoring is off or fails."""
+        if self._decision_evaluator is None:
+            return None, None
+        result = await self._decision_evaluator.score(
+            engine, state, player_id, chosen_action
+        )
+        if result is None:
+            return None, None
+        return result.loss, result.params
 
     def _run_tools(
         self,

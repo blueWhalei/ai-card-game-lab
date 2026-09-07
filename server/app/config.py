@@ -62,6 +62,12 @@ class Settings(BaseSettings):
     # Cap simultaneous live games (batch create still accepts up to 50).
     max_concurrent_games: int = 5
 
+    # Score every recorded decision by rollout (EV loss). Costs roughly 100 ms of
+    # local CPU per move and no API budget; turn off to keep the game loop lean.
+    ev_loss_enabled: bool = True
+    ev_loss_determinizations: int = 4
+    ev_loss_max_candidates: int = 8
+
     prompt_version: str = "v1"
     prompt_ab_test_enabled: bool = False
     prompt_ab_test_ratio: float = 0.5

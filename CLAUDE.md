@@ -183,14 +183,14 @@ Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/dataset
 
 - WebSocket: `WS /api/v1/games/ws/{game_id}`.
 - Live: `GenericBoard` + thinking rail. Thinking seat uses `ink-obs-glow` (not a full-card pulse) and shows a live thought excerpt on the seat. The right rail is thinking above a quiet action log — do not bring back a history/thinking segmented control. The thinking panel shows legal moves, tool win-rate / hand strength, and whether parse fell back to a rule action.
-- Finished games: step replay (play/pause, prev/next, speed). Post-game **highlights** (3–5 moves from stored decision points: last play, bomb, parse fallback, endgame, high-branch) on the result dialog and observer history panel; jump seeks replay and links to `/pipeline/decisions?game_id=&decision_id=`.
+- Finished games: step replay (play/pause, prev/next, speed). Post-game **highlights** (3–5 moves from stored decision points: last play, blunder, bomb, parse fallback, endgame, high-branch — a `blunder` is `ev_loss >= BLUNDER_EV_LOSS`, and it outranks the others because it is the only reason derived from what a move was worth rather than what it looked like) on the result dialog and observer history panel; jump seeks replay and links to `/pipeline/decisions?game_id=&decision_id=`.
 - Demo game (no experiment): homepage “load demo” → `POST /api/v1/system/seed-demo`.
 
 ## Database (SQLite)
 
 Schema lives in `app/database.py`. Tables:
 
-`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`), `experiment_configs`.
+`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`), `experiment_configs`.
 
 Schema changes go through `app/migrations.py`: a numbered migration list tracked by
 `PRAGMA user_version`. `_SCHEMA_SQL` builds a new database; migrations change an existing
@@ -200,14 +200,18 @@ newer than the running build raises `SchemaVersionError` instead of being read.
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality. SFT filtering uses `train_usable`. Each point also stores `train_usable_reason` (from `evaluate_train_usable`); `GET /decision-points/stats` returns `not_usable_reason_counts`. Export defaults to `include_thinking=false`.
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`) and `evaluator_params`; `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`.
 
 ## Decision points (SFT)
 
-Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking.
+Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking, and `ev_loss`.
+
+EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluator` → `core/eval/rollout.py`), while the live state still exists: a stored decision point does not carry the `ActionId` values or public information `sample_hidden_state` needs to rebuild a world. It costs roughly 100 ms of local CPU per move and no API budget; `EV_LOSS_ENABLED=false` turns it off. Scoring never raises — an engine without hidden-state sampling, or any failure, stores `NULL` rather than failing the game.
+
+`train_usable` (structural validity) and `max_ev_loss` (move quality) are **separate** export filters and must stay that way: a legal but weak move is still a well-formed sample, and whether you want it depends on what you are training. `max_ev_loss` keeps unevaluated moves, otherwise turning it on would silently drop every decision recorded before EV scoring existed.
 
 ```
-GET  /api/v1/decision-points          # page / page_size (default 10), filters include experiment_id, train_usable
+GET  /api/v1/decision-points          # page / page_size (default 10), filters include experiment_id, train_usable, max_ev_loss
 GET  /api/v1/decision-points/{id}
 GET  /api/v1/decision-points/stats
 POST /api/v1/decision-points/export   # writes JSONL only; does not register a dataset

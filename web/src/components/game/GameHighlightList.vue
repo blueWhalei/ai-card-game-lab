@@ -73,6 +73,13 @@ function goDecision(item: GameHighlight): void {
           <span :class="tone === 'observer' ? 'text-ink-obs-muted' : 'text-ink-text-muted'">
             {{ reasonLabel(item.reason) }}
           </span>
+          <span
+            v-if="item.reason === 'blunder' && item.ev_loss != null"
+            class="tabular-nums"
+            :class="tone === 'observer' ? 'text-ink-obs-muted' : 'text-ink-text-muted'"
+          >
+            {{ t('decision.evLossLabel', { n: item.ev_loss.toFixed(2) }) }}
+          </span>
         </div>
         <div
           class="mt-0.5 text-sm"

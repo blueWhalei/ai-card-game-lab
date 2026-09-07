@@ -151,6 +151,8 @@ CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
 -- Decision Points for SFT training data
 -- quality_score is an end-game outcome proxy (win=0.8 / lose=0.3 / draw=0.5),
 -- not reasoning quality. Use train_usable for SFT filtering.
+-- ev_loss is the per-decision signal: value given up versus the best evaluated
+-- candidate. NULL means not evaluated, which is not the same as 0.0 (best move).
 CREATE TABLE IF NOT EXISTS decision_points (
     id              TEXT PRIMARY KEY,
     game_id         TEXT    NOT NULL,
@@ -167,6 +169,8 @@ CREATE TABLE IF NOT EXISTS decision_points (
     quality_score   REAL    DEFAULT 0.5,
     train_usable    INTEGER NOT NULL DEFAULT 1,
     train_usable_reason TEXT NOT NULL DEFAULT '',
+    ev_loss         REAL,
+    evaluator_params TEXT,
     created_at      TEXT    NOT NULL
 );
 

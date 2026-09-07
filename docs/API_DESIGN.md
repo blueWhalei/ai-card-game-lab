@@ -57,8 +57,13 @@ WebSocket:  /api/v1/games/ws/{game_id}
 | 204 | DELETE 删除成功（无 body） |
 | 400 | 请求参数错误 |
 | 404 | 资源不存在 |
+| 409 | 冲突（如对局状态不允许该操作） |
 | 422 | 请求格式正确但语义错误（如非法动作） |
+| 429 | 限流 |
 | 500 | 服务端内部错误 |
+| 502 / 503 / 504 | 上游供应商错误 / 不可用 / 超时 |
+
+业务错误以 `AppError.status_code` 为准；上表是常见子集，完整映射见 `server/app/utils/exceptions.py`。
 
 ### 1.4 错误码规范
 
@@ -180,18 +185,21 @@ WS     /api/v1/games/ws/{game_id}            # 实时观战 WebSocket
 ### 2.1a 实验（run）
 
 ```
-GET    /api/v1/experiments                   # 实验列表
+GET    /api/v1/experiments                   # 实验列表（含 summary + next_step + 精简 delta）
 POST   /api/v1/experiments                   # 创建实验（选手人数由引擎 min/max 校验；可选 hypothesis/tags/collect_mode）
 PATCH  /api/v1/experiments/{id}             # 更新 name/notes/hypothesis/conclusion/tags
 POST   /api/v1/experiments/{id}/clone        # 克隆实验（可选 copy_deal_seeds / copy_hypothesis）
-GET    /api/v1/experiments/compare           # 跨实验对比（Wilson CI / 延迟 / Token / 可训率 / 解析成功率 / credibility）
-GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step + delta
+GET    /api/v1/experiments/compare           # 跨实验对比（Wilson 置信区间 / 延迟 / Token / 可训练占比 / 解析成功率 / 可信度 credibility）
+GET    /api/v1/experiments/{id}              # 实验详情 + summary + timeline + validation + next_step + delta + benchmark
 GET    /api/v1/experiments/{id}/export       # 实验包 JSON（选手快照 + protocol + 种子；不含 API 密钥）
 POST   /api/v1/experiments/import            # 导入实验包（缺选手则创建，已有 id 则复用）
-POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座位级 provider 门闩；benchmark 用固定 deal_seed）
+POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座位级供应商预检；benchmark 用固定 deal_seed，种子用尽则 400）
+POST   /api/v1/experiments/{id}/cancel-collect  # 停止对局：取消本实验所有活跃对局（created/running/paused/pending → cancelled）
 ```
 
-`GET /api/v1/experiments/{id}` 的 `games[]` 带 `progress`：`{ phase, round, player_id }`。`phase` 为 `queued` / `bidding` / `playing` / `endgame`（来自该局最近一条决策点；尚无决策则为 `queued`）。详情进行中列表用它拼一句进度，不加多列 KPI。
+`GET /api/v1/experiments` 每条附带与详情同形的 `next_step`，以及可选的精简 `delta`（存在对照实验时）：`verdict_key` / `can_conclude` / `landlord_win_rate_diff` / `paired_n` / `inconclusive_reason` / `this_decisive_n` / `peer_decisive_n` / 对照身份字段；**不含** `scenario_diffs` 与完整置信区间矩阵。首页用它渲染「一句状态 + 下一步」，不必逐条拉详情。进度展示（列表 / 详情 / 对比选择器）用前端 `formatExperimentProgress`：分子不超过 `target_games`，超额写成「多跑了 N 局」，不要直接显示 `14/10` 这类未加说明的超额比。
+
+`GET /api/v1/experiments/{id}` 的 `games[]` 带 `progress`：`{ phase, round, player_id }`。`phase` 为 `queued` / `bidding` / `playing` / `endgame`（来自该局最近一条决策点；尚无决策则为 `queued`）。详情进行中列表用一句进度文案展示，不另加 KPI 列。
 
 `GET /api/v1/experiments/{id}` 附加字段：
 
@@ -199,10 +207,11 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 - `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`、`control_progress[]`
 - `next_step` — `{ id, action, ref_id? }` 下一步引导。训练完成后若尚无对照则为 `open_control`（开始对照实验）；`collect_control` 跳转对照实验并开始对局。对照已就绪则为 `review` + `action=stay`（留在详情看结论，不去对比页）。
 - `delta` — 相对源实验（`vs_source`）或首个对照（`vs_control`）的一屏结论：`landlord_win_rate_diff`（本实验 − 对照）、`paired_n` / `paired_landlord_win_rate_diff`、双方 CI 与决胜局数、`can_conclude`、`inconclusive_reason`（`no_games` / `peer_not_ready` / `low_power`）、`verdict_key`。无对照时为 `null`。Δ **不以红绿表示好坏**（地主胜率升降取决于假设）。
-- `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，前端渲染为 `stage.verdict.<key>` 那一句结论。放在后端计算是为了让评估公式与它的措辞留在同一处；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。`can_conclude` 只决定这句话的视觉重量，不改变方向。
+- `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，方向与评估公式同处计算；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。前端在 `can_conclude=true` 时把 `verdict_key` 渲染为 `stage.verdict.<key>` 主句；**`can_conclude=false` 时主句改用证据句（`stage.evidence.*`），Δ 降为附注**，不再用因果结论当标题。
 - `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
+- `benchmark` — 仅 `collect_mode=benchmark`：`{ seed_total, seed_started, seed_finished, seed_failed, seed_running, seed_remaining, extra_games, complete }`。分母是创建时写入的 `deal_seeds`。随机发牌（`free`）为 `null`。详情页阶段下方用这份覆盖率加上 `summary` 里的地主胜率 / 解析 / 可训练 / P50 / 每局 Token，作为**本实验**指标。
 
-创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒绝采集。
+创建请求可选 `collect_mode: "free" | "benchmark"`；`benchmark` 预填固定 `deal_seeds`（见 `GET /api/v1/system/benchmark-seeds`）。协议不完整则拒绝开局。`collect_mode=benchmark` 且声明种子已用完时，`POST .../collect` 返回 400，不会再追加随机种子。对照实验（`pair_deals`）会把 `collect_mode` 写成 `free`（同源发牌验证，不出 benchmark 覆盖报告）。`POST .../cancel-collect` 取消本实验进行中的对局，返回 `{ cancelled_game_ids, count }`。
 
 #### 实验包 / 选手包
 
@@ -213,7 +222,7 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 **Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
 
 **Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`、`paired_n` / `paired_landlord_win_rate`、`scenario_scores`（叫分 / 出牌 / 残局 / 炸弹的可训练占比与解析率）。  
-2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。`GET /experiments/{id}` 的 `delta.scenario_diffs` 为相对对照的同场景 Δ。
+2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。此处 `landlord_win_rate_diff` = 对照实验 − 源实验。详情页 `delta.landlord_win_rate_diff` 则按当前实验视角计算（本实验 − 对照）。`GET /experiments/{id}` 的 `delta.scenario_diffs` 为相对对照的同场景 Δ。
 
 数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 
@@ -356,7 +365,7 @@ GET    /api/v1/system/preflight              # 开始前检查（scope=collect|t
 POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎 capability（slots / phases / fingerprint / eval metrics）
-GET    /api/v1/system/benchmark-seeds        # 基准测验固定发牌种子列表（50 个）
+GET    /api/v1/system/benchmark-seeds        # 基准测试固定发牌种子列表（50 个）
 GET    /api/v1/system/providers              # 支持的 LLM 供应商列表
 GET    /api/v1/system/storage                # 存储路径与空间信息
 GET    /api/v1/system/runtime-stats          # 运行时资源快照
@@ -822,6 +831,7 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
 &game_phase=endgame
 &outcome=win
 &train_usable=true
+&max_ev_loss=0.3
 &page=1
 &page_size=10
 ```
@@ -851,9 +861,11 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
         "outcome": "win",
         "quality_score": 0.8,
         "parser_ok": true,
-        "win_probability": {"probability": 0.62, "confidence": "中"}
+        "win_probability": {"probability": 0.62, "confidence": "中"},
         "train_usable": true,
         "train_usable_reason": "ok",
+        "ev_loss": 0.12,
+        "evaluator_params": {"determinizations": 4, "max_candidates": 8, "seed": 0},
         "created_at": "2024-01-01T10:00:00Z"
       }
     ],
@@ -885,10 +897,18 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
       "chosen_not_in_legal_actions": 12,
       "llm_fallback_action": 10,
       "thinking_pass_action_play": 8
-    }
+    },
+    "evaluated_count": 130,
+    "avg_ev_loss": 0.18,
+    "max_ev_loss": 1.4,
+    "blunder_count": 9
   }
 }
 ```
+
+`ev_loss` 为 `null` 表示该手未评估，与 0.0（该手就是评估到的最优）不是一回事；
+上面的聚合只统计已评估的决策点，`evaluated_count` 与平均值并列返回，
+避免三条记录的平均被当成整轮结论。
 
 #### POST /api/v1/decision-points/export — 导出 ChatML
 
@@ -899,9 +919,13 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
   "min_quality": 0.7,
   "outcome": "win",
   "train_usable_only": true,
+  "max_ev_loss": 0.3,
   "include_thinking": false
 }
 ```
+
+`train_usable_only` 过滤结构有效性，`max_ev_loss` 过滤棋力，两者是不同的问题，
+所以是两个独立开关。`max_ev_loss` 保留未评估的决策点，否则一打开就会静默丢掉历史数据。
 
 **Response**:
 ```json
@@ -912,6 +936,7 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
     "filepath": "data/datasets/decision_points_20240101_100000.jsonl",
     "count": 50
   }
+}
 ```
 
 **ChatML 输出格式**:

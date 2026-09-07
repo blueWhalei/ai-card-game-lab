@@ -100,9 +100,23 @@ async def _v2_ai_players_to_experiment_configs(db: aiosqlite.Connection) -> None
     logger.info("migrated_ai_players_to_experiment_configs")
 
 
+async def _v3_decision_ev_loss(db: aiosqlite.Connection) -> None:
+    """Per-decision EV loss, replacing the game-outcome proxy as the move signal.
+
+    Nullable on purpose: existing decision points were never evaluated, and
+    "not evaluated" has to stay distinguishable from "gave up nothing".
+    """
+    await _add_column(db, "decision_points", "ev_loss", "REAL")
+    await _add_column(db, "decision_points", "evaluator_params", "TEXT")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_decision_points_ev_loss ON decision_points(ev_loss)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "baseline columns and indexes", _v1_baseline),
     Migration(2, "ai_players -> experiment_configs", _v2_ai_players_to_experiment_configs),
+    Migration(3, "decision_points.ev_loss", _v3_decision_ev_loss),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version

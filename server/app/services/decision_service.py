@@ -10,7 +10,7 @@ from typing import Any
 
 import structlog
 
-from app.core.stats.highlights import pick_game_highlights
+from app.core.stats.highlights import BLUNDER_EV_LOSS, pick_game_highlights
 from app.core.training.data_quality import evaluate_train_usable
 from app.database import connect_or_reuse
 from app.repositories.decision_repo import DecisionRepository
@@ -38,8 +38,14 @@ class DecisionService:
         legal_actions: list[dict[str, Any]],
         chosen_action: dict[str, Any],
         thinking: str | None = None,
+        ev_loss: float | None = None,
+        evaluator_params: dict[str, Any] | None = None,
     ) -> str:
-        """Create a new decision point record with train_usable evaluated."""
+        """Create a new decision point record with train_usable evaluated.
+
+        ``ev_loss`` is optional: the caller computes it when it has a live state
+        and an engine that can sample hidden state, and passes ``None`` otherwise.
+        """
         decision_id = generate_id("dp")
         now = datetime.now(tz=UTC).isoformat()
         train_usable, reason = evaluate_train_usable(
@@ -65,6 +71,8 @@ class DecisionService:
                 created_at=now,
                 train_usable=train_usable,
                 train_usable_reason=reason,
+                ev_loss=ev_loss,
+                evaluator_params=evaluator_params,
             )
 
         logger.info(
@@ -75,6 +83,7 @@ class DecisionService:
             player_id=player_id,
             train_usable=train_usable,
             train_usable_reason=reason,
+            ev_loss=ev_loss,
         )
 
         return decision_id
@@ -144,6 +153,7 @@ class DecisionService:
         game_phase: str | None = None,
         outcome: str | None = None,
         train_usable: bool | None = None,
+        max_ev_loss: float | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -159,6 +169,7 @@ class DecisionService:
                 game_phase=game_phase,
                 outcome=outcome,
                 train_usable=train_usable,
+                max_ev_loss=max_ev_loss,
                 limit=limit,
                 offset=offset,
             )
@@ -191,6 +202,9 @@ class DecisionService:
             usability = await repo.count_usability(experiment_id)
             reason_counts = await repo.count_not_usable_by_reason(experiment_id)
             quality = await repo.get_quality_stats(experiment_id)
+            ev_stats = await repo.get_ev_loss_stats(
+                experiment_id, blunder_threshold=BLUNDER_EV_LOSS
+            )
             outcome_counts = await repo.get_outcome_counts(experiment_id)
             phase_counts = await repo.get_phase_counts(experiment_id)
 
@@ -205,6 +219,7 @@ class DecisionService:
             "usable_rate": round(usable_rate, 4),
             "not_usable_reason_counts": reason_counts,
             **quality,
+            **ev_stats,
             "outcome_counts": outcome_counts,
             "phase_counts": phase_counts,
         }
@@ -219,11 +234,16 @@ class DecisionService:
         game_phase: str | None = None,
         train_usable: bool | None = None,
         train_usable_only: bool = True,
+        max_ev_loss: float | None = None,
         include_thinking: bool = False,
         output_path: str | None = None,
         eval_ratio: float = 0.0,
     ) -> tuple[str, int, dict[str, Any]]:
         """Export decision points to ChatML format JSONL.
+
+        ``train_usable`` filters on structural validity, ``max_ev_loss`` on move
+        quality. They answer different questions, so they stay separate knobs:
+        a legal but weak move is still a well-formed sample.
 
         Returns (train_filepath, train_count, split_meta). Empty filepath when nothing to export.
         """
@@ -240,6 +260,7 @@ class DecisionService:
             outcome=outcome,
             game_phase=game_phase,
             train_usable=train_usable_filter,
+            max_ev_loss=max_ev_loss,
             limit=10000,
         )
 
@@ -250,6 +271,7 @@ class DecisionService:
                 experiment_id=experiment_id,
                 min_quality=min_quality,
                 train_usable=train_usable_filter,
+                max_ev_loss=max_ev_loss,
             )
             return "", 0, {}
 
@@ -349,6 +371,7 @@ def _to_chatml(item: dict[str, Any], *, include_thinking: bool = False) -> dict[
             "player_id": item["player_id"],
             "quality_score": item.get("quality_score", 0.5),
             "train_usable": item.get("train_usable", True),
+            "ev_loss": item.get("ev_loss"),
         },
     }
 

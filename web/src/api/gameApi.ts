@@ -61,6 +61,7 @@ export interface ReplayData {
 
 export type HighlightReason =
   | 'last_play'
+  | 'blunder'
   | 'bomb'
   | 'fallback'
   | 'endgame'
@@ -75,6 +76,8 @@ export interface GameHighlight {
   action_type: string
   cards: string[]
   parser_ok?: boolean | null
+  /** null = the move was never evaluated, which is not the same as giving up nothing. */
+  ev_loss?: number | null
 }
 
 export const gameApi = {

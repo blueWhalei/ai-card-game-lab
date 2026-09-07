@@ -54,15 +54,22 @@ class DecisionRepository:
         created_at: str,
         train_usable: bool = True,
         train_usable_reason: str = "",
+        ev_loss: float | None = None,
+        evaluator_params: dict[str, Any] | None = None,
     ) -> None:
-        """Insert a new decision point record."""
+        """Insert a new decision point record.
+
+        ``ev_loss`` stays NULL when the move was not evaluated, which downstream
+        must not confuse with a loss of 0.0 (the move was the best candidate).
+        """
         await self._db.execute(
             """
             INSERT INTO decision_points (
                 id, game_id, round_number, player_id, hand_cards,
                 opponent_hands, last_action, game_phase, legal_actions,
-                chosen_action, thinking, train_usable, train_usable_reason, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                chosen_action, thinking, train_usable, train_usable_reason,
+                ev_loss, evaluator_params, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -78,6 +85,8 @@ class DecisionRepository:
                 thinking,
                 1 if train_usable else 0,
                 train_usable_reason,
+                ev_loss,
+                json.dumps(evaluator_params, ensure_ascii=False) if evaluator_params else None,
                 created_at,
             ),
         )
@@ -181,10 +190,15 @@ class DecisionRepository:
         game_phase: str | None = None,
         outcome: str | None = None,
         train_usable: bool | None = None,
+        max_ev_loss: float | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
-        """List decision points with filters and pagination."""
+        """List decision points with filters and pagination.
+
+        ``max_ev_loss`` keeps unevaluated points: filtering them out would
+        silently drop every decision recorded before EV scoring existed.
+        """
         conditions: list[str] = []
         params: list[Any] = []
 
@@ -214,6 +228,9 @@ class DecisionRepository:
         if train_usable is not None:
             conditions.append("train_usable = ?")
             params.append(1 if train_usable else 0)
+        if max_ev_loss is not None:
+            conditions.append("(ev_loss IS NULL OR ev_loss <= ?)")
+            params.append(max_ev_loss)
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -298,6 +315,45 @@ class DecisionRepository:
             "avg_quality": row["avg_quality"] if row and row["avg_quality"] else 0,
             "min_quality": row["min_quality"] if row and row["min_quality"] else 0,
             "max_quality": row["max_quality"] if row and row["max_quality"] else 0,
+        }
+
+    async def get_ev_loss_stats(
+        self,
+        experiment_id: str | None = None,
+        *,
+        blunder_threshold: float = 0.5,
+    ) -> dict[str, Any]:
+        """EV loss aggregates over evaluated decisions only.
+
+        ``evaluated_count`` is reported next to the averages so a small average
+        over three decisions is not mistaken for a claim about the whole run.
+        """
+        where, params = self._experiment_where(experiment_id, extra="ev_loss IS NOT NULL")
+        cursor = await self._db.execute(
+            f"""
+            SELECT
+                COUNT(*) AS evaluated_count,
+                AVG(ev_loss) AS avg_ev_loss,
+                MAX(ev_loss) AS max_ev_loss,
+                SUM(CASE WHEN ev_loss >= ? THEN 1 ELSE 0 END) AS blunder_count
+            FROM decision_points
+            {where}
+            """,
+            [blunder_threshold, *params],
+        )
+        row = await cursor.fetchone()
+        if row is None or not row["evaluated_count"]:
+            return {
+                "evaluated_count": 0,
+                "avg_ev_loss": None,
+                "max_ev_loss": None,
+                "blunder_count": 0,
+            }
+        return {
+            "evaluated_count": int(row["evaluated_count"]),
+            "avg_ev_loss": float(row["avg_ev_loss"]),
+            "max_ev_loss": float(row["max_ev_loss"]),
+            "blunder_count": int(row["blunder_count"] or 0),
         }
 
     async def get_outcome_counts(self, experiment_id: str | None = None) -> dict[str, int]:
@@ -452,6 +508,10 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "train_usable_reason": row["train_usable_reason"]
         if "train_usable_reason" in keys
         else "",
+        "ev_loss": row["ev_loss"] if "ev_loss" in keys else None,
+        "evaluator_params": _parse_json_object(
+            row["evaluator_params"] if "evaluator_params" in keys else None
+        ),
         "created_at": row["created_at"],
         "parser_ok": parser_ok,
         "win_probability": _parse_json_object(

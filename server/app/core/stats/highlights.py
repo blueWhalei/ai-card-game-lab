@@ -12,14 +12,24 @@ from app.core.stats.scenarios import classify_scenario
 
 HIGHLIGHT_LIMIT = 5
 BRANCH_MIN_LEGAL = 8
+# Terminal rewards are on a ±1 scale, so giving up half a game is a real mistake.
+BLUNDER_EV_LOSS = 0.5
 _BOMB_ACTIONS = frozenset({"BOMB", "ROCKET"})
-REASON_IDS: tuple[str, ...] = ("last_play", "bomb", "fallback", "endgame", "branch")
+REASON_IDS: tuple[str, ...] = (
+    "last_play",
+    "blunder",
+    "bomb",
+    "fallback",
+    "endgame",
+    "branch",
+)
 # Ordinary fills when tagged rows are fewer than three.
 FILL_REASON = "play"
 
 # Diversity caps when packing the list (last_play is always at most one).
 _TAKE: dict[str, int] = {
     "last_play": 1,
+    "blunder": 2,
     "bomb": 2,
     "fallback": 2,
     "endgame": 2,
@@ -59,6 +69,17 @@ def _round_number(point: dict[str, Any]) -> int:
         return 0
 
 
+def _ev_loss(point: dict[str, Any]) -> float | None:
+    """``None`` means the move was never evaluated, not that it gave up nothing."""
+    raw = point.get("ev_loss")
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
 def _reason_for(
     point: dict[str, Any],
     *,
@@ -66,6 +87,9 @@ def _reason_for(
 ) -> str | None:
     if last_play_id and str(point.get("id") or "") == last_play_id:
         return "last_play"
+    loss = _ev_loss(point)
+    if loss is not None and loss >= BLUNDER_EV_LOSS:
+        return "blunder"
     action = _action_type(point)
     if action in _BOMB_ACTIONS:
         return "bomb"
@@ -103,6 +127,7 @@ def _as_highlight(point: dict[str, Any], reason: str) -> dict[str, Any]:
         "action_type": _action_type(point),
         "cards": [str(c) for c in _cards(point)],
         "parser_ok": point.get("parser_ok"),
+        "ev_loss": _ev_loss(point),
     }
 
 
@@ -114,9 +139,12 @@ def pick_game_highlights(
 ) -> list[dict[str, Any]]:
     """Return up to ``limit`` highlight rows, chronological.
 
-    Preference order is last play → bomb/rocket → parse fallback → endgame →
-    high-branching plays. If that yields fewer than three rows, fill from
-    remaining points (latest rounds first).
+    Preference order is last play → blunder → bomb/rocket → parse fallback →
+    endgame → high-branching plays. If that yields fewer than three rows, fill
+    from remaining points (latest rounds first).
+
+    Blunders rank near the top because they are the only reason derived from what
+    a move was worth; the rest are shapes that are merely often interesting.
     """
     cap = max(1, min(int(limit), HIGHLIGHT_LIMIT))
     valid = [p for p in points if p.get("id")]

@@ -18,6 +18,7 @@ def _pt(
     hand_n: int = 12,
     legal_n: int = 3,
     parser_ok: bool | None = True,
+    ev_loss: float | None = None,
 ) -> dict[str, Any]:
     return {
         "id": decision_id,
@@ -28,6 +29,7 @@ def _pt(
         "legal_actions": [{"action_type": "PASS", "cards": []}] * legal_n,
         "chosen_action": {"action_type": action_type, "cards": cards or ["H3"]},
         "parser_ok": parser_ok,
+        "ev_loss": ev_loss,
     }
 
 
@@ -78,6 +80,43 @@ def test_bomb_and_fallback_and_endgame_and_branch() -> None:
     # Cap is 5: last + 2 bombs + fallback + endgame (branch dropped)
     assert "br" not in reasons
     assert [r["round_number"] for r in rows] == sorted(r["round_number"] for r in rows)
+
+
+def test_blunder_outranks_shape_based_reasons() -> None:
+    """EV loss says what a move cost; the other reasons only say what it looked like."""
+    points = [
+        _pt("last", round_number=20, player_id="p1"),
+        _pt("bomb1", round_number=2, action_type="BOMB"),
+        _pt("bomb2", round_number=3, action_type="ROCKET"),
+        _pt("bomb3", round_number=4, action_type="BOMB"),
+        _pt("blunder", round_number=5, ev_loss=0.9),
+    ]
+
+    rows = pick_game_highlights(points, winner_id="p1", limit=3)
+
+    reasons = {r["decision_id"]: r["reason"] for r in rows}
+    assert reasons["blunder"] == "blunder"
+    assert reasons["last"] == "last_play"
+
+
+def test_a_small_ev_loss_is_not_a_blunder() -> None:
+    points = [
+        _pt("last", round_number=9),
+        _pt("meh", round_number=1, ev_loss=0.1),
+    ]
+
+    rows = pick_game_highlights(points, winner_id="p1")
+
+    assert not any(r["reason"] == "blunder" for r in rows)
+
+
+def test_unevaluated_moves_are_never_blunders() -> None:
+    points = [_pt("last", round_number=9), _pt("unknown", round_number=1, ev_loss=None)]
+
+    rows = pick_game_highlights(points, winner_id="p1")
+
+    assert not any(r["reason"] == "blunder" for r in rows)
+    assert all(r["ev_loss"] is None for r in rows)
 
 
 def test_bomb_diversity_cap() -> None:
