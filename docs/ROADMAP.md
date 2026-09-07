@@ -219,7 +219,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 序 | 项 | 解锁 |
 |----|----|------|
 | 0 | 引擎四项新能力（§9.1）+ `Observation` / action id 规范化 —— **已完成 2026-09-06**，设计见 `docs/designs/step0-engine-foundation.md` | 一切抽象的地基；不先做这步，Policy 会绑死在斗地主上 |
-| 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **1a 已完成 2026-09-06**（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b（`LLMPolicy`，`AIService` 退化为事件消费者）与 1c（structured output）待做。设计见 `docs/designs/step1-policy-layer.md` | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
+| 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **已完成**：1a 2026-09-06（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b+1c 2026-09-07（`LLMPolicy` 接管提示词 / 工具 / 重试 / 解析，`AIService` 退化为事件消费者，动作 id 协议 + JSON Schema `enum`，`v3` 模板）。设计见 `docs/designs/step1-policy-layer.md`、`step1b-llm-policy.md` | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight，`decision_schema_version` 升到 2）。设计见 `docs/designs/step2-rollout-evaluator.md` 与 `step2b-ev-loss-wiring.md` | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`），设计见 `docs/designs/step3-schema-migrations.md` | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 | harness 成型 |
@@ -240,6 +240,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - rollout 评估器的对手模型选择（随机 / 规则 / 同 Policy 自博弈）与 determinization 次数、n 的默认值
 - ~~EV loss 与现有 `quality_score` / `train_usable` 字段的迁移关系~~ ✅ 并存：`train_usable`
   判结构有效性，`ev_loss` 判棋力，导出侧是两个独立开关（见 `step2b-ev-loss-wiring.md`）
+- ~~软兜底解析算不算成功~~ ✅ 算失败：兜底动作记 `parse_fallback` 且不进训练集。代价是
+  `parser_success_rate` 在 `v3` 协议处断档（更低但更诚实），跨线实验的解析率不可直接比较
 - `HumanPolicy` 等待外部输入的超时与断线语义（对局是否暂停、是否回退到规则动作）
 - `EnsemblePolicy` 内部各成员的 trace 如何嵌套展示
 - VCR 的匹配键（prompt 哈希 + 模型 + 采样参数）与缓存失效规则
@@ -272,7 +274,7 @@ Policy.decide(observation: Observation,
               ctx: PolicyContext) -> AsyncIterator[PolicyEvent]
 ```
 
-- `PolicyEvent` 是封闭联合：`thinking_delta | tool_call | tool_result | llm_usage | action`。
+- `PolicyEvent` 是封闭联合：`thinking_delta | tool_call | tool_result | llm_request | llm_usage | action`。
   最后一个事件必须是 `action`，携带一个合法的 `ActionId`。
 - Policy 位于 `core/policy/`，**只依赖** `core/ai`（LLMClient）、`core/engine`（Observation、ToolSpec）。
   不 import 任何 `services/` 或 `repositories/`；对 WS 广播、span、决策点落库零感知。

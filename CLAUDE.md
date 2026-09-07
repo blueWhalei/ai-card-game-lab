@@ -81,7 +81,9 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - **Core** — framework-independent domain logic:
   - `engine/` — `GameEngine` ABC + `EngineCapability` + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
-  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`.
+  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`. Clients accept `response_format` and degrade (drop `stream_options`, then `response_format`) when a provider rejects it with 4xx; `OllamaClient` translates it to Ollama's `format`.
+  - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `RulePolicy` / `RandomPolicy` are the non-LLM baselines. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
+  - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers.
   - `collector/` — JSONL writer.
   - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
   - `events/` — in-process `EventBus` + game lifecycle events.
@@ -210,6 +212,28 @@ EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluat
 
 `train_usable` (structural validity) and `max_ev_loss` (move quality) are **separate** export filters and must stay that way: a legal but weak move is still a well-formed sample, and whether you want it depends on what you are training. `max_ev_loss` keeps unevaluated moves, otherwise turning it on would silently drop every decision recorded before EV scoring existed.
 
+A rescued move (`parse_fallback`) is never training data. The flag is set by the policy when it
+had to pick an action for the model, so `evaluate_train_usable` reads a structural signal rather
+than sniffing the thinking text for a prefix.
+
+## The decision protocol
+
+The model picks an **`ActionId`** off a menu; it never describes a move. `engine.present_legal_actions()`
+renders the menu (round-robin across action types, capped at `MAX_PRESENTED_ACTIONS`, so truncation
+can never hide `PASS`), `action_menu.render_menu()` formats it, and the reply is
+`{"thinking": ..., "action_id": ...}` constrained by a JSON Schema `enum` over exactly those ids.
+`ActionIdParser` only validates that the id is in the legal set — there is one game-agnostic parser,
+not one per phase.
+
+Two consequences worth remembering:
+
+- Prompt templates are versioned `v3` / `v3_reasoning` and carry `{format_instructions}`. A template
+  that predates the id protocol will produce unparseable replies.
+- **`parser_success` is discontinuous at this change.** The old parsers had a soft fallback that
+  guessed a move and still reported success; a guess is now a failure with `parse_fallback=True`.
+  The rate is more honest and lower. Do not compare `parser_success` across this boundary — rerun
+  the control instead.
+
 ```
 GET  /api/v1/decision-points          # page / page_size (default 10), filters include experiment_id, train_usable, max_ev_loss
 GET  /api/v1/decision-points/{id}
@@ -254,8 +278,10 @@ UI: `TraceView.vue`, `TraceDetail.vue`, `TraceMetrics.vue`.
    benchmark seeds, roles, `eval_metric_ids`, `decision_schema_version`, `rules_ref`.
 3. Register in `get_engine_registry()` (`dependencies.py` / engine package init).
 4. `get_public_info(..., is_observer=True)` must emit `ObserverSnapshot` (`game_type`, `phase`, `round`, `current_player_id`, `players[]`, `table.slots`, `extras`).
-5. Implement `format_legal_actions_for_prompt` when action listing is game-specific.
-6. Add prompt templates keyed by `capability.prompt_keys` (and optional parsers).
+5. Override `action_label` and `order_legal_actions` when the menu needs game-specific
+   wording or ordering; `present_legal_actions` handles truncation for you.
+6. Add `v3` prompt templates keyed by `capability.prompt_keys`. Parsing is shared —
+   `ActionIdParser` validates against your own `LegalAction` ids, so a new game needs no parser.
 
 Do **not** add a per-game Vue board or `game_type` branches in `GameObserverView`.
 

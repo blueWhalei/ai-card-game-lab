@@ -579,6 +579,11 @@ GET    /api/v1/traces/compare                # Prompt 版本对比
 }
 ```
 
+> `used_langchain_parser` 表示模型自己给出了一个合法的 `action_id`。自动作 id 协议
+> （`prompt_version` `v3`）起，解析器不再做"猜一个动作还算成功"的软兜底：猜出来的动作记为
+> `false` 并标记 `parse_fallback`，该决策点不进训练集。因此 `parser_success_rate` 在协议切换处
+> **不连续**，比旧值低但更诚实；跨越这条线的实验不能直接比较解析率，需要重跑对照组。
+
 #### GET /api/v1/traces/metrics — 聚合指标
 
 **Query Parameters**:
