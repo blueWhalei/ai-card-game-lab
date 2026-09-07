@@ -37,6 +37,7 @@ from app.utils.exceptions import AppError
 if TYPE_CHECKING:
     from app.core.ai.base import LLMClient
     from app.core.ai.factory import LLMClientFactory
+    from app.core.ai.vcr import VcrMode, VcrStore
     from app.services.decision_eval import DecisionEvaluator
     from app.services.decision_service import DecisionService
 
@@ -94,19 +95,33 @@ class AIService:
         decision_service: DecisionService | None = None,
         sqlite_path: str | None = None,
         decision_evaluator: DecisionEvaluator | None = None,
+        vcr_mode: VcrMode = "off",
+        vcr_store: VcrStore | None = None,
     ) -> None:
         self._llm_factory = llm_factory
         self._prompt_builder = prompt_builder
         self._decision_service = decision_service
         self._sqlite_path = sqlite_path
         self._decision_evaluator = decision_evaluator
+        self._vcr_mode = vcr_mode
+        self._vcr_store = vcr_store
         self._client_cache: dict[str, LLMClient] = {}
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
         provider = model_cfg.get("provider", "openai")
         if provider not in self._client_cache:
-            self._client_cache[provider] = self._llm_factory.create(provider)
+            client = self._llm_factory.create(provider)
+            if self._vcr_mode in ("record", "replay") and self._vcr_store is not None:
+                from app.core.ai.vcr import VcrLLMClient
+
+                client = VcrLLMClient(
+                    client,
+                    self._vcr_store,
+                    self._vcr_mode,
+                    provider,
+                )
+            self._client_cache[provider] = client
         return self._client_cache[provider]
 
     @staticmethod

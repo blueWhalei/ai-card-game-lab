@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from functools import lru_cache
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import aiosqlite
@@ -40,6 +41,7 @@ from app.core.ai.factory import LLMClientFactory
 from app.core.ai.prompt import PromptBuilder
 from app.core.ai.providers.ollama_client import OllamaClient
 from app.core.ai.providers.openai_client import OpenAICompatibleClient
+from app.core.ai.vcr import VcrMode, VcrStore
 from app.core.collector.jsonl_writer import JsonlWriter
 from app.core.engine.doudizhu import DoudizhuEngine
 from app.core.engine.registry import GameEngineRegistry
@@ -203,15 +205,40 @@ def get_decision_evaluator() -> DecisionEvaluator | None:
 
 
 @lru_cache
+def get_vcr_store() -> VcrStore | None:
+    """Cassette store when VCR is on; ``None`` leaves clients unwrapped."""
+    settings = get_settings()
+    mode = settings.vcr_mode.strip().lower()
+    if mode not in ("record", "replay"):
+        return None
+
+    directory = (
+        Path(settings.vcr_dir)
+        if settings.vcr_dir.strip()
+        else Path(settings.data_dir) / "vcr"
+    )
+    cassette = settings.vcr_cassette.strip() or "default"
+    return VcrStore(directory, cassette)
+
+
+@lru_cache
 def get_ai_service() -> AIService:
     """Singleton AI service."""
     settings = get_settings()
+    raw_mode = settings.vcr_mode.strip().lower()
+    vcr_mode: VcrMode = "off"
+    if raw_mode == "record":
+        vcr_mode = "record"
+    elif raw_mode == "replay":
+        vcr_mode = "replay"
     return AIService(
         llm_factory=get_llm_factory(),
         prompt_builder=get_prompt_builder(),
         decision_service=get_decision_service(),
         sqlite_path=settings.sqlite_path,
         decision_evaluator=get_decision_evaluator(),
+        vcr_mode=vcr_mode,
+        vcr_store=get_vcr_store(),
     )
 
 

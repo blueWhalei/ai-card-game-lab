@@ -118,10 +118,11 @@ schema 命名（dataset / solver / scorer 三段），不建平行的表与 API�
 从对局抽"高分歧局面"存成题（局面 + 合法动作 + 各动作 EV）。模型离线做题：
 快、便宜、完全可复现。给模型一个类似棋类 puzzle rating 的"战术分"。题库可版本化。
 
-**2.2.4 录制—重放（VCR）**
+**2.2.4 录制—重放（VCR）** —— **已完成 2026-09-07**
 
 记录每次 LLM 请求/响应及哈希，支持 replay 模式：零成本回归、CI 跑完整实验流水线、
-审计"改 prompt 后相同局面输出是否变化"。
+审计"改 prompt 后相同局面输出是否变化"。实现：`VcrLLMClient` 包装 provider client；
+cassette 为 `data/vcr/*.jsonl`。
 
 **2.2.5 鲁棒性探针**
 
@@ -222,7 +223,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **已完成**：1a 2026-09-06（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b+1c 2026-09-07（`LLMPolicy` 接管提示词 / 工具 / 重试 / 解析，`AIService` 退化为事件消费者，动作 id 协议 + JSON Schema `enum`） | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight） | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
-| 3 | 录制—重放 + Task/Solver/Scorer 显式化 | harness 成型 |
+| 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **VCR 已完成 2026-09-07**（`core/ai/vcr.py`）；Task/Scorer 仍待 | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
@@ -244,7 +245,10 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
   `parser_success_rate` 在 `v3` 协议处断档（更低但更诚实），跨线实验的解析率不可直接比较
 - `HumanPolicy` 等待外部输入的超时与断线语义（对局是否暂停、是否回退到规则动作）
 - `EnsemblePolicy` 内部各成员的 trace 如何嵌套展示
-- VCR 的匹配键（prompt 哈希 + 模型 + 采样参数）与缓存失效规则
+- ~~VCR 的匹配键（prompt 哈希 + 模型 + 采样参数）与缓存失效规则~~ ✅ 匹配键 =
+  SHA-256(provider + messages + model/temperature/max_tokens/top_p/response_format)；
+  `response_format` 入键所以 action_id enum 一变即失效；`replay` 未命中抛 `VcrMissError`，
+  不静默打真 API（见 `docs/designs/step3-vcr.md`）
 
 ## 9. 抽象层设计约束
 
@@ -298,7 +302,7 @@ Policy.decide(observation: Observation,
 |------|------|------|
 | protocol 新增 `policy`（kind、参数、budget、prompt hash、memory 模式）、`evaluator` 段 | `experiments.protocol` | `schema_version: 1 → 2`；旧版本在 collect 时拒绝，不静默迁移（沿用现规则） |
 | 决策点新增 ~~`ev_loss`、`evaluator_params`~~ ✅（2026-09-07，迁移 3）；`policy_kind`、`tool_calls` 待做 | `decision_points` | `decision_schema_version` 1 → 2 已升 |
-| LLM 请求/响应录制 | 新表或 JSONL，按 §8 匹配键索引 | 独立 |
+| LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
 | ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号迁移列表 | 已落地，`SCHEMA_VERSION = 2` |
 
 ### 9.5 分层与目录
@@ -308,7 +312,7 @@ core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observatio
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
 core/eval/     Evaluator、determinization、EV loss；puzzle 抽取
 core/env/      AEC 环境包装
-core/ai/       LLMClient 不变；新增 structured output 能力探测；VCR 录制/回放
+core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```
 

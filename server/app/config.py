@@ -68,3 +68,8 @@ class Settings(BaseSettings):
     ev_loss_determinizations: int = 4
     ev_loss_max_candidates: int = 8
 
+    # LLM VCR: off | record | replay. Empty vcr_dir → {data_dir}/vcr.
+    vcr_mode: str = "off"
+    vcr_dir: str = ""
+    vcr_cassette: str = "default"
+

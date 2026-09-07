@@ -179,6 +179,19 @@ class AIParseError(AppError):
         )
 
 
+class VcrMissError(AppError):
+    """Replay mode: no cassette entry for this LLM request match key."""
+
+    def __init__(self, key: str) -> None:
+        short = key if len(key) <= 16 else f"{key[:16]}…"
+        super().__init__(
+            message=f"VCR replay miss for key {short}",
+            code="VCR_MISS",
+            status_code=500,
+        )
+        self.key = key
+
+
 # ── Data ──────────────────────────────────────────────
 
 

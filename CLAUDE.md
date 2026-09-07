@@ -81,7 +81,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - **Core** — framework-independent domain logic:
   - `engine/` — `GameEngine` ABC + `EngineCapability` + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
-  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`. Clients accept `response_format` and degrade (drop `stream_options`, then `response_format`) when a provider rejects it with 4xx; `OllamaClient` translates it to Ollama's `format`.
+  - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`. Clients accept `response_format` and degrade (drop `stream_options`, then `response_format`) when a provider rejects it with 4xx; `OllamaClient` translates it to Ollama's `format`. Optional **VCR** wrapper (`core/ai/vcr.py`): `VCR_MODE=record|replay` stores/replays chat calls as JSONL under `data/vcr/` (match key = SHA-256 of provider + messages + model/sampling/`response_format`); `replay` miss raises `VcrMissError` (no silent live call). Default `off`.
   - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `RulePolicy` / `RandomPolicy` are the non-LLM baselines. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
   - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers.
   - `collector/` — JSONL writer.
@@ -209,6 +209,10 @@ JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking, and `ev_loss`.
 
 EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluator` → `core/eval/rollout.py`), while the live state still exists: a stored decision point does not carry the `ActionId` values or public information `sample_hidden_state` needs to rebuild a world. It costs roughly 100 ms of local CPU per move and no API budget; `EV_LOSS_ENABLED=false` turns it off. Scoring never raises — an engine without hidden-state sampling, or any failure, stores `NULL` rather than failing the game.
+
+### LLM VCR (record / replay)
+
+`AIService` wraps the provider client when `VCR_MODE` is `record` or `replay` (see `VCR_DIR`, `VCR_CASSETTE`). Record writes `{data_dir}/vcr/{cassette}.jsonl`; stream calls are aggregated into one cassette entry. Replay never hits the network — a missing key is `VcrMissError`. Useful for CI and prompt-regression audits; not exposed in the UI.
 
 `train_usable` (structural validity) and `max_ev_loss` (move quality) are **separate** export filters and must stay that way: a legal but weak move is still a well-formed sample, and whether you want it depends on what you are training. `max_ev_loss` keeps unevaluated moves, otherwise turning it on would silently drop every decision recorded before EV scoring existed.
 
