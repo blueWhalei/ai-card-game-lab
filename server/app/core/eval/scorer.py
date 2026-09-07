@@ -45,6 +45,8 @@ class ScoreBundle:
     landlord_role_wins: int = 0
     p50_response_ms: float = 0.0
     p95_response_ms: float = 0.0
+    evaluated_count: int = 0
+    avg_ev_loss: float | None = None
 
 
 class Scorer(Protocol):
@@ -91,6 +93,8 @@ def score_bundle_from_aggregates(eval_metrics: dict[str, Any]) -> ScoreBundle:
     landlord_wins = 0
     if isinstance(wins_by_role, dict):
         landlord_wins = int(wins_by_role.get("landlord") or 0)
+    avg_raw = eval_metrics.get("avg_ev_loss")
+    avg_ev_loss = float(avg_raw) if avg_raw is not None else None
     return ScoreBundle(
         decision_count=int(eval_metrics.get("decision_count") or 0),
         train_usable_n=int(eval_metrics.get("train_usable_n") or 0),
@@ -100,6 +104,8 @@ def score_bundle_from_aggregates(eval_metrics: dict[str, Any]) -> ScoreBundle:
         landlord_role_wins=landlord_wins,
         p50_response_ms=float(eval_metrics.get("p50_response_ms") or 0.0),
         p95_response_ms=float(eval_metrics.get("p95_response_ms") or 0.0),
+        evaluated_count=int(eval_metrics.get("evaluated_count") or 0),
+        avg_ev_loss=avg_ev_loss,
     )
 
 
@@ -134,4 +140,10 @@ def apply_scorer_results(
         out["p50_response_ms"] = latency.value
         if "p95_response_ms" in latency.extras:
             out["p95_response_ms"] = float(latency.extras["p95_response_ms"])
+    ev_loss = results.get("ev_loss")
+    if ev_loss is not None:
+        out["evaluated_count"] = ev_loss.n
+        out["avg_ev_loss"] = (
+            None if ev_loss.n == 0 else float(ev_loss.extras.get("avg_ev_loss", ev_loss.value))
+        )
     return out

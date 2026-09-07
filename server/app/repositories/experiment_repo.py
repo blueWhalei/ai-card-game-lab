@@ -304,7 +304,9 @@ class ExperimentRepository:
             """
             SELECT
                 COUNT(*) AS total,
-                SUM(CASE WHEN dp.train_usable = 1 THEN 1 ELSE 0 END) AS usable
+                SUM(CASE WHEN dp.train_usable = 1 THEN 1 ELSE 0 END) AS usable,
+                SUM(CASE WHEN dp.ev_loss IS NOT NULL THEN 1 ELSE 0 END) AS evaluated,
+                AVG(dp.ev_loss) AS avg_ev_loss
             FROM decision_points dp
             INNER JOIN games g ON g.id = dp.game_id
             WHERE g.experiment_id = ?
@@ -314,6 +316,11 @@ class ExperimentRepository:
         decision_row = await decision_cursor.fetchone()
         decision_count = int(decision_row["total"] if decision_row else 0)
         train_usable_n = int(decision_row["usable"] or 0) if decision_row else 0
+        evaluated_count = int(decision_row["evaluated"] or 0) if decision_row else 0
+        avg_ev_raw = decision_row["avg_ev_loss"] if decision_row else None
+        avg_ev_loss = (
+            round(float(avg_ev_raw), 4) if avg_ev_raw is not None and evaluated_count else None
+        )
 
         round_cursor = await self._db.execute(
             """
@@ -443,6 +450,8 @@ class ExperimentRepository:
             "decision_count": decision_count,
             "train_usable_n": train_usable_n,
             "train_usable_rate": round(train_rate, 4),
+            "evaluated_count": evaluated_count,
+            "avg_ev_loss": avg_ev_loss,
             "scenario_scores": scenario_scores,
             "avg_response_time_ms": (
                 round(float(avg_ms_raw), 2) if avg_ms_raw is not None else 0.0

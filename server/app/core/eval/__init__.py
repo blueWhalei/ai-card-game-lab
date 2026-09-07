@@ -8,7 +8,7 @@ from app.core.eval.scorer import (
     apply_scorer_results,
     score_bundle_from_aggregates,
 )
-from app.core.eval.scorers import build_default_scorer_registry
+from app.core.eval.scorers import build_default_scorer_registry, build_scorer_registry
 
 __all__ = [
     "EvLoss",
@@ -19,5 +19,6 @@ __all__ = [
     "ScorerRegistry",
     "apply_scorer_results",
     "build_default_scorer_registry",
+    "build_scorer_registry",
     "score_bundle_from_aggregates",
 ]

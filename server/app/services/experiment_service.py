@@ -15,7 +15,7 @@ from app.core.eval.scorer import (
     apply_scorer_results,
     score_bundle_from_aggregates,
 )
-from app.core.eval.scorers import build_default_scorer_registry
+from app.core.eval.scorers import build_scorer_registry
 from app.core.pack import (
     KIND_EXPERIMENT_PACK,
     KIND_PLAYER_PACK,
@@ -44,6 +44,7 @@ from app.services.experiment_protocol import (
     protocol_collect_mode,
     protocol_deal_seeds,
     protocol_eval_metric_ids,
+    protocol_game_type,
     protocol_pair_deals,
     protocol_players,
     protocol_source_experiment_id,
@@ -98,7 +99,14 @@ class ExperimentService:
     ) -> None:
         self._sqlite_path = sqlite_path
         self._game_service = game_service
-        self._scorer_registry = scorer_registry or build_default_scorer_registry()
+        # When injected (tests), always use that registry. Otherwise build per game_type.
+        self._scorer_registry = scorer_registry
+
+    def _registry_for(self, protocol: dict[str, Any] | None, game_type: str) -> ScorerRegistry:
+        if self._scorer_registry is not None:
+            return self._scorer_registry
+        resolved = protocol_game_type(protocol) if isinstance(protocol, dict) else None
+        return build_scorer_registry(game_type=resolved or game_type)
 
     async def _conn(self) -> aiosqlite.Connection:
         return await open_db_connection(self._sqlite_path)
@@ -419,7 +427,9 @@ class ExperimentService:
                 extras = await repo.eval_aggregates(experiment_id)
                 protocol = row.get("protocol")
                 if isinstance(protocol, dict):
-                    scored = self._scorer_registry.score_many(
+                    scored = self._registry_for(
+                        protocol, str(row.get("game_type") or "doudizhu")
+                    ).score_many(
                         protocol_eval_metric_ids(protocol),
                         score_bundle_from_aggregates(extras),
                     )
@@ -637,7 +647,9 @@ class ExperimentService:
         eval_metrics = await repo.eval_aggregates(experiment_id)
         protocol = experiment.get("protocol")
         if isinstance(protocol, dict):
-            scored = self._scorer_registry.score_many(
+            scored = self._registry_for(
+                protocol, str(experiment.get("game_type") or "doudizhu")
+            ).score_many(
                 protocol_eval_metric_ids(protocol),
                 score_bundle_from_aggregates(eval_metrics),
             )
@@ -758,6 +770,8 @@ class ExperimentService:
             "avg_response_time_ms": eval_metrics.get("avg_response_time_ms", 0.0),
             "p50_response_ms": eval_metrics.get("p50_response_ms", 0.0),
             "p95_response_ms": eval_metrics.get("p95_response_ms", 0.0),
+            "avg_ev_loss": eval_metrics.get("avg_ev_loss"),
+            "evaluated_count": eval_metrics.get("evaluated_count", 0),
             "total_tokens": eval_metrics.get("total_tokens", 0),
             "tokens_per_game": eval_metrics.get("tokens_per_game", 0.0),
             "avg_tokens_per_round": eval_metrics.get("avg_tokens_per_round", 0.0),
