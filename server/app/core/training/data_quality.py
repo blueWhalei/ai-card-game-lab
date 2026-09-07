@@ -48,13 +48,24 @@ def evaluate_train_usable(
     chosen_action: dict[str, Any] | None,
     legal_actions: list[dict[str, Any]] | None,
     thinking: str | None,
+    parse_fallback: bool = False,
 ) -> tuple[bool, str]:
     """Return whether a decision point is suitable for SFT and a short reason.
 
     Rules (all must pass for usable=True):
-    1. chosen_action is non-empty and matches an entry in legal_actions
-    2. Light reasoning-action consistency when thinking is present
+    1. The move did not come from a rescue fallback
+    2. chosen_action is non-empty and matches an entry in legal_actions
+    3. Light reasoning-action consistency when thinking is present
+
+    ``parse_fallback`` is the policy's own report that the model did not choose
+    this move. The thinking-prefix check below is the older, weaker version of the
+    same test and stays only for decision points written before policies reported
+    it structurally -- one reworded prefix used to silently let rescue moves into
+    the training set.
     """
+    if parse_fallback:
+        return False, "llm_fallback_action"
+
     if not chosen_action:
         return False, "empty_chosen_action"
 

@@ -40,11 +40,14 @@ class DecisionService:
         thinking: str | None = None,
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
+        parse_fallback: bool = False,
     ) -> str:
         """Create a new decision point record with train_usable evaluated.
 
         ``ev_loss`` is optional: the caller computes it when it has a live state
         and an engine that can sample hidden state, and passes ``None`` otherwise.
+        ``parse_fallback`` says the model did not pick this move -- a rescue action
+        is never training data.
         """
         decision_id = generate_id("dp")
         now = datetime.now(tz=UTC).isoformat()
@@ -52,6 +55,7 @@ class DecisionService:
             chosen_action=chosen_action,
             legal_actions=legal_actions,
             thinking=thinking,
+            parse_fallback=parse_fallback,
         )
 
         async with connect_or_reuse(self._sqlite_path) as db:
