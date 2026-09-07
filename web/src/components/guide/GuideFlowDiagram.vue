@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 
-export type GuideDiagramId = 'loop' | 'sidebar' | 'detail' | 'pipeline'
+export type GuideDiagramId = 'loop' | 'detail' | 'pipeline'
 
 const props = defineProps<{
   diagram: GuideDiagramId
@@ -23,31 +23,24 @@ const nodes = computed((): FlowNode[] => {
   return raw as FlowNode[]
 })
 
-const caption = computed(() => {
-  const key = `guide.diagrams.${props.diagram}.caption`
-  return t(key)
-})
+const caption = computed(() => t(`guide.diagrams.${props.diagram}.caption`))
 </script>
 
 <template>
   <figure
-    class="overflow-x-auto rounded-ink-md border border-ink-border/80 bg-ink-surface-muted/40 p-4"
+    class="overflow-x-auto rounded-ink-md border border-ink-border/80 bg-ink-surface-muted/40 p-ink-4"
   >
     <figcaption
       v-if="caption"
-      class="mb-3 text-xs font-medium tracking-wide text-ink-text-secondary uppercase"
+      class="mb-ink-3 text-caption font-medium tracking-wide text-ink-text-secondary uppercase"
     >
       {{ caption }}
     </figcaption>
 
-    <!-- Main loop: horizontal pipeline -->
-    <div
-      v-if="diagram === 'loop'"
-      class="flex min-w-max items-center gap-1.5 pb-1"
-    >
+    <div v-if="diagram === 'loop'" class="flex items-center gap-ink-1 sm:gap-ink-2">
       <template v-for="(node, idx) in nodes" :key="`${node.label}-${idx}`">
         <div
-          class="flex w-[7.25rem] shrink-0 flex-col items-center gap-1.5 rounded-ink border px-2 py-2.5 text-center"
+          class="flex min-w-0 flex-1 flex-col items-center gap-ink-2 rounded-ink border px-ink-1 py-ink-3 text-center sm:px-ink-2"
           :class="
             node.tone === 'primary'
               ? 'border-ink-primary/40 bg-ink-primary-muted/50'
@@ -57,7 +50,7 @@ const caption = computed(() => {
           "
         >
           <Icon :icon="node.icon" class="h-5 w-5 shrink-0 text-ink-primary" />
-          <span class="text-xs leading-snug font-medium text-ink-text">{{ node.label }}</span>
+          <span class="text-caption leading-snug font-medium text-ink-text">{{ node.label }}</span>
         </div>
         <Icon
           v-if="idx < nodes.length - 1"
@@ -67,32 +60,11 @@ const caption = computed(() => {
       </template>
     </div>
 
-    <!-- Sidebar: one card per destination -->
-    <div
-      v-else-if="diagram === 'sidebar'"
-      class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5"
-    >
+    <div v-else-if="diagram === 'detail'" class="space-y-ink-2">
       <div
         v-for="(node, idx) in nodes"
         :key="`${node.label}-${idx}`"
-        class="rounded-ink border border-ink-border bg-ink-surface px-3 py-3"
-      >
-        <div class="mb-2 flex items-center gap-2">
-          <Icon :icon="node.icon" class="h-4 w-4 text-ink-primary" />
-          <span class="text-sm font-semibold text-ink-text">{{ node.label }}</span>
-        </div>
-        <p class="text-xs leading-relaxed text-ink-text-secondary">
-          {{ t(`guide.diagrams.sidebar.items.${idx}`) }}
-        </p>
-      </div>
-    </div>
-
-    <!-- Experiment detail: stacked zones -->
-    <div v-else-if="diagram === 'detail'" class="space-y-2">
-      <div
-        v-for="(node, idx) in nodes"
-        :key="`${node.label}-${idx}`"
-        class="flex min-w-0 items-center gap-2 rounded-ink border px-3 py-2.5"
+        class="flex min-w-0 items-center gap-ink-2 rounded-ink border px-ink-3 py-ink-2"
         :class="
           node.tone === 'primary'
             ? 'border-ink-primary/40 bg-ink-primary-muted/40'
@@ -101,35 +73,34 @@ const caption = computed(() => {
       >
         <Icon :icon="node.icon" class="h-4 w-4 shrink-0 text-ink-primary" />
         <div class="min-w-0">
-          <p class="text-sm font-medium text-ink-text">{{ node.label }}</p>
-          <p class="text-xs text-ink-text-secondary">
+          <p class="text-body font-medium text-ink-text">{{ node.label }}</p>
+          <p class="text-caption text-ink-text-secondary">
             {{ t(`guide.diagrams.detail.items.${idx}`) }}
           </p>
         </div>
       </div>
     </div>
 
-    <!-- Pipeline branch -->
-    <div v-else-if="diagram === 'pipeline'" class="space-y-3">
+    <div v-else-if="diagram === 'pipeline'" class="space-y-ink-3">
       <div
-        class="rounded-ink border border-ink-primary/30 bg-ink-primary-muted/30 px-3 py-2 text-center text-sm font-medium text-ink-text"
+        class="rounded-ink border border-ink-primary/30 bg-ink-primary-muted/30 px-ink-3 py-ink-2 text-center text-body font-medium text-ink-text"
       >
         {{ t('guide.diagrams.pipeline.hub') }}
       </div>
       <div class="flex justify-center">
         <Icon icon="lucide:arrow-down" class="h-4 w-4 text-ink-text-muted" />
       </div>
-      <div class="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+      <div class="grid gap-ink-2 sm:grid-cols-2 lg:grid-cols-4">
         <div
           v-for="(node, idx) in nodes"
           :key="`${node.label}-${idx}`"
-          class="rounded-ink border border-ink-border bg-ink-surface px-3 py-2.5"
+          class="rounded-ink border border-ink-border bg-ink-surface px-ink-3 py-ink-3"
         >
-          <div class="mb-1 flex items-center gap-2">
+          <div class="mb-ink-1 flex items-center gap-ink-2">
             <Icon :icon="node.icon" class="h-4 w-4 text-ink-primary" />
-            <span class="text-sm font-medium text-ink-text">{{ node.label }}</span>
+            <span class="text-body font-medium text-ink-text">{{ node.label }}</span>
           </div>
-          <p class="text-xs leading-relaxed text-ink-text-secondary">
+          <p class="text-caption leading-relaxed text-ink-text-secondary">
             {{ t(`guide.diagrams.pipeline.items.${idx}`) }}
           </p>
         </div>
