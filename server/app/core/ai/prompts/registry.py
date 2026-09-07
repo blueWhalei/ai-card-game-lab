@@ -10,8 +10,8 @@ from __future__ import annotations
 
 import hashlib
 import uuid
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -41,7 +41,7 @@ class PromptTemplate:
         version: str,
         content: str,
     ) -> PromptTemplate:
-        now = datetime.now(timezone.utc).isoformat()
+        now = datetime.now(UTC).isoformat()
         return cls(
             id=str(uuid.uuid4()),
             template_key=template_key,

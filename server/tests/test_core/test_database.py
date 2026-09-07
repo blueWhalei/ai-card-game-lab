@@ -28,10 +28,9 @@ async def test_bind_game_connection_reuses_same_object(tmp_path: Path) -> None:
     await init_db(sqlite_path)
     from app.database import connect_sqlite
 
-    async with connect_sqlite(sqlite_path) as db:
-        async with bind_game_connection(db):
-            async with connect_or_reuse(sqlite_path) as inner:
-                assert inner is db
+    async with connect_sqlite(sqlite_path) as db, bind_game_connection(db):
+        async with connect_or_reuse(sqlite_path) as inner:
+            assert inner is db
 
 
 async def test_connect_or_reuse_opens_when_unbound(tmp_path: Path) -> None:

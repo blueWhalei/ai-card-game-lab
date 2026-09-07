@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import pytest
 
+from app.core.engine.base import GameAction
 from app.core.engine.doudizhu.cards import ActionType
 from app.core.engine.doudizhu.engine import DoudizhuEngine, DoudizhuState
-from app.core.engine.base import GameAction
 from app.utils.exceptions import InvalidActionError
 
 

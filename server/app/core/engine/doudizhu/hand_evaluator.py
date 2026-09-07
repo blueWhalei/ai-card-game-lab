@@ -6,11 +6,11 @@ from itertools import combinations
 from app.core.engine.base import GameAction
 from app.core.engine.doudizhu.cards import (
     BLACK_JOKER,
-    RED_JOKER,
-    ActionType,
     MIN_AIRPLANE_LENGTH,
     MIN_CHAIN_LENGTH,
     MIN_CHAIN_PAIR_LENGTH,
+    RED_JOKER,
+    ActionType,
     card_power,
     card_rank,
     sort_cards,

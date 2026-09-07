@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 import structlog
@@ -41,7 +41,7 @@ class TraceService:
     ) -> str:
         """Create a new trace record."""
         trace_id = generate_id("tr")
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
 
         async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)

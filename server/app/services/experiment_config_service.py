@@ -8,7 +8,7 @@ from typing import Any
 
 import structlog
 
-from app.core.pack import build_player_pack
+from app.core.pack import build_player_pack, parse_pack
 from app.database import open_db_connection
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
 
@@ -171,6 +171,17 @@ class ExperimentConfigService:
             wanted = set(ids)
             rows = [row for row in rows if row["id"] in wanted]
         return build_player_pack(rows, exported_at=datetime.now(tz=UTC).isoformat())
+
+    async def import_pack(self, body: dict[str, Any]) -> dict[str, Any]:
+        """Parse a player pack and import missing configs (never overwrite)."""
+        pack = parse_pack(body)
+        result = await self.import_players(list(pack.get("players") or []))
+        return {
+            "kind": pack["kind"],
+            "players_created": result["created"],
+            "players_reused": result["reused"],
+            "requirements": pack.get("requirements") or {},
+        }
 
     def _ensure_ready(self) -> None:
         if not self._ready:

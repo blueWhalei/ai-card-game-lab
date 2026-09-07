@@ -2,15 +2,12 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import aiosqlite
 import structlog
 
 from app.core.ai.prompts.registry import PromptTemplate
-
-if TYPE_CHECKING:
-    pass
 
 logger = structlog.get_logger()
 

@@ -1,7 +1,7 @@
 """JSONL file writer for game data archival."""
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -27,7 +27,7 @@ class JsonlWriter:
         return self._data_dir
 
     def _game_file_path(self, game_id: str) -> Path:
-        today = datetime.now(tz=timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
         directory = self._data_dir / "games" / today
         directory.mkdir(parents=True, exist_ok=True)
         return directory / f"{game_id}.jsonl"
@@ -49,7 +49,7 @@ class JsonlWriter:
             "game_id": game_id,
             "game_type": game_type,
             "players": player_ids,
-            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
         self._write_line(game_id, record)
         path = self._game_file_path(game_id)
@@ -59,7 +59,7 @@ class JsonlWriter:
     def record_round(self, game_id: str, data: dict[str, Any]) -> None:
         """Append a round record to the game's JSONL file."""
         data["type"] = "round"
-        data["timestamp"] = datetime.now(tz=timezone.utc).isoformat()
+        data["timestamp"] = datetime.now(tz=UTC).isoformat()
         self._write_line(game_id, data)
 
     def end_game(self, game_id: str, summary: dict[str, Any]) -> None:
@@ -68,7 +68,7 @@ class JsonlWriter:
             "type": "game_end",
             "game_id": game_id,
             **summary,
-            "timestamp": datetime.now(tz=timezone.utc).isoformat(),
+            "timestamp": datetime.now(tz=UTC).isoformat(),
         }
         self._write_line(game_id, record)
         logger.info("jsonl_game_ended", game_id=game_id)

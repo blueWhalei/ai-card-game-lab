@@ -23,7 +23,7 @@ _get_prompt_service = get_prompt_service
 async def list_prompt_templates(
     template_key: str | None = Query(None, description="Filter by template key"),
     active_only: bool = Query(False, description="Show only active templates"),
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[list[PromptTemplateResponse]]:
     """List all prompt templates with optional filtering."""
     templates = await service.list_templates(
@@ -40,7 +40,7 @@ async def list_prompt_templates(
 )
 async def create_template(
     body: CreatePromptRequest,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[PromptTemplateResponse]:
     """Create a new prompt template version."""
     template = await service.create_template(body)
@@ -55,7 +55,7 @@ async def update_template(
     template_key: str,
     version: str,
     body: UpdatePromptRequest,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[PromptTemplateResponse]:
     """Update an existing prompt template."""
     template = await service.update_template(template_key, version, body)
@@ -75,7 +75,7 @@ async def update_template(
 async def delete_template(
     template_key: str,
     version: str,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> Response:
     """Delete a prompt template version."""
     deleted = await service.delete_template(template_key, version)
@@ -94,7 +94,7 @@ async def delete_template(
 async def activate_template(
     template_key: str,
     body: ActivatePromptRequest,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[PromptTemplateResponse]:
     """Activate a specific template version."""
     template = await service.activate_template(template_key, body)
@@ -113,7 +113,7 @@ async def activate_template(
 async def deactivate_template(
     template_key: str,
     body: DeactivatePromptRequest,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[PromptTemplateResponse]:
     """Deactivate a specific template version."""
     template = await service.deactivate_template(template_key, body)
@@ -127,7 +127,7 @@ async def deactivate_template(
 
 @router.get("/ab-stats", response_model=ApiResponse[ABStatsResponse])
 async def get_ab_stats(
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[ABStatsResponse]:
     """Get current A/B test statistics."""
     stats = service.get_ab_stats()
@@ -137,7 +137,7 @@ async def get_ab_stats(
 @router.put("/ab-config", response_model=ApiResponse[ABStatsResponse])
 async def update_ab_config(
     body: ABTestConfig,
-    service: PromptService = Depends(_get_prompt_service),  # noqa: B008
+    service: PromptService = Depends(_get_prompt_service),
 ) -> ApiResponse[ABStatsResponse]:
     """Update A/B test configuration."""
     if not (0.0 <= body.ratio <= 1.0):

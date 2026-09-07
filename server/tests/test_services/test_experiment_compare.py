@@ -9,7 +9,6 @@ import aiosqlite
 import pytest
 
 from app.database import init_db
-from app.repositories.experiment_repo import ExperimentRepository
 from app.repositories.trace_repo import TraceRepository
 from app.services.experiment_service import ExperimentService
 

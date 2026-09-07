@@ -6,7 +6,6 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.core.pack import parse_pack
 from app.dependencies import get_experiment_config_service
 from app.schemas.common import ApiResponse
 from app.schemas.experiment_config import (
@@ -87,18 +86,10 @@ async def import_experiment_configs(
     service: ExperimentConfigService = Depends(get_experiment_config_service),
 ) -> ApiResponse[dict[str, Any]]:
     try:
-        pack = parse_pack(body)
+        result = await service.import_pack(body)
     except ValueError as exc:
         raise ExperimentConfigValidationError(str(exc)) from exc
-    result = await service.import_players(list(pack.get("players") or []))
-    return ApiResponse(
-        data={
-            "kind": pack["kind"],
-            "players_created": result["created"],
-            "players_reused": result["reused"],
-            "requirements": pack.get("requirements") or {},
-        }
-    )
+    return ApiResponse(data=result)
 
 
 @router.get("/{config_id}")

@@ -2,7 +2,7 @@
 
 import random
 import string
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 
 def generate_id(prefix: str = "") -> str:
@@ -16,7 +16,7 @@ def generate_id(prefix: str = "") -> str:
         >>> generate_id("ds")
         'ds_20240101_c9e7d4'
     """
-    now = datetime.now(tz=timezone.utc).strftime("%Y%m%d%H%M%S")
+    now = datetime.now(tz=UTC).strftime("%Y%m%d%H%M%S")
     suffix = "".join(random.choices(string.ascii_lowercase + string.digits, k=6))
     if prefix:
         return f"{prefix}_{now}_{suffix}"

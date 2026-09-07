@@ -7,7 +7,6 @@ from unittest.mock import patch
 import aiosqlite
 import pytest
 
-from app.core.training.exporter import export_sft_dataset
 from app.database import init_db
 from app.repositories.dataset_repo import DatasetRepository
 from app.schemas.training import CreateTrainingTaskRequest, TrainingConfig

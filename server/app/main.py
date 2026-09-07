@@ -11,8 +11,8 @@ from fastapi.responses import JSONResponse
 
 from app.api.router import api_router
 from app.config import Settings
-from app.database import init_db, open_db_connection
 from app.core.ai.prompts.registry import get_registry
+from app.database import init_db, open_db_connection
 from app.dependencies import get_experiment_config_service
 from app.services.startup_recovery import recover_orphaned_runtime
 from app.utils.exceptions import AppError

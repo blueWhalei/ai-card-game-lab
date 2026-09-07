@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from app.core.training.data_quality import evaluate_train_usable
 
 

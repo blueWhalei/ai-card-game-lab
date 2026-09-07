@@ -131,7 +131,7 @@ def test_convert_merged_to_gguf_mocked_success(tmp_path: Path) -> None:
             if len(cmd) >= 3:
                 Path(cmd[2]).write_bytes(b"gguf")
             else:
-                (deploy / "model.gguf").write_bytes(b"gguf")
+                out.write_bytes(b"gguf")
         elif "convert_hf_to_gguf" in " ".join(str(c) for c in cmd):
             # outfile is after --outfile
             if "--outfile" in cmd:
@@ -210,17 +210,16 @@ def test_push_lora_ollama_failure_raises(tmp_path: Path) -> None:
         patch(
             "app.core.training.deploy.try_ollama_create",
             return_value={"created": False, "reason": "ollama_cli_not_found"},
-        ),
+        ),pytest.raises(DeployOllamaFailedError)
     ):
-        with pytest.raises(DeployOllamaFailedError):
-            push_lora_to_ollama(
-                task_id=task_id,
-                model_path=str(adapter),
-                base_model="Qwen/Qwen2.5-0.5B",
-                models_dir=str(tmp_path),
-                llama_cpp_dir="",
-                force_convert=False,
-            )
+        push_lora_to_ollama(
+            task_id=task_id,
+            model_path=str(adapter),
+            base_model="Qwen/Qwen2.5-0.5B",
+            models_dir=str(tmp_path),
+            llama_cpp_dir="",
+            force_convert=False,
+        )
 
 
 def test_convert_subprocess_nonzero_raises(tmp_path: Path) -> None:

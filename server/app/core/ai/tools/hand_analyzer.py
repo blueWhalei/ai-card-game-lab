@@ -8,10 +8,8 @@ import structlog
 
 from app.core.engine.doudizhu.cards import (
     BLACK_JOKER,
-    RED_JOKER,
     RANK_POWER,
-    RANKS,
-    card_power,
+    RED_JOKER,
     sort_cards,
 )
 
@@ -143,9 +141,7 @@ class HandAnalyzerTool:
         high_ranks = {"2", "A", "K", BLACK_JOKER, RED_JOKER}
         result: list[str] = []
         for card in cards:
-            if card in (BLACK_JOKER, RED_JOKER):
-                result.append(card)
-            elif len(card) == 2 and card[1:] in high_ranks:
+            if card in (BLACK_JOKER, RED_JOKER) or (len(card) == 2 and card[1:] in high_ranks):
                 result.append(card)
         return result
 

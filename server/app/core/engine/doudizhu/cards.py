@@ -18,7 +18,7 @@ RANK_POWER[BLACK_JOKER] = 13
 RANK_POWER[RED_JOKER] = 14
 
 FULL_DECK: list[str] = [f"{s}{r}" for r in RANKS for s in SUITS] + [BLACK_JOKER, RED_JOKER]
-assert len(FULL_DECK) == 54  # noqa: S101
+assert len(FULL_DECK) == 54
 
 
 def card_rank(card: str) -> str:

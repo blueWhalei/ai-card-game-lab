@@ -15,7 +15,6 @@ from app.repositories.round_repo import RoundRepository
 from app.utils.exceptions import GameNotFoundError
 
 if TYPE_CHECKING:
-    import aiosqlite
 
     from app.core.collector.jsonl_writer import JsonlWriter
 

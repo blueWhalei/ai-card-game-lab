@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import pytest
-
+from app.services.ai_service import AIService
 from app.utils.exceptions import (
     AIProviderError,
     AIProviderUnavailableError,
     AIRateLimitExceededError,
     AITimeoutError,
 )
-from app.services.ai_service import AIService
 
 
 class TestAIServiceErrorMapping:

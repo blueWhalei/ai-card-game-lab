@@ -96,14 +96,14 @@ class GameRepository:
         direction = "ASC" if sort_order.lower() == "asc" else "DESC"
 
         count_cursor = await self._db.execute(
-            f"SELECT COUNT(*) FROM games{where_clause}",  # noqa: S608
+            f"SELECT COUNT(*) FROM games{where_clause}",
             params,
         )
         total = (await count_cursor.fetchone())[0]  # type: ignore[index]
 
         offset = (page - 1) * page_size
         data_cursor = await self._db.execute(
-            f"SELECT * FROM games{where_clause} ORDER BY {col} {direction} LIMIT ? OFFSET ?",  # noqa: S608
+            f"SELECT * FROM games{where_clause} ORDER BY {col} {direction} LIMIT ? OFFSET ?",
             [*params, page_size, offset],
         )
         rows = await data_cursor.fetchall()
