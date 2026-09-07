@@ -1,4 +1,4 @@
-"""Built-in scorers (game-agnostic rates over decision / trace counts)."""
+"""Built-in scorers (game-agnostic rates over decision / trace / latency counts)."""
 
 from __future__ import annotations
 
@@ -39,9 +39,27 @@ class ParserSuccessScorer:
         )
 
 
+class LatencyPercentileScorer:
+    """Round latency P50 as the primary value; P95 in extras."""
+
+    metric_id = "latency_p50_p95"
+
+    def score(self, bundle: ScoreBundle) -> MetricResult:
+        return MetricResult(
+            metric_id=self.metric_id,
+            value=round(bundle.p50_response_ms, 1),
+            n=0,
+            extras={"p95_response_ms": round(bundle.p95_response_ms, 1)},
+        )
+
+
 def build_default_scorer_registry() -> ScorerRegistry:
-    """Registry with the first wave of common metrics."""
+    """Registry with common metrics plus engine-specific scorers."""
+    from app.core.engine.doudizhu.scorers import LandlordRoleScorer
+
     registry = ScorerRegistry()
     registry.register(TrainUsableScorer())
     registry.register(ParserSuccessScorer())
+    registry.register(LatencyPercentileScorer())
+    registry.register(LandlordRoleScorer())
     return registry

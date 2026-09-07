@@ -41,6 +41,10 @@ class ScoreBundle:
     train_usable_n: int = 0
     parser_n: int = 0
     parser_ok: int = 0
+    decisive_games: int = 0
+    landlord_role_wins: int = 0
+    p50_response_ms: float = 0.0
+    p95_response_ms: float = 0.0
 
 
 class Scorer(Protocol):
@@ -83,11 +87,19 @@ class ScorerRegistry:
 
 def score_bundle_from_aggregates(eval_metrics: dict[str, Any]) -> ScoreBundle:
     """Lift raw aggregate counts into a bundle for scorers."""
+    wins_by_role = eval_metrics.get("wins_by_role") or {}
+    landlord_wins = 0
+    if isinstance(wins_by_role, dict):
+        landlord_wins = int(wins_by_role.get("landlord") or 0)
     return ScoreBundle(
         decision_count=int(eval_metrics.get("decision_count") or 0),
         train_usable_n=int(eval_metrics.get("train_usable_n") or 0),
         parser_n=int(eval_metrics.get("parser_n") or 0),
         parser_ok=int(eval_metrics.get("parser_ok") or 0),
+        decisive_games=int(eval_metrics.get("decisive_games") or 0),
+        landlord_role_wins=landlord_wins,
+        p50_response_ms=float(eval_metrics.get("p50_response_ms") or 0.0),
+        p95_response_ms=float(eval_metrics.get("p95_response_ms") or 0.0),
     )
 
 
@@ -108,4 +120,18 @@ def apply_scorer_results(
         out["parser_n"] = parser.n
         if "parser_ok" in parser.extras:
             out["parser_ok"] = int(parser.extras["parser_ok"])
+    landlord = results.get("role:landlord")
+    if landlord is not None:
+        out["landlord_win_rate"] = landlord.value
+        out["decisive_games"] = landlord.n
+        wins_by_role = dict(out.get("wins_by_role") or {})
+        wins_by_role["landlord"] = int(
+            landlord.extras.get("landlord_role_wins", wins_by_role.get("landlord", 0))
+        )
+        out["wins_by_role"] = wins_by_role
+    latency = results.get("latency_p50_p95")
+    if latency is not None:
+        out["p50_response_ms"] = latency.value
+        if "p95_response_ms" in latency.extras:
+            out["p95_response_ms"] = float(latency.extras["p95_response_ms"])
     return out
