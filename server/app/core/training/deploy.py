@@ -364,7 +364,7 @@ def push_lora_to_ollama(
         stages["merge"] = {"ok": True, "merged_path": str(merged_dir)}
     except RuntimeError as exc:
         raise DeployMergeFailedError(str(exc)) from exc
-    except Exception as exc:  # noqa: BLE001 — surface merge failures clearly
+    except Exception as exc:
         raise DeployMergeFailedError(str(exc)) from exc
 
     gguf_path = deploy_dir / "model.gguf"

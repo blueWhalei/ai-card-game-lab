@@ -86,22 +86,36 @@ def lower_process_priority() -> Any:
 
 
 def training_deps_available() -> bool:
-    """Return True when torch/transformers/peft/datasets can be imported."""
+    """Return True when torch/transformers/peft/datasets can be imported.
+
+    Prefer ``find_spec`` before importing: a half-installed stack (peft present,
+    transitive sympy missing) can raise ``RuntimeError`` or stall for a long
+    time while transformers loads. Preflight/settings must stay responsive.
+    """
+    import importlib.util
+
+    for name in ("torch", "transformers", "peft", "datasets", "sympy"):
+        if importlib.util.find_spec(name) is None:
+            return False
     try:
         import datasets  # noqa: F401
         import peft  # noqa: F401
         import torch  # noqa: F401
         import transformers  # noqa: F401
-    except ImportError:
+    except Exception:
         return False
     return True
 
 
 def bitsandbytes_available() -> bool:
     """Return True when bitsandbytes can be imported (optional QLoRA extra)."""
+    import importlib.util
+
+    if importlib.util.find_spec("bitsandbytes") is None:
+        return False
     try:
         import bitsandbytes  # noqa: F401
-    except ImportError:
+    except Exception:
         return False
     return True
 
@@ -221,7 +235,7 @@ def _run_lora_sft_sync(
         use_qlora = bool(config.get("qlora"))
         if use_qlora:
             if config.get("cpu_smoke"):
-                raise ValueError("QLoRA cannot run in CPU smoke mode")
+                raise ValueError("QLoRA cannot run in CPU quick-check mode")
             if not torch.cuda.is_available():
                 raise ValueError("QLoRA requires an NVIDIA GPU (CUDA)")
             if not bitsandbytes_available():

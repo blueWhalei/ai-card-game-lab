@@ -38,7 +38,10 @@ def _cached_training_deps_available() -> bool:
     torch/transformers/peft/datasets stack on every config read."""
     from app.core.training.sft import training_deps_available
 
-    return training_deps_available()
+    try:
+        return training_deps_available()
+    except Exception:
+        return False
 
 
 class SystemService:
@@ -280,7 +283,7 @@ class SystemService:
                 )
             )
             mem_ok = True
-            mem_msg = "可用内存足以做 CPU smoke 训练"
+            mem_msg = "可用内存足以做 CPU 快速验证训练"
             mem_params: dict[str, Any] | None = None
             try:
                 from app.core.training.cpu_smoke import MIN_AVAILABLE_MEMORY_MB
@@ -294,7 +297,7 @@ class SystemService:
                         "threshold_mb": int(MIN_AVAILABLE_MEMORY_MB),
                     }
                     mem_msg = (
-                        f"可用内存约 {available:.0f}MB，低于 CPU smoke 建议阈值 "
+                        f"可用内存约 {available:.0f}MB，低于 CPU 快速验证建议阈值 "
                         f"{MIN_AVAILABLE_MEMORY_MB}MB；创建任务时可能被拒绝。"
                     )
             except Exception:

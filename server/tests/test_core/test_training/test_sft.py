@@ -35,6 +35,11 @@ async def test_run_sft_training_real_without_deps_raises(tmp_path: Path) -> None
         )
 
 
+def test_training_deps_available_never_raises() -> None:
+    """Preflight/settings call this; a broken peft/transformers stack must not 500."""
+    assert isinstance(training_deps_available(), bool)
+
+
 def test_truncate_texts_caps_to_max_samples() -> None:
     texts = ["a", "b", "c", "d", "e"]
     assert truncate_texts(texts, 2) == ["a", "b"]

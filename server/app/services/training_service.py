@@ -10,7 +10,7 @@ import json
 import re
 import shutil
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -20,13 +20,17 @@ from app.config import Settings
 from app.core.training.deploy import export_deploy_bundle, push_lora_to_ollama
 from app.core.training.exporter import export_sft_dataset
 from app.core.training.sft import run_sft_training
-from app.core.training.verify import ollama_list_tags, ollama_smoke_decision, ollama_unreachable_error
+from app.core.training.verify import (
+    ollama_list_tags,
+    ollama_smoke_decision,
+    ollama_unreachable_error,
+)
 from app.database import open_db_connection
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.experiment_repo import ExperimentRepository
 from app.repositories.training_repo import TrainingTaskRepository
-from app.services.experiment_service import ExperimentNotFoundError
 from app.schemas.training import CreateTrainingTaskRequest
+from app.services.experiment_service import ExperimentNotFoundError
 from app.utils.exceptions import (
     DatasetNotFoundError,
     DeployNotLoraError,
@@ -139,7 +143,7 @@ class TrainingService:
     async def create_task(self, request: CreateTrainingTaskRequest) -> dict[str, Any]:
         """Create a training task and kick off the background pipeline."""
         task_id = generate_id("train")
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
 
         cfg = dict(request.config.model_dump())
         cfg = await self._apply_cpu_smoke_guards(cfg, base_model=request.base_model)
@@ -447,7 +451,11 @@ class TrainingService:
         game_type: str | None = None,
     ) -> dict[str, Any]:
         """Create and start one game using Ollama-backed players for the engine."""
-        from app.dependencies import get_engine_registry, get_experiment_config_service, get_game_service
+        from app.dependencies import (
+            get_engine_registry,
+            get_experiment_config_service,
+            get_game_service,
+        )
 
         configs = get_experiment_config_service()
         game_service = get_game_service()
@@ -585,7 +593,7 @@ class TrainingService:
             if not adapter_path:
                 raise RuntimeError("LoRA training finished without adapter_path")
             model_path = str(adapter_path)
-            now = datetime.now(tz=timezone.utc).isoformat()
+            now = datetime.now(tz=UTC).isoformat()
             await self._update(
                 task_id,
                 "completed",

@@ -72,7 +72,7 @@ CardLab — 1 小时闭环指南（斗地主）
 [4] 创建数据集 + 训练任务（PEFT LoRA / 无 GPU 走 CPU 快速验证）
   poetry run python scripts/e2e_pipeline.py train
   # 先：cd server && poetry install --with training
-  # 详见 docs/E2E_PIPELINE.md「CPU 快速验证（无 GPU）」；墙钟 ≤5min，不为牌力；勿在 CI 拉 HF 全量 e2e
+  # 详见 docs/E2E_PIPELINE.md「CPU 快速验证（无 GPU）」；端到端 ≤5min，不评估牌力；勿在 CI 拉 HF 全量 e2e
 
 [5] 部署（真实 LoRA 产物）
   - 前端「模型仓库」→ 导出部署包
@@ -224,7 +224,7 @@ def cmd_train(args: argparse.Namespace) -> int:
         print("  → empty dataset; collect games first", file=sys.stderr)
         return 1
 
-    print("[train] create training task (PEFT LoRA / CPU smoke) ...")
+    print("[train] create training task (PEFT LoRA / CPU quick check) ...")
     task = _api(
         args.base_url,
         "POST",
