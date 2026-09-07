@@ -5,9 +5,6 @@ import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
   experimentApi,
-  experimentStatusLabel,
-  isBenchmarkExperiment,
-  EXPERIMENT_STATUS_VARIANT,
   type CollectMode,
   type Experiment,
 } from '@/api/experimentApi'
@@ -21,48 +18,31 @@ import {
   supportsBenchmark,
   type EngineInfo,
 } from '@/utils/engineSlots'
-import { firstRunSteps } from '@/utils/firstRun'
+import { firstIncompleteStep, firstRunSteps } from '@/utils/firstRun'
 import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import { formatDateTime } from '@/utils/format'
 import { pickJsonFile } from '@/utils/jsonFile'
 import EmptyState from '@/components/common/EmptyState.vue'
 import FirstRunStepper from '@/components/common/FirstRunStepper.vue'
-import NameChips from '@/components/common/NameChips.vue'
-import UiBadge from '@/components/ui/Badge.vue'
+import ExperimentListRow from '@/components/experiment/ExperimentListRow.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiCheckbox from '@/components/ui/Checkbox.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
+import UiDropdownMenu, { type DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
 import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
-import UiTable from '@/components/ui/Table.vue'
-import type { TableColumn } from '@/components/ui/Table.vue'
 import UiTextarea from '@/components/ui/Textarea.vue'
 
 const { t } = useI18n()
-
-type ExperimentRow = Experiment & Record<string, unknown>
-
-const experimentColumns = computed((): TableColumn<ExperimentRow>[] => [
-  { key: 'name', label: t('common.name') },
-  { key: 'status', label: t('common.status'), class: 'w-28' },
-  { key: 'progress', label: t('common.progress'), class: 'w-24' },
-  { key: 'tags', label: t('experiment.tags'), class: 'hidden w-32 md:table-cell' },
-  { key: 'players', label: t('common.players') },
-  { key: 'summary_extra', label: t('experiment.summary'), class: 'hidden w-40 md:table-cell' },
-  { key: 'created_at', label: t('common.createdAt'), class: 'hidden w-44 md:table-cell' },
-])
-
-const experimentRows = computed(() => experiments.value as ExperimentRow[])
-
 const router = useRouter()
 const loading = ref(true)
 const seedingDemo = ref(false)
 const creating = ref(false)
 const importing = ref(false)
 const createOpen = ref(false)
+const createMoreOpen = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
 const engines = ref<EngineInfo[]>([])
@@ -96,6 +76,7 @@ const setupSteps = computed(() =>
     experimentCount: experiments.value.length,
   }),
 )
+const setupIncomplete = computed(() => firstIncompleteStep(setupSteps.value) != null)
 
 const canSubmit = computed(() => {
   const target = Number(formTarget.value)
@@ -108,13 +89,17 @@ const canSubmit = computed(() => {
   )
 })
 
+const moreMenuItems = computed((): DropdownMenuItemDef[] => [
+  { id: 'compare', label: t('experiment.compareMany') },
+  { id: 'import', label: t('experiment.importPack') },
+])
+
 function configName(id: string): string {
   return configs.value.find((c) => c.id === id)?.name ?? id
 }
 
-function progressText(exp: Experiment): string {
-  const s = exp.summary
-  return `${s.finished_games}/${s.target_games}`
+function playerNames(exp: Experiment): string[] {
+  return exp.player_ids.map((id) => configName(id))
 }
 
 async function load(): Promise<void> {
@@ -140,6 +125,14 @@ async function load(): Promise<void> {
   }
 }
 
+function setCollectMode(mode: CollectMode): void {
+  formCollectMode.value = mode
+  if (mode === 'benchmark') {
+    const n = currentEngine.value?.benchmark_seed_count ?? 50
+    formTarget.value = Math.min(50, Math.max(1, n))
+  }
+}
+
 function openCreate(): void {
   formName.value = ''
   formNotes.value = ''
@@ -149,6 +142,7 @@ function openCreate(): void {
   formTarget.value = 10
   formGameType.value = defaultEngineId(engines.value)
   selectedConfigIds.value = configs.value.slice(0, maxPlayers.value).map((c) => c.id)
+  createMoreOpen.value = false
   createOpen.value = true
 }
 
@@ -212,6 +206,15 @@ function goDetail(id: string): void {
   void router.push(`/experiments/${id}`)
 }
 
+function watchLatest(exp: Experiment): void {
+  const id = exp.summary.latest_game_id
+  if (!id) {
+    goDetail(exp.id)
+    return
+  }
+  void router.push(`/game/${id}`)
+}
+
 async function importPack(): Promise<void> {
   importing.value = true
   try {
@@ -248,23 +251,27 @@ async function importPack(): Promise<void> {
   }
 }
 
+function onMoreSelect(id: string): void {
+  if (id === 'compare') {
+    void router.push('/experiments/compare')
+    return
+  }
+  if (id === 'import') void importPack()
+}
+
 onMounted(() => {
   void load()
 })
 </script>
 
 <template>
-  <div class="page-container space-y-6">
-    <div class="flex flex-wrap items-center justify-end gap-2">
-      <UiButton variant="secondary" @click="router.push('/experiments/compare')">
-        {{ t('experiment.compareMany') }}
-      </UiButton>
-      <UiButton variant="secondary" :loading="importing" @click="importPack">
-        {{ t('experiment.importPack') }}
-      </UiButton>
-      <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
-        {{ t('experiment.loadDemo') }}
-      </UiButton>
+  <div class="page-container space-y-ink-6">
+    <div class="flex flex-wrap items-center justify-end gap-ink-2">
+      <UiDropdownMenu :items="moreMenuItems" @select="onMoreSelect">
+        <UiButton variant="ghost" size="icon" :aria-label="t('common.more')" :loading="importing">
+          <Icon icon="lucide:ellipsis" class="h-4 w-4" />
+        </UiButton>
+      </UiDropdownMenu>
       <UiButton @click="openCreate">
         <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
         {{ t('experiment.create') }}
@@ -272,7 +279,7 @@ onMounted(() => {
     </div>
 
     <FirstRunStepper
-      v-if="!loading"
+      v-if="!loading && setupIncomplete"
       :steps="setupSteps"
       :required-players="requiredPlayers"
       :demo-loading="seedingDemo"
@@ -287,11 +294,11 @@ onMounted(() => {
     </div>
 
     <EmptyState
-      v-else-if="experiments.length === 0"
+      v-else-if="experiments.length === 0 && !setupIncomplete"
       :title="t('experiment.emptyTitle')"
     >
       <template #action>
-        <div class="flex flex-wrap justify-center gap-2">
+        <div class="flex flex-wrap justify-center gap-ink-2">
           <UiButton @click="openCreate">{{ t('experiment.create') }}</UiButton>
           <UiButton variant="secondary" :loading="importing" @click="importPack">
             {{ t('experiment.importPack') }}
@@ -303,57 +310,16 @@ onMounted(() => {
       </template>
     </EmptyState>
 
-    <UiTable
-      v-else
-      :columns="experimentColumns"
-      :rows="experimentRows"
-      row-key="id"
-    >
-      <template #cell-name="{ row }">
-        <div class="flex flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            class="text-left font-medium text-ink-primary hover:underline"
-            @click="goDetail(String(row.id))"
-          >
-            {{ row.name }}
-          </button>
-          <UiBadge v-if="isBenchmarkExperiment(row as Experiment)" variant="accent" class="text-xs">
-            {{ t('experiment.modeBenchmark') }}
-          </UiBadge>
-        </div>
-      </template>
-      <template #cell-tags="{ row }">
-        <span v-if="!(row.tags as string[])?.length" class="text-ink-text-muted">{{ t('common.dash') }}</span>
-        <span v-else class="truncate text-xs text-ink-text-secondary" :title="(row.tags as string[]).join(', ')">
-          {{ (row.tags as string[]).join(', ') }}
-        </span>
-      </template>
-      <template #cell-status="{ row }">
-        <UiBadge :variant="EXPERIMENT_STATUS_VARIANT[row.summary.status]">
-          {{ experimentStatusLabel(row.summary.status) }}
-        </UiBadge>
-      </template>
-      <template #cell-progress="{ row }">
-        <span class="tabular-nums text-sm">{{ progressText(row as Experiment) }}</span>
-      </template>
-      <template #cell-players="{ row }">
-        <NameChips :names="(row.player_ids as string[]).map((pid) => configName(pid))" />
-      </template>
-      <template #cell-summary_extra="{ row }">
-        <span class="text-sm text-ink-text-secondary">
-          {{
-            t('experiment.trainUsableWins', {
-              usable: row.summary.train_usable_decisions,
-              winners: row.summary.games_with_winner,
-            })
-          }}
-        </span>
-      </template>
-      <template #cell-created_at="{ row }">
-        {{ formatDateTime(String(row.created_at)) }}
-      </template>
-    </UiTable>
+    <div v-else-if="experiments.length > 0" class="space-y-ink-3">
+      <ExperimentListRow
+        v-for="exp in experiments"
+        :key="exp.id"
+        :experiment="exp"
+        :player-names="playerNames(exp)"
+        @open="goDetail(exp.id)"
+        @watch="watchLatest(exp)"
+      />
+    </div>
 
     <UiDialog
       v-model:open="createOpen"
@@ -376,35 +342,13 @@ onMounted(() => {
           <UiInputNumber v-model="formTarget" :min="1" :max="50" />
         </div>
         <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
-          <UiTextarea
-            v-model="formHypothesis"
-            :rows="3"
-            :placeholder="t('experiment.hypothesisPlaceholder')"
-            class="w-full"
-          />
-        </div>
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
-          <UiTextarea
-            v-model="formNotes"
-            :rows="3"
-            :placeholder="t('experiment.notesPlaceholder')"
-            class="w-full"
-          />
-        </div>
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.tags') }}</label>
-          <UiInput v-model="formTags" :placeholder="t('experiment.tagsPlaceholder')" class="w-full" />
-        </div>
-        <div>
           <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.collectMode') }}</label>
           <div class="flex flex-wrap gap-ink-2">
             <UiButton
               size="sm"
               :variant="formCollectMode === 'free' ? 'primary' : 'secondary'"
               type="button"
-              @click="formCollectMode = 'free'"
+              @click="setCollectMode('free')"
             >
               {{ t('experiment.collectModeFree') }}
             </UiButton>
@@ -413,7 +357,7 @@ onMounted(() => {
               :variant="formCollectMode === 'benchmark' ? 'primary' : 'secondary'"
               type="button"
               :disabled="!canUseBenchmark"
-              @click="formCollectMode = 'benchmark'"
+              @click="setCollectMode('benchmark')"
             >
               {{ t('experiment.collectModeBenchmark') }}
             </UiButton>
@@ -452,6 +396,39 @@ onMounted(() => {
               <span class="min-w-0 flex-1 pt-0.5 text-caption text-ink-text-muted">
                 {{ cfg.model_config.provider }} / {{ cfg.model_config.model_name }}
               </span>
+            </div>
+          </div>
+        </div>
+        <div class="sm:col-span-2">
+          <button
+            type="button"
+            class="text-caption text-ink-text-secondary hover:text-ink-text"
+            @click="createMoreOpen = !createMoreOpen"
+          >
+            {{ createMoreOpen ? t('common.collapse') : t('experiment.createMoreFields') }}
+          </button>
+          <div v-if="createMoreOpen" class="mt-ink-3 grid gap-ink-4 sm:grid-cols-2">
+            <div>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
+              <UiTextarea
+                v-model="formHypothesis"
+                :rows="3"
+                :placeholder="t('experiment.hypothesisPlaceholder')"
+                class="w-full"
+              />
+            </div>
+            <div>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
+              <UiTextarea
+                v-model="formNotes"
+                :rows="3"
+                :placeholder="t('experiment.notesPlaceholder')"
+                class="w-full"
+              />
+            </div>
+            <div class="sm:col-span-2">
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.tags') }}</label>
+              <UiInput v-model="formTags" :placeholder="t('experiment.tagsPlaceholder')" class="w-full" />
             </div>
           </div>
         </div>

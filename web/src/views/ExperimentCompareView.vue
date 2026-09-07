@@ -14,6 +14,7 @@ import {
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
 import { formatWinRate, formatWinRateCi, EXPERIMENT_SCENARIO_IDS } from '@/utils/experimentWorkbench'
+import { formatExperimentProgress } from '@/utils/experimentStage'
 import {
   bestIndex,
   compareMetricsForEngine,
@@ -447,8 +448,14 @@ watch(
               class="h-3.5 w-3.5 shrink-0"
             />
             <span class="min-w-0 truncate font-medium">{{ exp.name }}</span>
-            <span class="shrink-0 text-xs opacity-70">
-              {{ exp.summary.finished_games }}/{{ exp.summary.target_games }}
+            <span class="shrink-0 text-caption opacity-70">
+              {{
+                formatExperimentProgress(
+                  exp.summary.finished_games,
+                  exp.summary.target_games,
+                  t,
+                )
+              }}
             </span>
           </button>
         </div>

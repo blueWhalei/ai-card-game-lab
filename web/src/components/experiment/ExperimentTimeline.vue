@@ -7,6 +7,7 @@ import {
   type ExperimentTimelineEvent,
 } from '@/api/experimentApi'
 import { formatDateTime } from '@/utils/format'
+import { formatExperimentProgress } from '@/utils/experimentStage'
 
 const props = defineProps<{
   events?: ExperimentTimelineEvent[]
@@ -22,6 +23,14 @@ const { t } = useI18n()
 const events = computed(() => props.events ?? [])
 
 const controls = computed(() => props.controlProgress ?? [])
+
+function controlProgressLabel(control: ExperimentControlProgress): string {
+  const progress = formatExperimentProgress(control.finished_games, control.target_games, t)
+  return t('stage.controlProgressLabeled', {
+    progress,
+    paired: control.paired_n,
+  })
+}
 </script>
 
 <template>
@@ -51,13 +60,7 @@ const controls = computed(() => props.controlProgress ?? [])
             {{ control.name }}
           </button>
           <span class="ml-ink-2 text-caption tabular-nums text-ink-text-muted">
-            {{
-              t('stage.controlProgress', {
-                finished: control.finished_games,
-                target: control.target_games,
-                paired: control.paired_n,
-              })
-            }}
+            {{ controlProgressLabel(control) }}
           </span>
         </span>
       </li>

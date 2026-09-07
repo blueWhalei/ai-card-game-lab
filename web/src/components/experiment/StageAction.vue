@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { experimentProgressParts } from '@/utils/experimentStage'
 import UiButton from '@/components/ui/Button.vue'
 
 const props = withDefaults(
@@ -29,25 +31,40 @@ const emit = defineEmits<{
   action: []
 }>()
 
+const { t } = useI18n()
+
 const hasMetric = computed(() => props.metricValue != null)
 
+const progress = computed(() => {
+  if (props.metricValue == null || props.metricTotal == null) return null
+  return experimentProgressParts(props.metricValue, props.metricTotal)
+})
+
 const progressPercent = computed(() => {
-  const total = props.metricTotal ?? 0
-  if (total <= 0 || props.metricValue == null) return null
-  return Math.min(100, Math.round((props.metricValue / total) * 100))
+  if (!progress.value || progress.value.target <= 0) return null
+  return Math.min(
+    100,
+    Math.round((progress.value.shownFinished / progress.value.target) * 100),
+  )
 })
 </script>
 
 <template>
   <section class="ink-section py-ink-6">
-    <p v-if="hasMetric" class="ink-verdict-number" :class="{ 'is-weak': weak }">
-      {{ metricValue }}
-      <span v-if="metricTotal != null" class="text-title font-normal text-ink-text-muted">
-        / {{ metricTotal }}
+    <p v-if="hasMetric && progress" class="ink-verdict-number" :class="{ 'is-weak': weak }">
+      {{ progress.shownFinished }}
+      <span class="text-title font-normal text-ink-text-muted">
+        / {{ progress.target }}
       </span>
+    </p>
+    <p v-else-if="hasMetric" class="ink-verdict-number" :class="{ 'is-weak': weak }">
+      {{ metricValue }}
     </p>
     <p v-if="hasMetric && metricLabel" class="mt-ink-1 text-caption text-ink-text-muted">
       {{ metricLabel }}
+      <span v-if="progress && progress.extra > 0" class="ml-ink-2">
+        · {{ t('stage.progressExtraOnly', { extra: progress.extra }) }}
+      </span>
     </p>
 
     <div
@@ -71,7 +88,8 @@ const progressPercent = computed(() => {
       {{ detail }}
     </p>
 
-    <div v-if="actionLabel || $slots.secondary" class="mt-ink-6 flex flex-wrap items-center gap-ink-3">
+    <div v-if="actionLabel || $slots.secondary || $slots['before-action']" class="mt-ink-6 flex flex-wrap items-center gap-ink-3">
+      <slot name="before-action" />
       <UiButton
         v-if="actionLabel"
         size="lg"

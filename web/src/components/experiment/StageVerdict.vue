@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ExperimentDelta, ExperimentVerdictKey } from '@/api/experimentApi'
 import { formatDeltaPp, formatWinRateCi } from '@/utils/experimentWorkbench'
+import { verdictHeadlineOf } from '@/utils/experimentStage'
 import ExperimentScenarioBars from '@/components/experiment/ExperimentScenarioBars.vue'
 import MetricHint from '@/components/common/MetricHint.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -26,19 +27,25 @@ const { t } = useI18n()
 
 const weak = computed(() => !props.delta.can_conclude)
 
-const claim = computed(() => t(`stage.verdict.${props.verdictKey}`))
+const headline = computed(() => verdictHeadlineOf(props.delta, props.gamesNeeded))
 
-/** What to do about the missing evidence, in a number the user can act on. */
-const evidenceLine = computed(() => {
-  const reason = props.delta.inconclusive_reason
-  if (!reason) return t('stage.evidence.sufficient', { n: props.delta.paired_n })
-  if (reason === 'peer_not_ready') return t('stage.evidence.peerPending')
-  if (reason === 'low_power') {
-    return props.gamesNeeded > 0
-      ? t('stage.evidence.lowPowerNeed', { n: props.delta.paired_n, need: props.gamesNeeded })
-      : t('stage.evidence.lowPower', { n: props.delta.paired_n })
+const claim = computed(() =>
+  t(`stage.${headline.value.key}`, headline.value.params ?? {}),
+)
+
+/** Supporting line under a weak headline — names the provisional delta. */
+const supportDetail = computed(() => {
+  if (!weak.value) {
+    return t('stage.evidence.sufficient', { n: props.delta.paired_n })
   }
-  return t('stage.evidence.noData')
+  const key = props.verdictKey
+  if (key === 'stronger' || key === 'weaker' || key === 'even') {
+    return t('stage.diffSoFar', {
+      delta: formatDeltaPp(props.delta.landlord_win_rate_diff),
+      claim: t(`stage.verdict.${key}`),
+    })
+  }
+  return ''
 })
 
 const supportLine = computed(() => {
@@ -66,9 +73,17 @@ const supportLine = computed(() => {
 
     <h2 class="ink-verdict-claim mt-ink-2" :class="{ 'is-weak': weak }">{{ claim }}</h2>
 
-    <p class="ink-verdict-number mt-ink-3" :class="{ 'is-weak': weak }">
+    <p
+      v-if="weak"
+      class="mt-ink-3 text-title font-normal tabular-nums text-ink-text-muted"
+    >
+      {{ t('stage.diffLabel') }}
       {{ formatDeltaPp(delta.landlord_win_rate_diff) }}
     </p>
+    <p v-else class="ink-verdict-number mt-ink-3">
+      {{ formatDeltaPp(delta.landlord_win_rate_diff) }}
+    </p>
+
     <p class="mt-ink-1 flex flex-wrap items-center gap-ink-1 text-caption text-ink-text-muted">
       {{ supportLine }}
       <MetricHint
@@ -77,7 +92,9 @@ const supportLine = computed(() => {
       />
     </p>
 
-    <p class="mt-ink-4 max-w-2xl text-lead text-ink-text-secondary">{{ evidenceLine }}</p>
+    <p v-if="supportDetail" class="mt-ink-4 max-w-2xl text-lead text-ink-text-secondary">
+      {{ supportDetail }}
+    </p>
 
     <div class="mt-ink-6 flex flex-wrap items-center gap-ink-3">
       <UiButton
@@ -93,8 +110,8 @@ const supportLine = computed(() => {
       </UiButton>
     </div>
 
-    <div class="mt-ink-6 max-w-xl">
-      <ExperimentScenarioBars :diffs="delta.scenario_diffs" />
+    <div class="mt-ink-6 max-w-xl" :class="{ 'opacity-60': weak }">
+      <ExperimentScenarioBars :diffs="delta.scenario_diffs" :weak="weak" />
     </div>
   </section>
 </template>

@@ -1,9 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import type { Experiment, ExperimentDelta } from '@/api/experimentApi'
 import {
+  experimentProgressParts,
+  formatExperimentProgress,
   gamesNeededForPower,
   remainingGames,
   resolveStageId,
+  verdictHeadlineOf,
   verdictKeyOf,
 } from '@/utils/experimentStage'
 
@@ -116,6 +119,45 @@ describe('verdictKeyOf', () => {
   })
 })
 
+describe('verdictHeadlineOf', () => {
+  it('uses the causal verdict when the sample can conclude', () => {
+    expect(verdictHeadlineOf(makeDelta({ verdict_key: 'stronger' }))).toEqual({
+      key: 'verdict.stronger',
+      isEvidence: false,
+    })
+  })
+
+  it('switches the headline to evidence when can_conclude is false', () => {
+    expect(
+      verdictHeadlineOf(
+        makeDelta({
+          can_conclude: false,
+          inconclusive_reason: 'low_power',
+          paired_n: 0,
+          verdict_key: 'weaker',
+        }),
+        15,
+      ),
+    ).toEqual({
+      key: 'evidence.lowPowerNeed',
+      params: { n: 0, need: 15 },
+      isEvidence: true,
+    })
+  })
+
+  it('names peer-pending evidence without a causal claim', () => {
+    expect(
+      verdictHeadlineOf(
+        makeDelta({
+          can_conclude: false,
+          inconclusive_reason: 'peer_not_ready',
+          verdict_key: 'peer_pending',
+        }),
+      ),
+    ).toEqual({ key: 'evidence.peerPending', isEvidence: true })
+  })
+})
+
 describe('remainingGames and gamesNeededForPower', () => {
   it('never goes negative when collection overshoots the target', () => {
     const experiment = makeExperiment({
@@ -133,5 +175,35 @@ describe('remainingGames and gamesNeededForPower', () => {
 
   it('reports nothing missing once both sides are powered', () => {
     expect(gamesNeededForPower(makeExperiment({ delta: makeDelta() }))).toBe(0)
+  })
+})
+
+describe('formatExperimentProgress', () => {
+  it('caps the finished count so the ratio never reads past the target', () => {
+    expect(experimentProgressParts(14, 10)).toEqual({
+      finished: 14,
+      target: 10,
+      shownFinished: 10,
+      extra: 4,
+    })
+    const label = formatExperimentProgress(14, 10, (key, params) => {
+      if (key === 'stage.progressRatio') {
+        return `${params?.finished}/${params?.target}`
+      }
+      if (key === 'stage.progressWithExtra') {
+        return `${params?.ratio} · +${params?.extra}`
+      }
+      return key
+    })
+    expect(label).toBe('10/10 · +4')
+  })
+
+  it('leaves an on-target ratio alone', () => {
+    expect(
+      formatExperimentProgress(5, 5, (key, params) => {
+        if (key === 'stage.progressRatio') return `${params?.finished}/${params?.target}`
+        return key
+      }),
+    ).toBe('5/5')
   })
 })

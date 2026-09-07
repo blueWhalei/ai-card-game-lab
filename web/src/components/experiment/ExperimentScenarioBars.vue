@@ -13,9 +13,14 @@ const NOTABLE_DIFF = 0.05
 /** A bar spanning the full half-track represents this much difference. */
 const FULL_SCALE_DIFF = 0.2
 
-const props = defineProps<{
-  diffs?: Record<string, ExperimentScenarioDiff>
-}>()
+const props = withDefaults(
+  defineProps<{
+    diffs?: Record<string, ExperimentScenarioDiff>
+    /** Dim bars when the overall claim is still provisional. */
+    weak?: boolean
+  }>(),
+  { weak: false },
+)
 
 const { t } = useI18n()
 
@@ -55,7 +60,7 @@ const notable = computed(() => {
 </script>
 
 <template>
-  <div v-if="rows.length > 0" class="ink-section">
+  <div v-if="rows.length > 0" class="ink-section" :class="{ 'opacity-70': weak }">
     <p class="text-caption font-medium text-ink-text-secondary">
       {{ t('stage.scenarioTitle') }}
     </p>
@@ -81,7 +86,7 @@ const notable = computed(() => {
       </li>
     </ul>
 
-    <p v-if="notable" class="mt-ink-2 text-caption text-ink-text-secondary">
+    <p v-if="notable && !weak" class="mt-ink-2 text-caption text-ink-text-secondary">
       {{ t('stage.scenarioNotable', { name: notable.label, delta: notable.display }) }}
     </p>
   </div>
