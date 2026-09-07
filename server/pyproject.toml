@@ -58,8 +58,25 @@ select = [
     "RUF",  # ruff-specific
 ]
 ignore = [
+    "RUF001",  # 中文文案允许全角标点/同形字符
     "RUF002",  # 中文文档中允许使用全角标点
+    "RUF003",  # 中文注释允许全角标点
     "B008",    # FastAPI Depends pattern is standard
+    "E501",    # 中文错误信息/注释常超 100；靠人工与 review 控可读性
+    # FastAPI / Pydantic need these imports at runtime for Depends/body models.
+    "TC001",
+    "TC002",
+    "TC003",
+    # Style nits kept out of CI until a dedicated cleanup pass.
+    "SIM105",
+    "SIM108",
+    "SIM117",
+    "SIM102",
+    "RUF015",
+    "RUF005",
+    "RUF012",
+    "RUF059",
+    "B007",
 ]
 
 [tool.ruff.lint.isort]

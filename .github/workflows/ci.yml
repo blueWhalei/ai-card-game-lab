@@ -27,7 +27,7 @@ jobs:
       - name: Test
         run: poetry run pytest
       - name: Ruff
-        run: poetry run ruff check app/core/stats
+        run: poetry run ruff check .
 
   frontend:
     runs-on: ubuntu-latest
@@ -43,6 +43,8 @@ jobs:
           cache-dependency-path: web/package-lock.json
       - name: Install dependencies
         run: npm ci
+      - name: Lint
+        run: npm run lint:ci
       - name: Unit tests
         run: npm test
       - name: Type-check and build

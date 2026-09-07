@@ -22,5 +22,14 @@ export default defineConfigWithVueTs(
 
   ...pluginOxlint.buildFromOxlintConfigFile('.oxlintrc.json'),
 
+  {
+    name: 'app/ui-kit-overrides',
+    files: ['src/components/ui/**/*.{vue,ts,tsx}'],
+    rules: {
+      // Atomic UI kit keeps single-word names (Button, Dialog, …).
+      'vue/multi-word-component-names': 'off',
+    },
+  },
+
   skipFormatting,
 )
