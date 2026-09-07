@@ -10,6 +10,12 @@ import aiosqlite
 import structlog
 
 from app.core.engine.base import EngineCapability
+from app.core.eval.scorer import (
+    ScorerRegistry,
+    apply_scorer_results,
+    score_bundle_from_aggregates,
+)
+from app.core.eval.scorers import build_default_scorer_registry
 from app.core.pack import (
     KIND_EXPERIMENT_PACK,
     KIND_PLAYER_PACK,
@@ -37,6 +43,7 @@ from app.services.experiment_protocol import (
     pick_collect_seed,
     protocol_collect_mode,
     protocol_deal_seeds,
+    protocol_eval_metric_ids,
     protocol_pair_deals,
     protocol_players,
     protocol_source_experiment_id,
@@ -83,9 +90,15 @@ class ExperimentValidationError(AppError):
 class ExperimentService:
     """Manages experiment runs and collection against GameService."""
 
-    def __init__(self, sqlite_path: str, game_service: GameService) -> None:
+    def __init__(
+        self,
+        sqlite_path: str,
+        game_service: GameService,
+        scorer_registry: ScorerRegistry | None = None,
+    ) -> None:
         self._sqlite_path = sqlite_path
         self._game_service = game_service
+        self._scorer_registry = scorer_registry or build_default_scorer_registry()
 
     async def _conn(self) -> aiosqlite.Connection:
         return await open_db_connection(self._sqlite_path)
@@ -404,6 +417,13 @@ class ExperimentService:
                     raise ExperimentNotFoundError(experiment_id) from exc
                 summary = await self._build_summary(repo, row)
                 extras = await repo.eval_aggregates(experiment_id)
+                protocol = row.get("protocol")
+                if isinstance(protocol, dict):
+                    scored = self._scorer_registry.score_many(
+                        protocol_eval_metric_ids(protocol),
+                        score_bundle_from_aggregates(extras),
+                    )
+                    extras = apply_scorer_results(extras, scored)
                 games = await repo.list_games(experiment_id)
                 games_by_exp[experiment_id] = [_normalize_game_row(g) for g in games]
                 rows.append(self._attach_compare_metrics(row, summary, extras))
@@ -615,6 +635,13 @@ class ExperimentService:
         target = int(experiment["target_games"])
         games = await repo.list_games(experiment_id)
         eval_metrics = await repo.eval_aggregates(experiment_id)
+        protocol = experiment.get("protocol")
+        if isinstance(protocol, dict):
+            scored = self._scorer_registry.score_many(
+                protocol_eval_metric_ids(protocol),
+                score_bundle_from_aggregates(eval_metrics),
+            )
+            eval_metrics = apply_scorer_results(eval_metrics, scored)
 
         active = 0
         finished = 0

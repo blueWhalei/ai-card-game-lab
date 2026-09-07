@@ -46,6 +46,7 @@ from app.core.collector.jsonl_writer import JsonlWriter
 from app.core.engine.doudizhu import DoudizhuEngine
 from app.core.engine.registry import GameEngineRegistry
 from app.core.eval.rollout import EvaluatorParams
+from app.core.eval.scorer import ScorerRegistry
 from app.core.events import get_event_bus
 from app.database import get_db_connection
 from app.services.ai_service import AIService
@@ -285,12 +286,21 @@ def get_game_service() -> GameService:
 
 
 @lru_cache
+def get_scorer_registry() -> ScorerRegistry:
+    """Singleton experiment-level scorer registry."""
+    from app.core.eval.scorers import build_default_scorer_registry
+
+    return build_default_scorer_registry()
+
+
+@lru_cache
 def get_experiment_service() -> ExperimentService:
     """Singleton experiment (run) service."""
     settings = get_settings()
     return ExperimentService(
         sqlite_path=settings.sqlite_path,
         game_service=get_game_service(),
+        scorer_registry=get_scorer_registry(),
     )
 
 
