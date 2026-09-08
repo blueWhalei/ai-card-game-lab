@@ -157,12 +157,15 @@ Gym，否则接每个框架都要自己包一层。奖励来自 `engine.terminal
 
 实现：`core/env/aec.py` 的 duck-typed `CardLabAECEnv`（**不硬依赖** pettingzoo）；
 `step(int)` 为合法菜单下标；非 learner 座位默认 `HeuristicPolicy` 自动走。
-偏好数据导出见 §2.3.2（5b）。
+偏好数据导出见 §2.3.2（**5b ✅**）。
 
-**2.3.2 从现有决策点自动构造偏好数据**
+**2.3.2 从现有决策点自动构造偏好数据** — **5b 已完成 2026-09-08**（EV 偏好对）
 
-- 搜索最优动作 vs 模型选择（EV 差 > 阈值）→ DPO/KTO chosen/rejected
-- 大模型选择 vs 小模型选择 → 蒸馏对（已有 `thinking` 字段）
+- 搜索最优动作 vs 模型选择（EV 差 > 阈值）→ DPO/KTO chosen/rejected：记分时把
+  `best_action_id` / `action_values` 写入 `evaluator_params`；
+  `POST /api/v1/decision-points/export-preferences` 读库导出 JSONL（缺 gold 的行跳过；
+  默认 `min_ev_gap=0.05`）。**不做** deal_seed 重算旧行。
+- 大模型选择 vs 小模型选择 → 蒸馏对（仍待；不在 5b 范围）
 
 **2.3.3 拒绝采样微调（RFT）替代裸 SFT**
 
@@ -238,7 +241,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
-| 5 | RL env 接口 + 偏好数据导出 —— **5a 已完成 2026-09-08**：duck-typed AEC `CardLabAECEnv`（`core/env/`）；**5b 偏好导出仍待** | 训练升级，不自研训练器 |
+| 5 | RL env 接口 + 偏好数据导出 —— **已完成 2026-09-08**：5a duck-typed AEC `CardLabAECEnv`；5b EV 偏好 JSONL（`export-preferences`；蒸馏对仍待） | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
 
@@ -324,7 +327,8 @@ Policy.decide(observation: Observation,
 core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observation、ActionId、ToolSpec、Scorer）
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
 core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅）
-core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅；偏好导出仍待 5b）
+core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
+core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```

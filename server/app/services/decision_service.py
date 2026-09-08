@@ -12,6 +12,7 @@ import structlog
 
 from app.core.stats.highlights import BLUNDER_EV_LOSS, pick_game_highlights
 from app.core.training.data_quality import evaluate_train_usable
+from app.core.training.preference import DEFAULT_MIN_EV_GAP, build_preference_pair
 from app.database import connect_or_reuse
 from app.repositories.decision_repo import DecisionRepository
 from app.utils.id_generator import generate_id
@@ -311,6 +312,106 @@ class DecisionService:
         )
 
         return str(filepath), len(train_items), split_meta
+
+    async def export_preferences(
+        self,
+        game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
+        min_quality: float | None = None,
+        outcome: str | None = None,
+        game_phase: str | None = None,
+        train_usable: bool | None = None,
+        train_usable_only: bool = True,
+        max_ev_loss: float | None = None,
+        min_ev_gap: float = DEFAULT_MIN_EV_GAP,
+        include_thinking: bool = False,
+        output_path: str | None = None,
+    ) -> tuple[str, int, dict[str, Any]]:
+        """Export EV preference pairs (DPO JSONL) from scored decision points.
+
+        Chosen = rollout ``best_action_id``; rejected = model ``action_id``.
+        Rows without ``best_action_id`` in ``evaluator_params`` are skipped.
+
+        Returns ``(filepath, count, meta)``. Empty filepath when no pairs written.
+        """
+        train_usable_filter: bool | None
+        if train_usable is not None:
+            train_usable_filter = train_usable
+        else:
+            train_usable_filter = True if train_usable_only else None
+        items, _ = await self.list_decision_points(
+            game_id=game_id,
+            experiment_id=experiment_id,
+            player_id=player_id,
+            min_quality=min_quality,
+            outcome=outcome,
+            game_phase=game_phase,
+            train_usable=train_usable_filter,
+            max_ev_loss=max_ev_loss,
+            limit=10000,
+        )
+
+        meta: dict[str, Any] = {
+            "skipped_missing_best": 0,
+            "skipped_gap": 0,
+            "skipped_tie": 0,
+            "skipped_missing_prompt": 0,
+            "skipped_missing_action": 0,
+            "min_ev_gap": min_ev_gap,
+        }
+
+        if not items:
+            logger.warning(
+                "export_preferences_no_data",
+                game_id=game_id,
+                experiment_id=experiment_id,
+                min_ev_gap=min_ev_gap,
+            )
+            return "", 0, meta
+
+        records: list[dict[str, Any]] = []
+        for item in items:
+            record, skip = build_preference_pair(
+                item,
+                min_ev_gap=min_ev_gap,
+                include_thinking=include_thinking,
+            )
+            if record is not None:
+                records.append(record)
+                continue
+            key = f"skipped_{skip}" if skip else "skipped_other"
+            if key in meta:
+                meta[key] = int(meta[key]) + 1
+
+        if not records:
+            logger.warning(
+                "export_preferences_no_pairs",
+                candidates=len(items),
+                **{k: v for k, v in meta.items() if k.startswith("skipped_")},
+            )
+            return "", 0, meta
+
+        if output_path:
+            filepath = Path(output_path)
+        else:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+            filepath = self._data_dir / "datasets" / f"preferences_{timestamp}.jsonl"
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(record, ensure_ascii=False) for record in records]
+        await asyncio.to_thread(_write_lines, filepath, lines)
+
+        logger.info(
+            "export_preferences_completed",
+            filepath=str(filepath),
+            count=len(records),
+            candidates=len(items),
+            min_ev_gap=min_ev_gap,
+            experiment_id=experiment_id,
+        )
+        return str(filepath), len(records), meta
 
 
 def _legal_ids(legal_actions: list[dict[str, Any]]) -> list[str]:

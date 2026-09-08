@@ -85,7 +85,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `RulePolicy` / `RandomPolicy` are the non-LLM baselines. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
   - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers. Experiment-level **Scorer** plugins (`build_scorer_registry(game_type=…)`) cover every Dou Dizhu `eval_metric_id` (`train_usable`, `parser_success`, `latency_p50_p95`, `role:landlord`, `ev_loss`); `ExperimentService` overlays results onto summary from `protocol.scorer.eval_metric_ids`. **Puzzle packs** (`puzzle.py` / `replay.py` / `perturb.py` + `PuzzleService`): extract high-spread decisions into `{data_dir}/puzzles/{pack_id}/`, score baselines offline, and **probe** consistency under legal-action / hand-card order shuffles (`POST .../probe`). No UI in Step 4.
   - `collector/` — JSONL writer.
-  - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
+  - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. **Preference (DPO) export** (`preference.py` + `DecisionService.export_preferences`): chosen = rollout `best_action_id`, rejected = model `action_id`; gold labels live in `evaluator_params` at score time (no new columns). Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
   - `events/` — in-process `EventBus` + game lifecycle events.
   - `env/` — duck-typed PettingZoo-style **AEC** wrapper (`CardLabAECEnv`): `reset` / `agent_iter` / `last` / `step(index)`; non-learner seats use an injected baseline `ActionSelector` (default heuristic). No hard `pettingzoo` dependency. Reward from `engine.terminal_rewards()`.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
@@ -208,7 +208,7 @@ newer than the running build raises `SchemaVersionError` instead of being read.
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`) and `evaluator_params`; `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`.
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`) and `evaluator_params` (rollout knobs plus, when scored, `best_action_id` and `action_values` for DPO export); `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`. ChatML export writes SFT JSONL; `POST .../export-preferences` writes DPO pairs under `{data_dir}/datasets/preferences_*.jsonl` (skips rows missing `best_action_id`; default `min_ev_gap=0.05`; optional thinking only on the rejected side).
 
 ## Decision points (SFT)
 
@@ -248,7 +248,8 @@ Two consequences worth remembering:
 GET  /api/v1/decision-points          # page / page_size (default 10), filters include experiment_id, train_usable, max_ev_loss
 GET  /api/v1/decision-points/{id}
 GET  /api/v1/decision-points/stats
-POST /api/v1/decision-points/export   # writes JSONL only; does not register a dataset
+POST /api/v1/decision-points/export   # ChatML JSONL only; does not register a dataset
+POST /api/v1/decision-points/export-preferences  # DPO JSONL (model vs EV-best); no UI
 POST /api/v1/datasets/from-decisions  # register ChatML for the training page
 ```
 

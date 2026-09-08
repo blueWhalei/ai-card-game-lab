@@ -88,11 +88,31 @@ class ExportRequest(BaseModel):
     )
 
 
+class PreferenceExportRequest(ExportRequest):
+    """Export EV preference pairs (DPO); chosen = rollout best, rejected = model."""
+
+    min_ev_gap: float = Field(
+        default=0.05,
+        ge=0.0,
+        description="Minimum ev_loss (chosen minus rejected) to keep a pair",
+    )
+
+
 class ExportResponse(BaseModel):
     """Response model for export result."""
 
     filepath: str
     count: int
+
+
+class PreferenceExportResponse(BaseModel):
+    """Preference export result with skip counters."""
+
+    filepath: str
+    count: int
+    skipped_missing_best: int = 0
+    skipped_gap: int = 0
+    skipped_tie: int = 0
 
 
 @router.get("", response_model=ApiResponse[PaginatedData[DecisionPointResponse]])
@@ -179,6 +199,44 @@ async def export_chatml(
     return ApiResponse(
         data=ExportResponse(filepath=filepath, count=count),
         message=f"Exported {count} decision points to {filepath}",
+    )
+
+
+@router.post("/export-preferences", response_model=ApiResponse[PreferenceExportResponse])
+async def export_preferences(
+    request: PreferenceExportRequest,
+    service: DecisionService = Depends(get_decision_service),
+) -> ApiResponse[PreferenceExportResponse]:
+    """Export DPO preference pairs (model action vs EV-best) as JSONL."""
+    filepath, count, meta = await service.export_preferences(
+        game_id=request.game_id,
+        experiment_id=request.experiment_id,
+        player_id=request.player_id,
+        min_quality=request.min_quality,
+        outcome=request.outcome,
+        game_phase=request.game_phase,
+        train_usable=request.train_usable,
+        train_usable_only=request.train_usable_only,
+        max_ev_loss=request.max_ev_loss,
+        min_ev_gap=request.min_ev_gap,
+        include_thinking=request.include_thinking,
+    )
+
+    payload = PreferenceExportResponse(
+        filepath=filepath or "",
+        count=count,
+        skipped_missing_best=int(meta.get("skipped_missing_best", 0)),
+        skipped_gap=int(meta.get("skipped_gap", 0)),
+        skipped_tie=int(meta.get("skipped_tie", 0)),
+    )
+    if not filepath:
+        return ApiResponse(
+            data=payload,
+            message="No preference pairs found to export",
+        )
+    return ApiResponse(
+        data=payload,
+        message=f"Exported {count} preference pairs to {filepath}",
     )
 
 

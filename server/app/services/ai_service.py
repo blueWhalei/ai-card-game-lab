@@ -378,13 +378,22 @@ class AIService:
         player_id: str,
         chosen_action: GameAction,
     ) -> tuple[float | None, dict[str, Any] | None]:
-        """EV loss for the move, or ``(None, None)`` when scoring is off or fails."""
+        """EV loss for the move, or ``(None, None)`` when scoring is off or fails.
+
+        ``evaluator_params`` stores the rollout knobs plus ``best_action_id`` and
+        ``action_values`` so preference export can build DPO pairs without replay.
+        """
         if self._decision_evaluator is None:
             return None, None
         result = await self._decision_evaluator.score(engine, state, player_id, chosen_action)
         if result is None:
             return None, None
-        return result.loss, result.params
+        params: dict[str, Any] = dict(result.params)
+        params["best_action_id"] = result.best_action_id
+        params["action_values"] = {
+            str(action_id): float(value) for action_id, value in result.values.items()
+        }
+        return result.loss, params
 
     def _extract_hand_cards(self, state: GameState, player_id: str) -> list[int]:
         """Extract hand cards for a player from game state."""
