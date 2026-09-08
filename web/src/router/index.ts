@@ -47,6 +47,11 @@ const router = createRouter({
               name: 'traces',
               component: () => import('@/views/TraceView.vue'),
             },
+            {
+              path: 'puzzles',
+              name: 'puzzles',
+              component: () => import('@/views/PuzzleView.vue'),
+            },
           ],
         },
         {
@@ -64,6 +69,10 @@ const router = createRouter({
         {
           path: 'traces',
           redirect: (to) => ({ path: '/pipeline/traces', query: to.query }),
+        },
+        {
+          path: 'puzzles',
+          redirect: (to) => ({ path: '/pipeline/puzzles', query: to.query }),
         },
         {
           path: 'game',

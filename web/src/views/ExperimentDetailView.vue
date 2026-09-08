@@ -303,6 +303,7 @@ const openMenuItems = computed((): DropdownMenuItemDef[] => {
     { id: 'data', label: t('nav.data') },
     { id: 'training', label: t('nav.training') },
     { id: 'traces', label: t('nav.traces') },
+    { id: 'puzzles', label: t('nav.puzzles') },
     { id: 'control', label: t('experiment.newRound') },
     { id: 'manifest', label: t('experiment.downloadManifest') },
     { id: 'clone', label: t('experiment.cloneExperiment') },
@@ -335,6 +336,9 @@ function onOpenMenuSelect(id: string): void {
       break
     case 'traces':
       goTraces()
+      break
+    case 'puzzles':
+      goPuzzles()
       break
     case 'control':
       openControlDialog()
@@ -520,6 +524,13 @@ function goData(): void {
 function goTraces(): void {
   void router.push({
     path: pipelinePath('traces'),
+    query: { experiment_id: experimentId.value },
+  })
+}
+
+function goPuzzles(): void {
+  void router.push({
+    path: pipelinePath('puzzles'),
     query: { experiment_id: experimentId.value },
   })
 }

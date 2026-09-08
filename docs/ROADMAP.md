@@ -122,7 +122,7 @@ schema 命名（`dataset` / `solver` / `scorer` / `engine` 四段，`schema_vers
 从对局抽"高分歧局面"存成题（局面 + 合法动作 + 各动作 EV）。模型离线做题：
 快、便宜、完全可复现。给模型一个类似棋类 puzzle rating 的"战术分"。题库可版本化。
 实现：`deal_seed` 回放重算 EV → `data/puzzles/{pack_id}/`；`POST /api/v1/puzzles/extract`
-与 `/packs/{id}/run`（baseline）；无 UI。鲁棒性探针见 §2.2.5（4b）。
+与 `/packs/{id}/run`（baseline）；Analyze UI 见 `/pipeline/puzzles`（Wave 3b）。鲁棒性探针见 §2.2.5（4b）。
 
 **2.2.4 录制—重放（VCR）** —— **已完成 2026-09-07**
 
@@ -329,7 +329,7 @@ Policy.decide(observation: Observation,
 ```
 core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observation、ActionId、ToolSpec、Scorer）
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
-core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅）
+core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅；Analyze UI Wave 3b ✅）
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）

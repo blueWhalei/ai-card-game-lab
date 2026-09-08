@@ -37,6 +37,7 @@ function sectionLabel(id: PipelineSection): string {
     decisions: 'nav.decisions',
     training: 'nav.training',
     traces: 'nav.traces',
+    puzzles: 'nav.puzzles',
   }
   return t(keys[id])
 }
