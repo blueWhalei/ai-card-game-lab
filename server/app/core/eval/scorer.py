@@ -42,7 +42,7 @@ class ScoreBundle:
     parser_n: int = 0
     parser_ok: int = 0
     decisive_games: int = 0
-    landlord_role_wins: int = 0
+    wins_by_role: dict[str, int] = field(default_factory=dict)
     p50_response_ms: float = 0.0
     p95_response_ms: float = 0.0
     evaluated_count: int = 0
@@ -89,10 +89,10 @@ class ScorerRegistry:
 
 def score_bundle_from_aggregates(eval_metrics: dict[str, Any]) -> ScoreBundle:
     """Lift raw aggregate counts into a bundle for scorers."""
-    wins_by_role = eval_metrics.get("wins_by_role") or {}
-    landlord_wins = 0
-    if isinstance(wins_by_role, dict):
-        landlord_wins = int(wins_by_role.get("landlord") or 0)
+    raw_roles = eval_metrics.get("wins_by_role") or {}
+    wins_by_role: dict[str, int] = {}
+    if isinstance(raw_roles, dict):
+        wins_by_role = {str(k): int(v or 0) for k, v in raw_roles.items()}
     avg_raw = eval_metrics.get("avg_ev_loss")
     avg_ev_loss = float(avg_raw) if avg_raw is not None else None
     return ScoreBundle(
@@ -101,7 +101,7 @@ def score_bundle_from_aggregates(eval_metrics: dict[str, Any]) -> ScoreBundle:
         parser_n=int(eval_metrics.get("parser_n") or 0),
         parser_ok=int(eval_metrics.get("parser_ok") or 0),
         decisive_games=int(eval_metrics.get("decisive_games") or 0),
-        landlord_role_wins=landlord_wins,
+        wins_by_role=wins_by_role,
         p50_response_ms=float(eval_metrics.get("p50_response_ms") or 0.0),
         p95_response_ms=float(eval_metrics.get("p95_response_ms") or 0.0),
         evaluated_count=int(eval_metrics.get("evaluated_count") or 0),

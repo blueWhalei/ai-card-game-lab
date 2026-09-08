@@ -7,6 +7,10 @@ from typing import Any
 
 import aiosqlite
 
+from app.core.engine.doudizhu.seat_role_stats import (
+    DOUDIZHU_DECISIVE_ROLES,
+    seat_as_landlord_counts,
+)
 from app.core.stats.scenarios import SCENARIO_SQL, fill_scenario_scores
 from app.core.task_protocol import protocol_source_experiment_id
 
@@ -386,7 +390,7 @@ class ExperimentRepository:
         )
         game_rows = await games_cursor.fetchall()
 
-        wins_by_role: dict[str, int] = {"landlord": 0, "peasant": 0}
+        wins_by_role: dict[str, int] = {role: 0 for role in sorted(DOUDIZHU_DECISIVE_ROLES)}
         decisive_games = 0
         finished_games = 0
         status_counts: dict[str, int] = {
@@ -396,8 +400,7 @@ class ExperimentRepository:
             "interrupted": 0,
             "no_bid": 0,
         }
-        landlord_games: dict[str, int] = {}
-        landlord_wins: dict[str, int] = {}
+        seat_rows: list[dict[str, Any]] = []
 
         for g in game_rows:
             status = str(g["status"] or "")
@@ -411,45 +414,30 @@ class ExperimentRepository:
             elif status in status_counts:
                 status_counts[status] = status_counts.get(status, 0) + 1
 
-            if role in ("landlord", "peasant"):
+            if role in DOUDIZHU_DECISIVE_ROLES:
                 decisive_games += 1
                 wins_by_role[role] = wins_by_role.get(role, 0) + 1
 
-            meta_raw = g["metadata"]
-            meta: dict[str, Any] = {}
-            if isinstance(meta_raw, str):
-                try:
-                    parsed = json.loads(meta_raw)
-                    if isinstance(parsed, dict):
-                        meta = parsed
-                except json.JSONDecodeError:
-                    meta = {}
-            elif isinstance(meta_raw, dict):
-                meta = meta_raw
+            seat_rows.append(
+                {
+                    "status": status,
+                    "winner_role": role or None,
+                    "winner_id": g["winner_id"],
+                    "metadata": g["metadata"],
+                }
+            )
 
-            landlord_id = meta.get("landlord_id")
-            if landlord_id and status == "finished" and role in ("landlord", "peasant"):
-                lid = str(landlord_id)
-                landlord_games[lid] = landlord_games.get(lid, 0) + 1
-                if g["winner_id"] and str(g["winner_id"]) == lid:
-                    landlord_wins[lid] = landlord_wins.get(lid, 0) + 1
-
-        landlord_role_wins = wins_by_role.get("landlord", 0)
-        landlord_win_rate = (
-            landlord_role_wins / decisive_games if decisive_games > 0 else 0.0
-        )
+        landlord_games, landlord_wins = seat_as_landlord_counts(seat_rows)
         tokens_total = int(tokens_raw) if tokens_raw is not None else 0
         tokens_per_game = (
             round(tokens_total / finished_games, 2) if finished_games > 0 else 0.0
         )
-        parser_rate = (parser_ok / parser_n) if parser_n else 0.0
-        train_rate = (train_usable_n / decision_count) if decision_count else 0.0
+        # Rates (train / parser / landlord WR) come from Scorer overlay in the service.
         scenario_scores = await self._scenario_aggregates(experiment_id)
 
         return {
             "decision_count": decision_count,
             "train_usable_n": train_usable_n,
-            "train_usable_rate": round(train_rate, 4),
             "evaluated_count": evaluated_count,
             "avg_ev_loss": avg_ev_loss,
             "scenario_scores": scenario_scores,
@@ -465,10 +453,8 @@ class ExperimentRepository:
             "tokens_per_game": tokens_per_game,
             "parser_n": parser_n,
             "parser_ok": parser_ok,
-            "parser_success_rate": round(parser_rate, 4),
             "wins_by_role": wins_by_role,
             "decisive_games": decisive_games,
-            "landlord_win_rate": round(landlord_win_rate, 4),
             "status_counts": status_counts,
             "landlord_games_by_player": landlord_games,
             "landlord_wins_by_player": landlord_wins,

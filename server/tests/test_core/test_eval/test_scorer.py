@@ -102,13 +102,14 @@ def test_empty_bundle_rates_are_zero() -> None:
 def test_landlord_and_latency_scorers() -> None:
     bundle = ScoreBundle(
         decisive_games=10,
-        landlord_role_wins=4,
+        wins_by_role={"landlord": 4, "peasant": 6},
         p50_response_ms=12.34,
         p95_response_ms=56.78,
     )
     landlord = LandlordRoleScorer().score(bundle)
     assert landlord.value == 0.4
     assert landlord.n == 10
+    assert landlord.extras["landlord_role_wins"] == 4
     latency = LatencyPercentileScorer().score(bundle)
     assert latency.value == 12.3
     assert latency.extras["p95_response_ms"] == 56.8

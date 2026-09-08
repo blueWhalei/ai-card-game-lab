@@ -285,8 +285,9 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 规范化动作 | `legal_actions(state, player) -> list[ActionId]` + `describe_action(id) -> str` | Policy、structured output enum、puzzle、决策点 |
 
 `Observation` 是引擎输出的**玩家可见视图**（扩展现有 `get_public_info`），Policy 永远拿不到完整 `GameState`。
-指标实现按 `EngineCapability.eval_metric_ids` 注册；`experiment_eval.py` 中斗地主专属逻辑
-（landlord WR 等）迁到引擎侧的 Scorer 实现。
+指标实现按 `EngineCapability.eval_metric_ids` 注册；斗地主 `role:landlord` 公式在
+`engine/doudizhu/scorers.py`（`LandlordRoleScorer`）。仓库只出计数；summary 仍暴露稳定键
+`landlord_win_rate`（Scorer overlay）。座位「当过地主」计数在 `seat_role_stats.py`。
 
 ### 9.2 Policy 接口契约
 

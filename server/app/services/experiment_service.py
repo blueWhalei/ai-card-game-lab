@@ -502,14 +502,19 @@ class ExperimentService:
                 summary = await self._build_summary(repo, row)
                 extras = await repo.eval_aggregates(experiment_id)
                 protocol = row.get("protocol")
-                if isinstance(protocol, dict):
-                    scored = self._registry_for(
-                        protocol, str(row.get("game_type") or "doudizhu")
-                    ).score_many(
-                        protocol_eval_metric_ids(protocol),
-                        score_bundle_from_aggregates(extras),
-                    )
-                    extras = apply_scorer_results(extras, scored)
+                game_type = str(row.get("game_type") or "doudizhu")
+                protocol_dict = protocol if isinstance(protocol, dict) else None
+                registry = self._registry_for(protocol_dict, game_type)
+                metric_ids = (
+                    protocol_eval_metric_ids(protocol_dict) if protocol_dict else []
+                )
+                if not metric_ids:
+                    metric_ids = registry.list_ids()
+                scored = registry.score_many(
+                    metric_ids,
+                    score_bundle_from_aggregates(extras),
+                )
+                extras = apply_scorer_results(extras, scored)
                 games = await repo.list_games(experiment_id)
                 games_by_exp[experiment_id] = [_normalize_game_row(g) for g in games]
                 rows.append(self._attach_compare_metrics(row, summary, extras))
@@ -721,15 +726,18 @@ class ExperimentService:
         target = int(experiment["target_games"])
         games = await repo.list_games(experiment_id)
         eval_metrics = await repo.eval_aggregates(experiment_id)
+        game_type = str(experiment.get("game_type") or "doudizhu")
         protocol = experiment.get("protocol")
-        if isinstance(protocol, dict):
-            scored = self._registry_for(
-                protocol, str(experiment.get("game_type") or "doudizhu")
-            ).score_many(
-                protocol_eval_metric_ids(protocol),
-                score_bundle_from_aggregates(eval_metrics),
-            )
-            eval_metrics = apply_scorer_results(eval_metrics, scored)
+        protocol_dict = protocol if isinstance(protocol, dict) else None
+        registry = self._registry_for(protocol_dict, game_type)
+        metric_ids = protocol_eval_metric_ids(protocol_dict) if protocol_dict else []
+        if not metric_ids:
+            metric_ids = registry.list_ids()
+        scored = registry.score_many(
+            metric_ids,
+            score_bundle_from_aggregates(eval_metrics),
+        )
+        eval_metrics = apply_scorer_results(eval_metrics, scored)
 
         active = 0
         finished = 0

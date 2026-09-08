@@ -12,7 +12,7 @@ class LandlordRoleScorer:
 
     def score(self, bundle: ScoreBundle) -> MetricResult:
         n = bundle.decisive_games
-        wins = bundle.landlord_role_wins
+        wins = int(bundle.wins_by_role.get("landlord", 0))
         rate = (wins / n) if n else 0.0
         return MetricResult(
             metric_id=self.metric_id,
