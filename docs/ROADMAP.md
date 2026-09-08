@@ -198,7 +198,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 ## 3. 功能项（评审认同，按贡献排序）
 
 1. 实验模板 / 一键复现：`examples/` 放 3 个可导入 pack（基线对比、prompt A/B、微调前后对照）—— **已完成 2026-09-08**（`examples/*.json`；导入重建 protocol，Prompt A/B 需人工挂模板）
-2. Prompt 作为实验变量：protocol 冻结 prompt 版本哈希，支持"同模型不同 prompt"对照
+2. Prompt 作为实验变量：protocol 冻结 prompt 版本哈希，支持"同模型不同 prompt"对照 —— **已完成 2026-09-08**（`solver.prompts` 正文+hash；采集优先用冻结体；创建可选 `prompt_version`）
 3. 决策点人工标注（好 / 坏 / 存疑）写回 `decision_points`，作为 SFT 过滤与偏好数据来源
 4. 人类席位（见 `HumanPolicy`）
 5. 锦标赛 / 天梯：多选手两两对打，Elo / Bradley-Terry 排名

@@ -54,6 +54,7 @@ const formNotes = ref('')
 const formHypothesis = ref('')
 const formTags = ref('')
 const formCollectMode = ref<CollectMode>('free')
+const formPromptVersion = ref('v3')
 const formTarget = ref(10)
 const selectedConfigIds = ref<string[]>([])
 
@@ -139,6 +140,7 @@ function openCreate(): void {
   formHypothesis.value = ''
   formTags.value = ''
   formCollectMode.value = 'free'
+  formPromptVersion.value = 'v3'
   formTarget.value = 10
   formGameType.value = defaultEngineId(engines.value)
   selectedConfigIds.value = configs.value.slice(0, maxPlayers.value).map((c) => c.id)
@@ -177,6 +179,7 @@ async function submitCreate(): Promise<void> {
       player_ids: selectedConfigIds.value,
       target_games: Number(formTarget.value) || 10,
       collect_mode: canUseBenchmark.value ? formCollectMode.value : 'free',
+      prompt_version: formPromptVersion.value.trim() || 'v3',
     })
     createOpen.value = false
     toast.success(t('experiment.created'))
@@ -365,6 +368,15 @@ onMounted(() => {
           </div>
           <p v-if="formCollectMode === 'benchmark'" class="mt-1.5 text-caption text-ink-text-secondary">
             {{ t('experiment.collectModeBenchmarkHint') }}
+          </p>
+        </div>
+        <div>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">
+            {{ t('experiment.promptVersion') }}
+          </label>
+          <UiInput v-model="formPromptVersion" :placeholder="t('experiment.promptVersionPlaceholder')" />
+          <p class="mt-1.5 text-caption text-ink-text-secondary">
+            {{ t('experiment.promptVersionHint') }}
           </p>
         </div>
         <div class="sm:col-span-2">

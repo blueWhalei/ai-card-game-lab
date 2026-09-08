@@ -328,7 +328,10 @@ Do **not** add a per-game Vue board or `game_type` branches in `GameObserverView
 
 `GET /system/engines` exposes capability; experiment `protocol` is written complete at
 create time as a Task document (`schema_version` currently `2`: nested `dataset` /
-`solver` / `scorer` / `engine`). Incomplete or wrong-version protocol is rejected on
+`solver` / `scorer` / `engine`). `solver.prompt_version` plus `solver.prompts`
+(per-key `content` + `content_hash`) freeze the template bodies used at collect;
+live Prompt DB edits do not change an in-flight experiment. Create accepts optional
+`prompt_version` (default `v3`). Incomplete or wrong-version protocol is rejected on
 collect and collect preflight (no silent migration). Decision points stay on the shared
 table (JSON fields); `decision_schema_version` documents the payload contract.
 

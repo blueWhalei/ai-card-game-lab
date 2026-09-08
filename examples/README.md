@@ -5,7 +5,7 @@ Importable `cardlab.experiment_pack` JSON for CardLab (home → Import, or API `
 | File | Intent |
 |------|--------|
 | `baseline-vs-llm.json` | 1× Ollama LLM + 2× heuristic; benchmark seeds |
-| `prompt-ab.json` | Same-model seats for manual prompt A/B (import rebuilds protocol; clone + edit prompts) |
+| `prompt-ab.json` | Prompt version A (`v3`); create a second experiment with another `prompt_version` for B |
 | `finetune-before-after.json` | Pre-finetune baseline; notes describe control with `lora_*` after train |
 
 Packs never include API keys. Existing player ids are reused, not overwritten.

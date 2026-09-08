@@ -36,6 +36,7 @@ def build_protocol(
     collect_mode: str,
     protocol_fingerprint: dict[str, Any],
     evaluator: dict[str, Any] | None = None,
+    prompts: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frozen experiment protocol written at create time."""
     engine = {
@@ -48,6 +49,12 @@ def build_protocol(
     }
     if evaluator:
         scorer["evaluator"] = dict(evaluator)
+    solver: dict[str, Any] = {
+        "players": players,
+        "prompt_version": prompt_version,
+    }
+    if prompts:
+        solver["prompts"] = prompts
     return {
         "schema_version": PROTOCOL_SCHEMA_VERSION,
         "frozen_at": frozen_at,
@@ -57,10 +64,7 @@ def build_protocol(
             "pair_deals": pair_deals,
             "source_experiment_id": source_experiment_id,
         },
-        "solver": {
-            "players": players,
-            "prompt_version": prompt_version,
-        },
+        "solver": solver,
         "scorer": scorer,
         "engine": engine,
     }
@@ -110,6 +114,30 @@ def protocol_prompt_version(protocol: dict[str, Any]) -> str:
     if not isinstance(solver, dict):
         return ""
     return str(solver.get("prompt_version") or "")
+
+
+def protocol_prompts(protocol: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    """Frozen prompt bodies keyed by template_key (may be empty on older runs)."""
+    if not isinstance(protocol, dict):
+        return {}
+    solver = protocol.get("solver")
+    if not isinstance(solver, dict):
+        return {}
+    raw = solver.get("prompts")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, entry in raw.items():
+        if isinstance(entry, dict) and entry.get("content"):
+            out[str(key)] = dict(entry)
+    return out
+
+
+def prompt_content_hash(content: str) -> str:
+    import hashlib
+
+    digest = hashlib.sha256(content.encode("utf-8")).hexdigest()
+    return f"sha256:{digest[:16]}"
 
 
 def protocol_deal_seeds(protocol: dict[str, Any]) -> list[int]:
@@ -195,6 +223,10 @@ def flatten_protocol_view(protocol: dict[str, Any] | None) -> dict[str, Any] | N
         "schema_version": protocol.get("schema_version"),
         "frozen_at": protocol.get("frozen_at"),
         "prompt_version": protocol_prompt_version(protocol),
+        "prompt_hashes": {
+            key: str(entry.get("content_hash") or "")
+            for key, entry in protocol_prompts(protocol).items()
+        },
         "players": protocol_players(protocol),
         "source_experiment_id": protocol_source_experiment_id(protocol),
         "pair_deals": protocol_pair_deals(protocol),

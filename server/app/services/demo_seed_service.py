@@ -138,7 +138,20 @@ def _demo_protocol(
     source_experiment_id: str | None,
     pair_deals: bool,
 ) -> dict[str, Any]:
+    from app.core.task_protocol import prompt_content_hash
+
     engine = DoudizhuEngine()
+    content = (
+        "你是{game_type_cn}演示玩家。\n规则：\n{rules}\n\n{format_instructions}"
+    )
+    prompts = {
+        key: {
+            "version": "demo",
+            "content": content,
+            "content_hash": prompt_content_hash(content),
+        }
+        for key in engine.capability.prompt_keys.values()
+    }
     return build_protocol(
         players=_frozen_players(),
         source_experiment_id=source_experiment_id,
@@ -149,6 +162,7 @@ def _demo_protocol(
         collect_mode="free",
         protocol_fingerprint=engine.capability.protocol_fingerprint(),
         evaluator=freeze_evaluator_snapshot(determinizations=4, max_candidates=8),
+        prompts=prompts,
     )
 
 

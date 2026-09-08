@@ -95,6 +95,8 @@ export interface ExperimentProtocol {
   schema_version: number
   frozen_at: string
   prompt_version: string
+  /** content_hash per template_key when solver.prompts was frozen */
+  prompt_hashes?: Record<string, string>
   players: ExperimentProtocolPlayer[]
   source_experiment_id: string | null
   pair_deals: boolean
@@ -125,6 +127,7 @@ export interface ExperimentProtocolNested {
   solver: {
     players: ExperimentProtocolPlayer[]
     prompt_version: string
+    prompts?: Record<string, { version?: string; content?: string; content_hash?: string }>
   }
   scorer: {
     eval_metric_ids: string[]
@@ -154,6 +157,12 @@ export function flattenProtocol(
       schema_version: nested.schema_version,
       frozen_at: nested.frozen_at,
       prompt_version: nested.solver?.prompt_version ?? '',
+      prompt_hashes: Object.fromEntries(
+        Object.entries(nested.solver?.prompts ?? {}).map(([key, entry]) => [
+          key,
+          String(entry?.content_hash ?? ''),
+        ]),
+      ),
       players: nested.solver?.players ?? [],
       source_experiment_id: nested.dataset?.source_experiment_id ?? null,
       pair_deals: Boolean(nested.dataset?.pair_deals),
@@ -303,6 +312,8 @@ export interface CreateExperimentRequest {
   source_experiment_id?: string | null
   pair_deals?: boolean
   collect_mode?: CollectMode
+  /** Template version frozen into protocol.solver (default server-side v3). */
+  prompt_version?: string | null
 }
 
 export interface UpdateExperimentRequest {

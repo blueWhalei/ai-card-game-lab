@@ -132,22 +132,30 @@ class PromptBuilder:
         format_instructions: str,
         model_name: str | None = None,
         db: aiosqlite.Connection | None = None,
+        frozen_content: str | None = None,
     ) -> str:
         """Render the system message for one decision.
 
         This is the half of prompt building a policy cannot do for itself: it
         needs the template registry and the engine's rules file. The user message
         is assembled by the caller from the observation.
+
+        When *frozen_content* is set (experiment protocol snapshot), that body is
+        used as-is — live DB edits and reasoning-model version switching do not
+        apply.
         """
-        template_key = self._template_key_for(engine, phase)
-        try:
-            template_content = await self._registry.get_template(
-                template_key=template_key,
-                db=db,
-                version=self.version_for(model_name),
-            )
-        except ValueError:
-            template_content = engine.default_system_template(phase)
+        if frozen_content is not None:
+            template_content = frozen_content
+        else:
+            template_key = self._template_key_for(engine, phase)
+            try:
+                template_content = await self._registry.get_template(
+                    template_key=template_key,
+                    db=db,
+                    version=self.version_for(model_name),
+                )
+            except ValueError:
+                template_content = engine.default_system_template(phase)
 
         display = engine.capability.display_name or engine.game_type
         return template_content.format(

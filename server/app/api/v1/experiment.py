@@ -51,6 +51,7 @@ async def create_experiment(
         source_experiment_id=body.source_experiment_id,
         pair_deals=body.pair_deals,
         collect_mode=body.collect_mode,
+        prompt_version=body.prompt_version,
     )
     return ApiResponse(data=experiment)
 

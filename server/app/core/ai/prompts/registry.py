@@ -147,6 +147,8 @@ class PromptTemplateRegistry:
         template_key: str,
         db: aiosqlite.Connection | None = None,
         version: str | None = None,
+        *,
+        require_active: bool = True,
     ) -> str:
         """Return the template content for *template_key* at *version*.
 
@@ -155,18 +157,23 @@ class PromptTemplateRegistry:
         """
         selected_version = version or self._default_version
         cache_key = f"{template_key}_{selected_version}"
+        if not require_active:
+            cache_key = f"{cache_key}_any"
 
         if cache_key in self._cache:
             return self._cache[cache_key].content
 
         if db is not None:
-            template = await self._load_from_db(db, template_key, selected_version)
+            template = await self._load_from_db(
+                db, template_key, selected_version, require_active=require_active
+            )
             if template is not None:
                 self._cache[cache_key] = template
                 return template.content
 
-        if cache_key in self.DEFAULTS:
-            content = self.DEFAULTS[cache_key]
+        defaults_key = f"{template_key}_{selected_version}"
+        if defaults_key in self.DEFAULTS:
+            content = self.DEFAULTS[defaults_key]
             self._cache[cache_key] = PromptTemplate(
                 id="",
                 template_key=template_key,
@@ -182,17 +189,26 @@ class PromptTemplateRegistry:
         db: aiosqlite.Connection,
         template_key: str,
         version: str,
+        *,
+        require_active: bool = True,
     ) -> PromptTemplate | None:
         """Load template from database."""
         try:
-            async with db.execute(
-                """
-                SELECT id, template_key, version, content, is_active, created_at, updated_at
-                FROM prompt_templates
-                WHERE template_key = ? AND version = ? AND is_active = 1
-                """,
-                (template_key, version),
-            ) as cursor:
+            if require_active:
+                sql = """
+                    SELECT id, template_key, version, content, is_active, created_at, updated_at
+                    FROM prompt_templates
+                    WHERE template_key = ? AND version = ? AND is_active = 1
+                    """
+            else:
+                sql = """
+                    SELECT id, template_key, version, content, is_active, created_at, updated_at
+                    FROM prompt_templates
+                    WHERE template_key = ? AND version = ?
+                    ORDER BY is_active DESC, updated_at DESC
+                    LIMIT 1
+                    """
+            async with db.execute(sql, (template_key, version)) as cursor:
                 row = await cursor.fetchone()
                 if row is not None:
                     return PromptTemplate(

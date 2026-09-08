@@ -60,6 +60,11 @@ const fingerprintBits = computed((): string[] => {
     bits.push(`${t('experiment.fingerprintDecision')}: v${p.decision_schema_version}`)
   }
   if (p.phases?.length) bits.push(`${t('experiment.fingerprintPhases')}: ${p.phases.join(', ')}`)
+  if (p.prompt_version) bits.push(`${t('experiment.fingerprintPromptVersion')}: ${p.prompt_version}`)
+  const hashes = p.prompt_hashes ? Object.values(p.prompt_hashes).filter(Boolean) : []
+  if (hashes.length) {
+    bits.push(`${t('experiment.fingerprintPromptHash')}: ${hashes[0]}`)
+  }
   if (p.prompt_keys && Object.keys(p.prompt_keys).length) {
     bits.push(
       `${t('experiment.fingerprintPrompts')}: ${Object.entries(p.prompt_keys)

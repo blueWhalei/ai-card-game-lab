@@ -16,6 +16,11 @@ class CreateExperimentRequest(BaseModel):
     source_experiment_id: str | None = None
     pair_deals: bool = False
     collect_mode: str = Field(default="free", pattern="^(free|benchmark)$")
+    prompt_version: str | None = Field(
+        default=None,
+        max_length=64,
+        description="Template version to freeze into protocol.solver (default v3)",
+    )
 
 
 class UpdateExperimentRequest(BaseModel):

@@ -48,6 +48,8 @@ from app.services.experiment_protocol import (
     protocol_game_type,
     protocol_pair_deals,
     protocol_players,
+    protocol_prompt_version,
+    protocol_prompts,
     protocol_source_experiment_id,
     set_protocol_deal_seeds,
     set_protocol_pair_deals,
@@ -112,10 +114,56 @@ class ExperimentService:
     async def _conn(self) -> aiosqlite.Connection:
         return await open_db_connection(self._sqlite_path)
 
-    def _prompt_version(self) -> str:
+    def _prompt_version(self, override: str | None = None) -> str:
         from app.core.ai.prompts.registry import DEFAULT_TEMPLATE_VERSION
 
-        return DEFAULT_TEMPLATE_VERSION
+        raw = (override or "").strip()
+        return raw or DEFAULT_TEMPLATE_VERSION
+
+    async def _snapshot_prompts(
+        self,
+        *,
+        game_type: str,
+        prompt_version: str,
+    ) -> dict[str, dict[str, Any]]:
+        """Freeze template bodies for every engine prompt key at *prompt_version*."""
+        from app.core.ai.prompt import get_prompt_registry
+        from app.core.task_protocol import prompt_content_hash
+        from app.database import open_db_connection
+
+        capability = self._engine_capability(game_type)
+        registry = get_prompt_registry()
+        engine = self._game_service._engine_registry.get(game_type)
+        keys = list(dict.fromkeys(capability.prompt_keys.values()))
+        out: dict[str, dict[str, Any]] = {}
+
+        conn = await open_db_connection(self._sqlite_path)
+        try:
+            for template_key in keys:
+                content: str | None = None
+                try:
+                    content = await registry.get_template(
+                        template_key,
+                        db=conn,
+                        version=prompt_version,
+                        require_active=False,
+                    )
+                except ValueError:
+                    phase = next(
+                        (p for p, k in capability.prompt_keys.items() if k == template_key),
+                        "playing",
+                    )
+                    content = engine.default_system_template(phase)
+                if not content:
+                    continue
+                out[template_key] = {
+                    "version": prompt_version,
+                    "content": content,
+                    "content_hash": prompt_content_hash(content),
+                }
+        finally:
+            await conn.close()
+        return out
 
     def _snapshot_players(self, player_ids: list[str]) -> list[dict[str, Any]]:
         cfg_svc = self._game_service._experiment_config_service
@@ -151,6 +199,8 @@ class ExperimentService:
         frozen_at: str,
         game_type: str,
         collect_mode: str = "free",
+        prompt_version: str | None = None,
+        prompts: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         from app.config import Settings
 
@@ -159,17 +209,20 @@ class ExperimentService:
             determinizations=settings.ev_loss_determinizations,
             max_candidates=settings.ev_loss_max_candidates,
         )
+        version = self._prompt_version(prompt_version)
         return build_protocol(
             players=self._snapshot_players(player_ids),
             source_experiment_id=source_experiment_id,
             pair_deals=pair_deals,
             deal_seeds=deal_seeds,
             frozen_at=frozen_at,
-            prompt_version=self._prompt_version(),
+            prompt_version=version,
             collect_mode=collect_mode,
             protocol_fingerprint=self._engine_capability(game_type).protocol_fingerprint(),
             evaluator=evaluator,
+            prompts=prompts,
         )
+
     async def create_experiment(
         self,
         *,
@@ -184,6 +237,8 @@ class ExperimentService:
         tags: list[str] | None = None,
         collect_mode: str = "free",
         preset_deal_seeds: list[int] | None = None,
+        prompt_version: str | None = None,
+        frozen_prompts: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         min_players, max_players = self._game_service.player_slots(game_type)
         n_players = len(player_ids)
@@ -210,6 +265,7 @@ class ExperimentService:
 
         deal_seeds: list[int] = []
         source_id: str | None = None
+        source_protocol: dict[str, Any] | None = None
         if pair_deals:
             if not source_experiment_id:
                 raise ExperimentValidationError("配对发牌需要指定源实验")
@@ -219,8 +275,9 @@ class ExperimentService:
             if len(source.get("player_ids") or []) != n_players:
                 raise ExperimentValidationError("对照实验的座位数必须与源实验一致")
             source_id = str(source["id"])
-            source_protocol = source.get("protocol") or {}
-            if isinstance(source_protocol, dict):
+            raw_source_protocol = source.get("protocol") or {}
+            if isinstance(raw_source_protocol, dict):
+                source_protocol = raw_source_protocol
                 deal_seeds = protocol_deal_seeds(source_protocol)
             else:
                 deal_seeds = []
@@ -238,6 +295,19 @@ class ExperimentService:
         experiment_id = generate_id("exp")
         now = datetime.now(tz=UTC).isoformat()
         effective_mode = "benchmark" if collect_mode == "benchmark" and not pair_deals else "free"
+
+        version = self._prompt_version(prompt_version)
+        prompts = frozen_prompts
+        if prompts is None and source_protocol is not None and pair_deals:
+            # Control runs keep the source's frozen prompt bodies for a fair Δ.
+            prompts = protocol_prompts(source_protocol) or None
+            if not prompt_version:
+                version = self._prompt_version(protocol_prompt_version(source_protocol))
+        if prompts is None:
+            prompts = await self._snapshot_prompts(
+                game_type=game_type, prompt_version=version
+            )
+
         protocol = self._build_protocol(
             player_ids=player_ids,
             source_experiment_id=source_id,
@@ -246,6 +316,8 @@ class ExperimentService:
             frozen_at=now,
             collect_mode=effective_mode,
             game_type=game_type,
+            prompt_version=version,
+            prompts=prompts,
         )
 
         conn = await self._conn()
@@ -411,6 +483,13 @@ class ExperimentService:
             target_games=int(source["target_games"]),
             collect_mode=collect_mode,
             preset_deal_seeds=deal_seeds,
+            prompt_version=(
+                protocol_prompt_version(protocol) if isinstance(protocol, dict) else None
+            ),
+            frozen_prompts=(
+                protocol_prompts(protocol) if isinstance(protocol, dict) else None
+            )
+            or None,
         )
 
     async def export_pack(self, experiment_id: str) -> dict[str, Any]:
@@ -478,6 +557,8 @@ class ExperimentService:
         if collect_mode not in ("free", "benchmark"):
             collect_mode = "free"
         deal_seeds = [int(s) for s in (pack.get("deal_seeds") or [])]
+        pack_protocol = pack.get("protocol") if isinstance(pack.get("protocol"), dict) else None
+
         created = await self.create_experiment(
             name=str(spec.get("name") or "imported"),
             notes=str(spec.get("notes") or ""),
@@ -488,6 +569,12 @@ class ExperimentService:
             target_games=int(spec.get("target_games") or 1),
             collect_mode=collect_mode,
             preset_deal_seeds=deal_seeds or None,
+            prompt_version=(
+                str(spec.get("prompt_version") or "")
+                or (protocol_prompt_version(pack_protocol) if pack_protocol else None)
+            )
+            or None,
+            frozen_prompts=protocol_prompts(pack_protocol) or None,
         )
         payload["experiment"] = created
         return payload

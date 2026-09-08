@@ -147,6 +147,12 @@ const protocolSummaryBits = computed(() => {
   if (protocol.value?.prompt_version) {
     bits.push(t('experiment.protocolPromptShort', { v: protocol.value.prompt_version }))
   }
+  const hashes = protocol.value?.prompt_hashes
+    ? Object.values(protocol.value.prompt_hashes).filter(Boolean)
+    : []
+  if (hashes.length > 0) {
+    bits.push(t('experiment.protocolPromptHashShort', { h: hashes[0] }))
+  }
   if (protocol.value?.engine_version) {
     bits.push(t('experiment.protocolEngineShort', { v: protocol.value.engine_version }))
   }

@@ -120,6 +120,10 @@ class AIService:
         self._client_cache: dict[str, LLMClient] = {}
         # game_id → protocol EV knobs (None = use DecisionEvaluator defaults)
         self._ev_params_by_game: dict[str, EvaluatorParams | None] = {}
+        # game_id → (prompt_version, prompts map); None prompts = live DB
+        self._prompt_freeze_by_game: dict[
+            str, tuple[str, dict[str, dict[str, Any]]] | None
+        ] = {}
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
@@ -223,11 +227,19 @@ class AIService:
         start_time = time.perf_counter()
         model_cfg = player_config.get("model_config", {})
         policy = self._build_policy(player_config, stream=stream)
+        frozen_version, frozen_prompts = await self._protocol_prompt_freeze(game_id)
+        prompt_source = EnginePromptSource(
+            self._prompt_builder,
+            engine,
+            self._sqlite_path,
+            frozen_prompts=frozen_prompts,
+            frozen_prompt_version=frozen_version or None,
+        )
         ctx = PolicyContext(
             advisor=engine,
             rng=random.Random(),
             session_id=game_id,
-            prompts=EnginePromptSource(self._prompt_builder, engine, self._sqlite_path),
+            prompts=prompt_source,
         )
         budget = Budget(
             max_llm_calls=MAX_RETRIES,
@@ -282,6 +294,10 @@ class AIService:
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
+        recorded_version = (
+            prompt_source.prompt_version_label
+            or self._prompt_builder.version_for(model_cfg.get("model_name"))
+        )
         return AIDecisionResult(
             action=action,
             thinking=chosen.thinking,
@@ -292,7 +308,7 @@ class AIService:
             usage=trace.usage,
             response_time_ms=response_time_ms,
             parser_ok=not chosen.parse_fallback,
-            prompt_version=self._prompt_builder.version_for(model_cfg.get("model_name")),
+            prompt_version=recorded_version,
             tool_results=trace.tool_results or None,
         )
 
@@ -441,6 +457,52 @@ class AIService:
         params["legal_action_count"] = result.legal_action_count
         params["truncated"] = result.truncated
         return result.loss, params
+
+    async def _protocol_prompt_freeze(
+        self, game_id: str | None
+    ) -> tuple[str, dict[str, dict[str, Any]]]:
+        """Return ``(prompt_version, prompts)`` frozen on the game's experiment."""
+        if not game_id or not self._sqlite_path:
+            return "", {}
+        if game_id in self._prompt_freeze_by_game:
+            cached = self._prompt_freeze_by_game[game_id]
+            if cached is None:
+                return "", {}
+            return cached
+
+        from app.core.task_protocol import protocol_prompt_version, protocol_prompts
+        from app.database import open_db_connection
+        from app.repositories.experiment_repo import ExperimentRepository
+        from app.repositories.game_repo import GameRepository
+
+        version = ""
+        prompts: dict[str, dict[str, Any]] = {}
+        try:
+            conn = await open_db_connection(self._sqlite_path)
+            try:
+                try:
+                    game = await GameRepository(conn).get_by_id(game_id)
+                except KeyError:
+                    self._prompt_freeze_by_game[game_id] = None
+                    return "", {}
+                experiment_id = game.get("experiment_id")
+                if experiment_id:
+                    row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
+                    protocol = row.get("protocol") if row else None
+                    if isinstance(protocol, dict):
+                        version = protocol_prompt_version(protocol)
+                        prompts = protocol_prompts(protocol)
+            finally:
+                await conn.close()
+        except Exception:
+            logger.warning("protocol_prompt_lookup_failed", game_id=game_id, exc_info=True)
+            version, prompts = "", {}
+
+        if prompts:
+            self._prompt_freeze_by_game[game_id] = (version, prompts)
+        else:
+            self._prompt_freeze_by_game[game_id] = None
+        return version, prompts
 
     async def _protocol_evaluator_params(
         self, game_id: str | None
