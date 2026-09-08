@@ -1,7 +1,7 @@
-"""Puzzle extraction: experiment games → self-contained puzzle packs.
+"""Puzzle extraction and offline answering against self-contained packs.
 
-Orchestrates repositories, deal-seed replay, and ``RolloutEvaluator``; pack IO
-and selection live in ``core/eval/puzzle``. Answering packs is Task 4.
+Orchestrates repositories, deal-seed replay, and ``RolloutEvaluator`` for
+extract; pack IO / scoring live in ``core/eval/puzzle``. HTTP is Task 5.
 """
 
 from __future__ import annotations
@@ -9,25 +9,39 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import random
 import secrets
 from dataclasses import asdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import structlog
 
 from app.core.engine.base import GameAction, GameEngine, LegalAction
+from app.core.engine.observation import Observation
 from app.core.engine.registry import GameEngineRegistry
 from app.core.eval.puzzle import (
     Puzzle,
+    PuzzleAnswerScore,
     PuzzlePackManifest,
+    load_pack,
     save_pack,
+    score_answer,
     select_by_spread,
 )
 from app.core.eval.replay import rebuild_state
 from app.core.eval.rollout import EvaluatorParams, RolloutEvaluator
-from app.core.policy.baselines import HeuristicPolicy
+from app.core.policy import (
+    ActionChosen,
+    Budget,
+    FirstActionPolicy,
+    HeuristicPolicy,
+    Policy,
+    PolicyContext,
+    RandomPolicy,
+)
+from app.core.policy.baselines import HeuristicPolicy as HeuristicOpponent
 from app.database import connect_sqlite
 from app.repositories.decision_repo import DecisionRepository
 from app.repositories.experiment_repo import ExperimentRepository
@@ -37,6 +51,8 @@ from app.utils.exceptions import AppError
 logger = structlog.get_logger()
 
 _DEFAULT_EVALUATOR_PARAMS = EvaluatorParams()
+
+BaselineKind = Literal["rule", "first", "random", "heuristic"]
 
 
 def match_recorded_action(
@@ -72,8 +88,61 @@ def match_recorded_action(
     return None
 
 
+def observation_from_dict(data: dict[str, Any]) -> Observation:
+    """Rebuild an ``Observation`` from a frozen puzzle snapshot."""
+    return Observation(
+        game_type=str(data.get("game_type", "")),
+        phase=str(data.get("phase", "")),
+        round=int(data.get("round", 0)),
+        player_id=str(data.get("player_id", "")),
+        to_act=bool(data.get("to_act", True)),
+        private=dict(data.get("private") or {}),
+        public=dict(data.get("public") or {}),
+        text=str(data.get("text") or ""),
+    )
+
+
+def legal_actions_from_dicts(
+    rows: list[dict[str, Any]], *, player_id: str
+) -> list[LegalAction]:
+    """Rebuild ``LegalAction`` rows from frozen puzzle JSON."""
+    result: list[LegalAction] = []
+    for row in rows:
+        action_raw = row.get("action") or {}
+        action = GameAction(
+            player_id=player_id,
+            action_type=str(action_raw.get("action_type", "")),
+            cards=list(action_raw.get("cards") or []),
+            target=action_raw.get("target"),
+        )
+        result.append(
+            LegalAction(
+                id=str(row["id"]),
+                label=str(row.get("label") or row["id"]),
+                action=action,
+            )
+        )
+    return result
+
+
+def baseline_policy(kind: BaselineKind) -> Policy:
+    """Map API baseline names to non-LLM policies (``rule`` ≡ ``first``)."""
+    resolved = "first" if kind == "rule" else kind
+    if resolved == "first":
+        return FirstActionPolicy()
+    if resolved == "random":
+        return RandomPolicy()
+    if resolved == "heuristic":
+        return HeuristicPolicy()
+    raise AppError(
+        message=f"Unknown baseline kind: {kind}",
+        code="PUZZLE_INVALID_BASELINE",
+        status_code=400,
+    )
+
+
 class PuzzleService:
-    """Extract static puzzle packs from finished experiment games."""
+    """Extract and run static puzzle packs."""
 
     def __init__(
         self,
@@ -86,7 +155,161 @@ class PuzzleService:
         self._puzzle_dir = Path(puzzle_dir)
         self._engine_registry = engine_registry
         self._evaluators: dict[str, RolloutEvaluator] = {}
-        self._opponent = HeuristicPolicy()
+        self._opponent = HeuristicOpponent()
+
+    def list_packs(self) -> list[PuzzlePackManifest]:
+        """List local pack manifests under ``puzzle_dir``."""
+        if not self._puzzle_dir.exists():
+            return []
+        manifests: list[PuzzlePackManifest] = []
+        for child in sorted(self._puzzle_dir.iterdir()):
+            if not child.is_dir():
+                continue
+            if not (child / "manifest.json").exists():
+                continue
+            try:
+                manifest, _puzzles = load_pack(child)
+            except ValueError:
+                logger.info("puzzle_pack_skip", reason="invalid_pack", path=str(child))
+                continue
+            manifests.append(manifest)
+        return manifests
+
+    def get_pack(
+        self, pack_id: str, *, preview: int = 5
+    ) -> tuple[PuzzlePackManifest, list[Puzzle]]:
+        """Load one pack; ``preview`` limits returned puzzles."""
+        root = self._puzzle_dir / pack_id
+        if not root.is_dir():
+            raise AppError(
+                message=f"Puzzle pack not found: {pack_id}",
+                code="PUZZLE_PACK_NOT_FOUND",
+                status_code=404,
+            )
+        try:
+            manifest, puzzles = load_pack(root)
+        except ValueError as error:
+            raise AppError(
+                message=str(error),
+                code="PUZZLE_PACK_INVALID",
+                status_code=400,
+            ) from error
+        if preview < 0:
+            preview = 0
+        return manifest, puzzles[:preview]
+
+    async def run(
+        self,
+        pack_id: str,
+        *,
+        baseline_kind: BaselineKind = "heuristic",
+        seed: int = 0,
+    ) -> dict[str, Any]:
+        """Score a baseline policy against a frozen pack (no rollout, no API)."""
+        root = self._puzzle_dir / pack_id
+        if not root.is_dir():
+            raise AppError(
+                message=f"Puzzle pack not found: {pack_id}",
+                code="PUZZLE_PACK_NOT_FOUND",
+                status_code=404,
+            )
+        try:
+            manifest, puzzles = load_pack(root)
+        except ValueError as error:
+            raise AppError(
+                message=str(error),
+                code="PUZZLE_PACK_INVALID",
+                status_code=400,
+            ) from error
+
+        policy = baseline_policy(baseline_kind)
+        engine = self._engine_registry.get(manifest.game_type)
+        ctx = PolicyContext(advisor=engine, rng=random.Random(seed))
+        budget = Budget()
+
+        rows: list[dict[str, Any]] = []
+        scores: list[PuzzleAnswerScore] = []
+        for puzzle in puzzles:
+            observation = observation_from_dict(puzzle.observation)
+            legal = legal_actions_from_dicts(
+                puzzle.legal_actions, player_id=observation.player_id
+            )
+            chosen_id = await self._decide_action_id(
+                policy, observation, legal, budget, ctx
+            )
+            answer = score_answer(puzzle.best_action_id, puzzle.action_values, chosen_id)
+            scores.append(answer)
+            rows.append(
+                {
+                    "puzzle_id": puzzle.puzzle_id,
+                    "chosen_action_id": answer.chosen_action_id,
+                    "best_action_id": puzzle.best_action_id,
+                    "hit": answer.hit,
+                    "ev_loss": answer.ev_loss,
+                    "truncated": puzzle.truncated,
+                }
+            )
+
+        summary = self._summarize(scores, puzzles)
+        run_id = f"run_{secrets.token_hex(4)}"
+        report = {
+            "run_id": run_id,
+            "pack_id": pack_id,
+            "baseline_kind": baseline_kind,
+            "seed": seed,
+            "created_at": datetime.now(tz=UTC).isoformat(),
+            "summary": summary,
+            "puzzles": rows,
+        }
+        runs_dir = root / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        (runs_dir / f"{run_id}.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(
+            "puzzle_run_done",
+            pack_id=pack_id,
+            run_id=run_id,
+            baseline_kind=baseline_kind,
+            **summary,
+        )
+        return report
+
+    @staticmethod
+    async def _decide_action_id(
+        policy: Policy,
+        observation: Observation,
+        legal: list[LegalAction],
+        budget: Budget,
+        ctx: PolicyContext,
+    ) -> str:
+        chosen: ActionChosen | None = None
+        async for event in policy.decide(observation, legal, budget, ctx):
+            if isinstance(event, ActionChosen):
+                chosen = event
+        if chosen is None:
+            raise AppError(
+                message="Policy finished without ActionChosen",
+                code="PUZZLE_POLICY_NO_ACTION",
+                status_code=500,
+            )
+        return chosen.action_id
+
+    @staticmethod
+    def _summarize(
+        results: list[PuzzleAnswerScore], puzzles: list[Puzzle]
+    ) -> dict[str, Any]:
+        n = len(results)
+        hits = sum(1 for result in results if result.hit)
+        return {
+            "n": n,
+            "accuracy": round(hits / n, 4) if n else 0.0,
+            "mean_ev_loss": (
+                round(sum(result.ev_loss for result in results) / n, 4) if n else 0.0
+            ),
+            "truncated_n": sum(1 for puzzle in puzzles if puzzle.truncated),
+        }
 
     async def extract(
         self,
@@ -456,4 +679,10 @@ class PuzzleService:
         return f"exp_{short_exp}_{yyyymmdd}_{secrets.token_hex(4)}"
 
 
-__all__ = ["PuzzleService", "match_recorded_action"]
+__all__ = [
+    "PuzzleService",
+    "baseline_policy",
+    "legal_actions_from_dicts",
+    "match_recorded_action",
+    "observation_from_dict",
+]
