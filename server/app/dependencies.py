@@ -59,6 +59,7 @@ from app.services.experiment_service import ExperimentService
 from app.services.game_orchestration_service import GameOrchestrationService
 from app.services.game_replay_service import GameReplayService
 from app.services.game_service import GameService
+from app.services.puzzle_service import PuzzleService
 
 if TYPE_CHECKING:
     from app.services.prompt_service import PromptService as PromptServiceType
@@ -357,6 +358,18 @@ def get_decision_service() -> DecisionService:
     return DecisionService(
         sqlite_path=settings.sqlite_path,
         data_dir=settings.data_dir,
+    )
+
+
+@lru_cache
+def get_puzzle_service() -> PuzzleService:
+    """Singleton puzzle extract/run service."""
+    settings = get_settings()
+    puzzle_dir = settings.puzzle_dir.strip() or str(Path(settings.data_dir) / "puzzles")
+    return PuzzleService(
+        sqlite_path=settings.sqlite_path,
+        puzzle_dir=puzzle_dir,
+        engine_registry=get_engine_registry(),
     )
 
 

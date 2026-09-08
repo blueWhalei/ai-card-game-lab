@@ -73,3 +73,6 @@ class Settings(BaseSettings):
     vcr_dir: str = ""
     vcr_cassette: str = "default"
 
+    # Puzzle pack root. Empty → {data_dir}/puzzles.
+    puzzle_dir: str = ""
+
