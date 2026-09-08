@@ -34,7 +34,12 @@ from app.core.policy.base import (
 from app.core.policy.baselines import FirstActionPolicy
 from app.core.policy.kinds import is_baseline_policy_kind
 from app.core.policy.llm import LLMPolicy
-from app.core.stats.scenarios import classify_game_phase
+from app.services.decision_snapshot import (
+    game_phase_from_observation,
+    hand_cards_from_observation,
+    last_action_from_observation,
+    opponent_hands_from_observation,
+)
 from app.services.prompt_source import EnginePromptSource
 from app.utils.exceptions import AppError, InvalidActionError
 
@@ -42,6 +47,7 @@ if TYPE_CHECKING:
     from app.core.ai.base import LLMClient
     from app.core.ai.factory import LLMClientFactory
     from app.core.ai.vcr import VcrMode, VcrStore
+    from app.core.engine.observation import Observation
     from app.services.decision_eval import DecisionEvaluator
     from app.services.decision_service import DecisionService
 
@@ -260,6 +266,7 @@ class AIService:
             await self._record_decision_point(
                 state=state,
                 engine=engine,
+                observation=observation,
                 player_id=player_id,
                 presented=presented,
                 chosen_action=action,
@@ -334,6 +341,7 @@ class AIService:
         self,
         state: GameState,
         engine: GameEngine,
+        observation: Observation,
         player_id: str,
         presented: list[LegalAction],
         chosen_action: GameAction,
@@ -348,8 +356,10 @@ class AIService:
         set: training on options that were never on screen would teach the model
         to pick ids it will never be offered.
 
-        EV loss is scored here, while the live state is still available: a stored
-        decision point does not carry enough to rebuild one later.
+        Board fields (hand, opponents, last play, phase) come from the same
+        ``Observation`` the policy saw. EV loss is scored here while the live
+        state is still available: a stored decision point does not carry enough
+        to rebuild one later.
         """
         if not self._decision_service or not game_id:
             return
@@ -374,12 +384,12 @@ class AIService:
 
             await self._decision_service.create_decision_point(
                 game_id=game_id,
-                round_number=getattr(state, "round", 0),
+                round_number=observation.round,
                 player_id=player_id,
-                hand_cards=self._extract_hand_cards(state, player_id),
-                opponent_hands=self._extract_opponent_hands(state, player_id),
-                last_action=self._extract_last_action(state),
-                game_phase=self._determine_game_phase(state),
+                hand_cards=hand_cards_from_observation(observation),
+                opponent_hands=opponent_hands_from_observation(observation),
+                last_action=last_action_from_observation(observation),
+                game_phase=game_phase_from_observation(observation),
                 legal_actions=legal_actions_data,
                 chosen_action=chosen_action_data,
                 action_id=chosen.action_id,
@@ -419,55 +429,6 @@ class AIService:
         params["legal_action_count"] = result.legal_action_count
         params["truncated"] = result.truncated
         return result.loss, params
-
-    def _extract_hand_cards(self, state: GameState, player_id: str) -> list[int]:
-        """Extract hand cards for a player from game state."""
-        if hasattr(state, "hands") and isinstance(state.hands, dict):
-            cards = state.hands.get(player_id, [])
-            return list(cards) if isinstance(cards, list) else []
-        return []
-
-    def _extract_opponent_hands(self, state: GameState, player_id: str) -> dict[str, int]:
-        """Extract opponent hand counts from game state."""
-        opponent_hands: dict[str, int] = {}
-        if hasattr(state, "hands") and isinstance(state.hands, dict):
-            for pid, cards in state.hands.items():
-                if pid != player_id:
-                    opponent_hands[pid] = len(cards) if isinstance(cards, list) else cards
-        return opponent_hands
-
-    def _extract_last_action(self, state: GameState) -> dict[str, Any] | None:
-        """Extract the last action from game state."""
-        if hasattr(state, "last_action") and state.last_action:
-            action = state.last_action
-            return {
-                "player": getattr(action, "player_id", ""),
-                "action_type": str(getattr(action, "action_type", "PASS")),
-                "cards": getattr(action, "cards", []) or [],
-            }
-        return None
-
-    def _determine_game_phase(self, state: GameState) -> str:
-        """Label bidding / playing / endgame for stored decision points."""
-        engine_phase = str(getattr(state, "phase", "") or "")
-        if engine_phase:
-            hands = getattr(state, "hands", None)
-            sizes: list[int] = []
-            if isinstance(hands, dict):
-                for cards in hands.values():
-                    if isinstance(cards, list):
-                        sizes.append(len(cards))
-                    elif isinstance(cards, int):
-                        sizes.append(int(cards))
-            return classify_game_phase(engine_phase=engine_phase, hand_sizes=sizes)
-        if hasattr(state, "round_number"):
-            round_num = state.round_number
-            if round_num <= 5:
-                return "early"
-            if round_num <= 15:
-                return "mid"
-            return "endgame"
-        return "unknown"
 
     @staticmethod
     def _truncate_text(text: str, limit: int = 400) -> str:

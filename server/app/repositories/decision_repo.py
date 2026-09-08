@@ -37,7 +37,7 @@ class DecisionRepository:
         game_id: str,
         round_number: int,
         player_id: str,
-        hand_cards: list[int],
+        hand_cards: list[str],
         opponent_hands: dict[str, int] | None,
         last_action: dict[str, Any] | None,
         game_phase: str,
