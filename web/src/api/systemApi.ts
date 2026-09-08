@@ -97,7 +97,8 @@ export const systemApi = {
     }),
 
   seedDemo: () =>
-    apiClient.post<never, ApiResponse<{ game_id: string; created: boolean }>>(
-      '/api/v1/system/seed-demo',
-    ),
+    apiClient.post<
+      never,
+      ApiResponse<{ experiment_id: string; game_id: string; created: boolean }>
+    >('/api/v1/system/seed-demo'),
 }

@@ -197,7 +197,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 ## 3. 功能项（评审认同，按贡献排序）
 
-1. 实验模板 / 一键复现：`examples/` 放 3 个可导入 pack（基线对比、prompt A/B、微调前后对照）
+1. 实验模板 / 一键复现：`examples/` 放 3 个可导入 pack（基线对比、prompt A/B、微调前后对照）—— **已完成 2026-09-08**（`examples/*.json`；导入重建 protocol，Prompt A/B 需人工挂模板）
 2. Prompt 作为实验变量：protocol 冻结 prompt 版本哈希，支持"同模型不同 prompt"对照
 3. 决策点人工标注（好 / 坏 / 存疑）写回 `decision_points`，作为 SFT 过滤与偏好数据来源
 4. 人类席位（见 `HumanPolicy`）
@@ -208,7 +208,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 ## 4. UI/UX 项
 
-- Demo 数据应产出一个**已走到 verdict 阶段**的完整实验，零成本看到五阶段终点
+- ~~Demo 数据应产出一个**已走到 verdict 阶段**的完整实验，零成本看到五阶段终点~~ ✅ 2026-09-08（`seed-demo` → 主/对照 + `delta`）
 - 回放解说层：关键决策点叠加 "AI 选 X，基线 Y，EV 最优 Z，loss w"（依赖 §2.2.2；高光列表 ✅ Wave 4d + Wave 5；live 每帧基线仍不做）
 - 全站阻塞态审计：每个阻塞态遵守"替换状态行与 CTA，而不是 banner + 无效按钮"
 - 拆分 `ExperimentDetailView.vue`（`useExperimentDetail()` composable + 阶段容器）

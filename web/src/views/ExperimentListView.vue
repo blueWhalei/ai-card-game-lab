@@ -192,9 +192,9 @@ async function loadDemo(): Promise<void> {
   seedingDemo.value = true
   try {
     const res = await systemApi.seedDemo()
-    const gameId = res.data.game_id
+    const experimentId = res.data.experiment_id
     toast.success(res.data.created ? t('experiment.demoLoaded') : t('experiment.demoReady'))
-    await router.push(`/game/${gameId}`)
+    await router.push(`/experiments/${experimentId}`)
   } catch (e: unknown) {
     showApiError(e, t('experiment.demoFailed'))
   } finally {
@@ -296,6 +296,7 @@ onMounted(() => {
     <EmptyState
       v-else-if="experiments.length === 0 && !setupIncomplete"
       :title="t('experiment.emptyTitle')"
+      :description="t('experiment.emptyHintExamples')"
     >
       <template #action>
         <div class="flex flex-wrap justify-center gap-ink-2">

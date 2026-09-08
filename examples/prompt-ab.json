@@ -1,0 +1,68 @@
+{
+  "kind": "cardlab.experiment_pack",
+  "schema_version": 1,
+  "exported_at": "2026-09-08T00:00:00+00:00",
+  "experiment": {
+    "name": "Prompt A/B 骨架",
+    "notes": "导入会新建实验并重建 protocol，不会按包内 prompt_version 冻结两套模板。做法：导入后克隆实验，在「提示词」页分别绑定/编辑两套选手用的模板，再各自采集对照。",
+    "hypothesis": "同模型不同 system 提示词，在可训练率与地主胜率上可分出差异。",
+    "tags": ["example", "prompt-ab"],
+    "game_type": "doudizhu",
+    "player_ids": ["ex_prompt_a", "ex_prompt_b", "ex_prompt_h"],
+    "target_games": 10,
+    "collect_mode": "free"
+  },
+  "deal_seeds": [],
+  "protocol": {
+    "schema_version": 2,
+    "solver": {
+      "prompt_version": "v3_reasoning",
+      "players": []
+    }
+  },
+  "players": [
+    {
+      "id": "ex_prompt_a",
+      "name": "例·Prompt A",
+      "notes": "同模型席 A；导入后在提示词页挂模板 A",
+      "policy_kind": "llm",
+      "model_config": {
+        "provider": "ollama",
+        "model_name": "qwen2.5:3b",
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 1024
+      }
+    },
+    {
+      "id": "ex_prompt_b",
+      "name": "例·Prompt B",
+      "notes": "同模型席 B；导入后在提示词页挂模板 B（可克隆本实验做对照）",
+      "policy_kind": "llm",
+      "model_config": {
+        "provider": "ollama",
+        "model_name": "qwen2.5:3b",
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 1024
+      }
+    },
+    {
+      "id": "ex_prompt_h",
+      "name": "例·启发式陪打",
+      "notes": "零 API 第三席",
+      "policy_kind": "heuristic",
+      "model_config": {
+        "provider": "baseline",
+        "model_name": "heuristic",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "max_tokens": 1
+      }
+    }
+  ],
+  "requirements": {
+    "providers": ["ollama"],
+    "ollama_tags": ["qwen2.5:3b"]
+  }
+}

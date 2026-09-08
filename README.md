@@ -41,7 +41,7 @@ cp .env.example .env    # Windows: copy .env.example .env
 
 也可手动：`cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`。
 
-打开 http://localhost:5173 。首页会按「密钥 → 选手 → 实验」引导到第一局。首次请在「选手配置」页创建选手（斗地主需 3 个），`.env` 至少配置一个 API 密钥或本机 Ollama。无密钥可首页「加载演示对局」体验观战。
+打开 http://localhost:5173 。首页会按「密钥 → 选手 → 实验」引导到第一局。首次请在「选手配置」页创建选手（斗地主需 3 个），`.env` 至少配置一个 API 密钥或本机 Ollama。无密钥可首页「加载演示实验」——会写入主实验 + 对照并直接进入 **verdict** 阶段。仓库 [`examples/`](examples/) 提供可导入的实验包（基线对比、Prompt A/B 骨架、微调前基线）。
 
 ## 主路径
 

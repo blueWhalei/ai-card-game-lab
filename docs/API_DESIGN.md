@@ -362,7 +362,7 @@ POST   /api/v1/models/{model_id}/verify      # Ollama 快速验证
 GET    /api/v1/system/health                 # 健康检查
 GET    /api/v1/system/config                 # 系统配置（脱敏，只读；设置页不提供 PATCH）
 GET    /api/v1/system/preflight              # 开始前检查（scope=collect|train|all；可选 experiment_id）
-POST   /api/v1/system/seed-demo              # 加载演示对局（不挂实验）
+POST   /api/v1/system/seed-demo              # 演示：试玩局 + 主/对照实验（返回 experiment_id / game_id）
 GET    /api/v1/system/game-types             # 支持的游戏类型列表
 GET    /api/v1/system/engines                # 引擎 capability（slots / phases / fingerprint / eval metrics）
 GET    /api/v1/system/benchmark-seeds        # 基准测试固定发牌种子列表（50 个）

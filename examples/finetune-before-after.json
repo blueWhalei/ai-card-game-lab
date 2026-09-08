@@ -1,0 +1,61 @@
+{
+  "kind": "cardlab.experiment_pack",
+  "schema_version": 1,
+  "exported_at": "2026-09-08T00:00:00+00:00",
+  "experiment": {
+    "name": "微调前基线",
+    "notes": "导入后先采主实验。训练并推送 Ollama 后：新建选手（或改本包席）把 model_name 换成 lora_* 标签，再从详情开「对照实验」（同种子 pair_deals）做微调前后验证。",
+    "hypothesis": "微调前基座在固定牌局上的地主胜率；对照应用同种子测微调后 Δ。",
+    "tags": ["example", "finetune"],
+    "game_type": "doudizhu",
+    "player_ids": ["ex_ft_base", "ex_ft_h1", "ex_ft_h2"],
+    "target_games": 10,
+    "collect_mode": "free"
+  },
+  "deal_seeds": [101, 102, 103, 104, 105, 106, 107, 108, 109, 110],
+  "players": [
+    {
+      "id": "ex_ft_base",
+      "name": "例·微调前基座",
+      "notes": "训练推送后可另建选手 model_name=lora_your_tag 做对照席",
+      "policy_kind": "llm",
+      "model_config": {
+        "provider": "ollama",
+        "model_name": "qwen2.5:3b",
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 1024
+      }
+    },
+    {
+      "id": "ex_ft_h1",
+      "name": "例·启发式甲",
+      "notes": "零 API",
+      "policy_kind": "heuristic",
+      "model_config": {
+        "provider": "baseline",
+        "model_name": "heuristic",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "max_tokens": 1
+      }
+    },
+    {
+      "id": "ex_ft_h2",
+      "name": "例·启发式乙",
+      "notes": "零 API",
+      "policy_kind": "heuristic",
+      "model_config": {
+        "provider": "baseline",
+        "model_name": "heuristic",
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "max_tokens": 1
+      }
+    }
+  ],
+  "requirements": {
+    "providers": ["ollama"],
+    "ollama_tags": ["qwen2.5:3b"]
+  }
+}

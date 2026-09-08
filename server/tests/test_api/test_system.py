@@ -39,12 +39,27 @@ async def test_seed_demo_is_idempotent(client: AsyncClient) -> None:
     assert first_body["code"] == 0
     assert first_body["data"]["created"] is True
     assert first_body["data"]["game_id"] == "game_demo_doudizhu"
+    assert first_body["data"]["experiment_id"] == "exp_demo_main"
 
     second = await client.post("/api/v1/system/seed-demo")
     assert second.status_code == 200
     second_body = second.json()
     assert second_body["data"]["created"] is False
     assert second_body["data"]["game_id"] == "game_demo_doudizhu"
+    assert second_body["data"]["experiment_id"] == "exp_demo_main"
+
+
+async def test_seed_demo_experiment_has_delta(client: AsyncClient) -> None:
+    seeded = await client.post("/api/v1/system/seed-demo")
+    assert seeded.status_code == 200
+    experiment_id = seeded.json()["data"]["experiment_id"]
+
+    detail = await client.get(f"/api/v1/experiments/{experiment_id}")
+    assert detail.status_code == 200
+    data = detail.json()["data"]
+    assert data["delta"] is not None
+    assert data["delta"]["peer_id"] == "exp_demo_control"
+    assert data["summary"]["finished_games"] >= 2
 
 
 async def test_preflight_all_scope(client: AsyncClient) -> None:

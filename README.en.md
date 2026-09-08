@@ -41,7 +41,7 @@ Start in two terminals:
 
 Or manually: `cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`.
 
-Open http://localhost:5173 . Home walks you through provider → players → experiment. Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo game** on the home page.
+Open http://localhost:5173 . Home walks you through provider → players → experiment. Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo experiment** on the home page — it seeds a main + control pair and opens the **verdict** stage. Importable packs live in [`examples/`](examples/) (baseline vs LLM, prompt A/B skeleton, pre-finetune baseline).
 
 ## Main loop
 
