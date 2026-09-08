@@ -157,3 +157,60 @@ def test_a_rescued_move_is_never_training_data() -> None:
 
     assert usable is False
     assert reason == "rescue_action"
+
+
+class _BoomFactory:
+    def create(self, provider: str) -> LLMClient:
+        raise AssertionError(f"baseline seat must not open an LLM client ({provider})")
+
+
+async def test_heuristic_seat_does_not_call_llm(engine: DoudizhuEngine) -> None:
+    state, player_id, legal = _table(engine)
+    service = AIService(
+        llm_factory=_BoomFactory(),  # type: ignore[arg-type]
+        prompt_builder=PromptBuilder(),
+    )
+
+    result = await service.get_decision(
+        state=state,
+        engine=engine,
+        player_id=player_id,
+        player_config={
+            "name": "baseline",
+            "policy_kind": "heuristic",
+            "model_config": {"provider": "baseline", "model_name": "heuristic"},
+        },
+        legal_actions=legal,
+    )
+
+    assert result.parser_ok is True
+    assert result.thinking.startswith("heuristic:")
+    assert not result.messages
+    usable, reason = evaluate_train_usable(
+        action_id=engine.action_id(result.action),
+        legal_action_ids=[entry.id for entry in engine.legal_actions(state, player_id)],
+        prompt_messages=result.messages,
+        parse_fallback=not result.parser_ok,
+    )
+    assert usable is False
+    assert reason == "no_prompt_recorded"
+    engine.apply_action(state, result.action)
+
+
+async def test_unknown_policy_kind_falls_back_without_llm(engine: DoudizhuEngine) -> None:
+    state, player_id, legal = _table(engine)
+    service = AIService(
+        llm_factory=_BoomFactory(),  # type: ignore[arg-type]
+        prompt_builder=PromptBuilder(),
+    )
+
+    result = await service.get_decision(
+        state=state,
+        engine=engine,
+        player_id=player_id,
+        player_config={"policy_kind": "ensemble", "model_config": {}},
+        legal_actions=legal,
+    )
+
+    assert result.parser_ok is True
+    assert result.thinking.startswith("first:")

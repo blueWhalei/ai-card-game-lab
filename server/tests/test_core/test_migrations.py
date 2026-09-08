@@ -33,6 +33,7 @@ async def test_a_fresh_database_is_stamped_at_the_current_version(tmp_path: Path
             "parse_fallback",
             "policy_kind",
         } <= decision_columns
+        assert "policy_kind" in await _columns(db, "experiment_configs")
 
 
 async def test_initialising_twice_changes_nothing(tmp_path: Path) -> None:
@@ -97,5 +98,45 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 1
+        assert SCHEMA_VERSION == 2
         assert "policy_kind" in await _columns(db, "decision_points")
+
+
+async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
+    tmp_path: Path,
+) -> None:
+    """A database stamped at v1 gains experiment_configs.policy_kind at v2."""
+    sqlite_path = str(tmp_path / "legacy_cfg.db")
+    async with aiosqlite.connect(sqlite_path) as db:
+        await db.execute(
+            """
+            CREATE TABLE experiment_configs (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                notes TEXT NOT NULL DEFAULT '',
+                model_config TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+            """
+        )
+        await db.execute(
+            """
+            INSERT INTO experiment_configs (id, name, notes, model_config, created_at, updated_at)
+            VALUES ('cfg_a', 'A', '', '{"provider":"openai","model_name":"m"}', 't', 't')
+            """
+        )
+        await db.execute("PRAGMA user_version = 1")
+        await db.commit()
+
+    await init_db(sqlite_path)
+
+    async with connect_sqlite(sqlite_path) as db:
+        assert await get_schema_version(db) == 2
+        assert "policy_kind" in await _columns(db, "experiment_configs")
+        cursor = await db.execute(
+            "SELECT policy_kind FROM experiment_configs WHERE id = 'cfg_a'"
+        )
+        row = await cursor.fetchone()
+        assert row is not None
+        assert row[0] == "llm"

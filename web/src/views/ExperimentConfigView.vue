@@ -11,6 +11,7 @@ import {
   type ExperimentConfigStats,
   type CreateExperimentConfigRequest,
   type UpdateExperimentConfigRequest,
+  type PlayerPolicyKind,
 } from '@/api/experimentConfigApi'
 import { formatPercentage } from '@/utils/format'
 import { downloadJson, pickJsonFile } from '@/utils/jsonFile'
@@ -40,27 +41,59 @@ const providerOptions = computed(() =>
   providers.value.map((p) => ({ label: providerName(p.id, p.name), value: p.id })),
 )
 
-function onProviderChange(val: string) {
-  const provider = providers.value.find((p) => p.id === val)
-  if (provider?.default_model) {
-    form.value.model_config_data.model_name = provider.default_model
+const policyKindOptions = computed(() => [
+  { label: t('config.policyKindLlm'), value: 'llm' },
+  { label: t('config.policyKindHeuristic'), value: 'heuristic' },
+  { label: t('config.policyKindRandom'), value: 'random' },
+  { label: t('config.policyKindFirst'), value: 'first' },
+])
+
+function policyLabel(kind: PlayerPolicyKind | undefined): string {
+  switch (kind) {
+    case 'heuristic':
+      return t('config.policyKindHeuristic')
+    case 'random':
+      return t('config.policyKindRandom')
+    case 'first':
+      return t('config.policyKindFirst')
+    default:
+      return t('config.policyKindLlm')
   }
 }
+
+const defaultModelConfig = () => ({
+  provider: 'openai',
+  model_name: 'gpt-4o-mini',
+  temperature: 0.7,
+  top_p: 0.95,
+  max_tokens: 1024,
+})
 
 const defaultForm = (): CreateExperimentConfigRequest => ({
   id: '',
   name: '',
   notes: '',
-  model_config_data: {
-    provider: 'openai',
-    model_name: 'gpt-4o-mini',
-    temperature: 0.7,
-    top_p: 0.95,
-    max_tokens: 1024,
-  },
+  policy_kind: 'llm',
+  model_config_data: defaultModelConfig(),
 })
 
 const form = ref<CreateExperimentConfigRequest>(defaultForm())
+const isBaselineForm = computed(() => (form.value.policy_kind ?? 'llm') !== 'llm')
+
+function onProviderChange(val: string) {
+  const provider = providers.value.find((p) => p.id === val)
+  if (provider?.default_model && form.value.model_config_data) {
+    form.value.model_config_data.model_name = provider.default_model
+  }
+}
+
+function onPolicyKindChange(val: string) {
+  const kind = (val as PlayerPolicyKind) || 'llm'
+  form.value.policy_kind = kind
+  if (kind === 'llm' && (!form.value.model_config_data || form.value.model_config_data.provider === 'baseline')) {
+    form.value.model_config_data = defaultModelConfig()
+  }
+}
 
 const EMPTY_STATS: ExperimentConfigStats = {
   config_id: '',
@@ -110,6 +143,7 @@ function openEditDialog(config: ExperimentConfig) {
     id: config.id,
     name: config.name,
     notes: config.notes,
+    policy_kind: config.policy_kind ?? 'llm',
     model_config_data: { ...config.model_config },
   }
   dialogVisible.value = true
@@ -126,17 +160,25 @@ async function handleSubmit() {
     toast.warning(t('config.needName'))
     return
   }
+  const policyKind = form.value.policy_kind ?? 'llm'
   try {
     if (isEditing.value) {
       const updateData: UpdateExperimentConfigRequest = {
         name,
         notes: form.value.notes,
-        model_config_data: form.value.model_config_data,
+        policy_kind: policyKind,
+        model_config_data: policyKind === 'llm' ? form.value.model_config_data : null,
       }
       await experimentConfigApi.update(form.value.id, updateData)
       toast.success(t('config.updated'))
     } else {
-      await experimentConfigApi.create({ ...form.value, id, name })
+      await experimentConfigApi.create({
+        id,
+        name,
+        notes: form.value.notes,
+        policy_kind: policyKind,
+        model_config_data: policyKind === 'llm' ? form.value.model_config_data : null,
+      })
       toast.success(t('config.created'))
     }
     dialogVisible.value = false
@@ -243,12 +285,23 @@ async function importPack(): Promise<void> {
             <div class="min-w-0">
               <h3 class="truncate text-body font-semibold text-ink-text">{{ row.name }}</h3>
               <p class="mt-ink-1 truncate text-caption text-ink-text-secondary">
-                {{ row.model_config.provider }} / {{ row.model_config.model_name }}
+                <template v-if="(row.policy_kind ?? 'llm') !== 'llm'">
+                  {{ policyLabel(row.policy_kind) }}
+                </template>
+                <template v-else>
+                  {{ row.model_config.provider }} / {{ row.model_config.model_name }}
+                </template>
               </p>
-              <p class="mt-ink-1 text-caption text-ink-text-muted">
+              <p
+                v-if="(row.policy_kind ?? 'llm') === 'llm'"
+                class="mt-ink-1 text-caption text-ink-text-muted"
+              >
                 T={{ row.model_config.temperature }} · top_p={{ row.model_config.top_p }} · max={{
                   row.model_config.max_tokens
                 }}
+              </p>
+              <p v-else class="mt-ink-1 text-caption text-ink-text-muted">
+                {{ t('config.policyKindHint') }}
               </p>
             </div>
             <div class="flex shrink-0 items-center gap-ink-2 text-caption">
@@ -318,7 +371,20 @@ async function importPack(): Promise<void> {
           />
         </div>
 
-        <div class="rounded-ink-md bg-ink-surface-muted p-ink-4">
+        <div>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.policyKind') }}</label>
+          <UiSelect
+            :model-value="form.policy_kind ?? 'llm'"
+            :options="policyKindOptions"
+            class="w-full"
+            @update:model-value="onPolicyKindChange"
+          />
+          <p v-if="isBaselineForm" class="mt-ink-1 text-caption text-ink-text-muted">
+            {{ t('config.policyKindHint') }}
+          </p>
+        </div>
+
+        <div v-if="!isBaselineForm && form.model_config_data" class="rounded-ink-md bg-ink-surface-muted p-ink-4">
           <h4 class="mb-ink-3 font-medium text-ink-text">{{ t('config.modelSection') }}</h4>
           <div class="space-y-ink-3">
             <div>
@@ -347,7 +413,7 @@ async function importPack(): Promise<void> {
                   :max="2"
                   :step="0.1"
                   class="w-full"
-                  @update:model-value="(v) => (form.model_config_data.temperature = v ?? 0.7)"
+                  @update:model-value="(v) => (form.model_config_data!.temperature = v ?? 0.7)"
                 />
               </div>
               <div>
@@ -358,7 +424,7 @@ async function importPack(): Promise<void> {
                   :max="1"
                   :step="0.05"
                   class="w-full"
-                  @update:model-value="(v) => (form.model_config_data.top_p = v ?? 0.95)"
+                  @update:model-value="(v) => (form.model_config_data!.top_p = v ?? 0.95)"
                 />
               </div>
               <div>
@@ -369,7 +435,7 @@ async function importPack(): Promise<void> {
                   :max="4096"
                   :step="64"
                   class="w-full"
-                  @update:model-value="(v) => (form.model_config_data.max_tokens = v ?? 1024)"
+                  @update:model-value="(v) => (form.model_config_data!.max_tokens = v ?? 1024)"
                 />
               </div>
             </div>

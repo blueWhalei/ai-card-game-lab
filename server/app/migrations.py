@@ -1,16 +1,15 @@
 """Numbered schema migrations tracked by ``PRAGMA user_version``.
 
 ``_SCHEMA_SQL`` in ``database.py`` creates a database; migrations only change one
-that already exists. The list is empty because the schema has not changed since
-it was first published: there is nothing to migrate *from*.
+that already exists.
 
 Adding a column therefore means two edits — the column in ``_SCHEMA_SQL`` so new
 databases get it, and a migration here so existing ones do too:
 
-    async def _v1_thing(db: aiosqlite.Connection) -> None:
-        await _add_column(db, "decision_points", "thing", "TEXT")
+    async def _vN_thing(db: aiosqlite.Connection) -> None:
+        await _add_column(db, "table", "thing", "TEXT")
 
-    MIGRATIONS = (Migration(1, "decision_points.thing", _v1_thing),)
+    MIGRATIONS = (..., Migration(N, "table.thing", _vN_thing),)
 
 An index over a migration-added column belongs in the migration as well.
 
@@ -63,8 +62,13 @@ async def _v1_decision_policy_kind(db: aiosqlite.Connection) -> None:
     await _add_column(db, "decision_points", "policy_kind", "TEXT NOT NULL DEFAULT 'llm'")
 
 
+async def _v2_experiment_config_policy_kind(db: aiosqlite.Connection) -> None:
+    await _add_column(db, "experiment_configs", "policy_kind", "TEXT NOT NULL DEFAULT 'llm'")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "decision_points.policy_kind", _v1_decision_policy_kind),
+    Migration(2, "experiment_configs.policy_kind", _v2_experiment_config_policy_kind),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0

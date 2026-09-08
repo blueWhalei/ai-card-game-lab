@@ -9,6 +9,11 @@ from typing import Any
 import structlog
 
 from app.core.pack import build_player_pack, parse_pack
+from app.core.policy.kinds import (
+    baseline_placeholder_model_config,
+    is_baseline_policy_kind,
+    normalize_player_policy_kind,
+)
 from app.database import open_db_connection
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
 
@@ -19,6 +24,20 @@ _RETIRED_DEEPSEEK_MODELS = {
     "deepseek-chat": "deepseek-v4-flash",
     "deepseek-reasoner": "deepseek-v4-flash",
 }
+
+
+def _resolved_model_config(policy_kind: str, model_config: Any) -> dict[str, Any]:
+    if is_baseline_policy_kind(policy_kind):
+        return baseline_placeholder_model_config(policy_kind)
+    if isinstance(model_config, dict) and model_config:
+        return model_config
+    return {
+        "provider": "openai",
+        "model_name": "gpt-4o-mini",
+        "temperature": 0.7,
+        "top_p": 0.95,
+        "max_tokens": 1024,
+    }
 
 
 class ExperimentConfigService:
@@ -56,6 +75,8 @@ class ExperimentConfigService:
         """Rewrite retired deepseek-chat / deepseek-reasoner to deepseek-v4-flash."""
         updated = 0
         for config in rows:
+            if normalize_player_policy_kind(config.get("policy_kind")) != "llm":
+                continue
             cfg = config.get("model_config") or {}
             if cfg.get("provider") != "deepseek":
                 continue
@@ -91,20 +112,13 @@ class ExperimentConfigService:
             raise ValueError("Config id is required")
         if cid in self._configs:
             raise ValueError(f"Config '{cid}' already exists")
+        policy_kind = normalize_player_policy_kind(data.get("policy_kind"))
         config = {
             "id": cid,
             "name": data.get("name", cid),
             "notes": data.get("notes", ""),
-            "model_config": data.get(
-                "model_config",
-                {
-                    "provider": "openai",
-                    "model_name": "gpt-4o-mini",
-                    "temperature": 0.7,
-                    "top_p": 0.95,
-                    "max_tokens": 1024,
-                },
-            ),
+            "policy_kind": policy_kind,
+            "model_config": _resolved_model_config(policy_kind, data.get("model_config")),
         }
         db = await open_db_connection(self._sqlite_path)
         try:
@@ -119,9 +133,17 @@ class ExperimentConfigService:
         if config_id not in self._configs:
             raise KeyError(f"Config '{config_id}' not found")
         config = deepcopy(self._configs[config_id])
-        for key in ("name", "notes", "model_config"):
+        for key in ("name", "notes"):
             if key in data and data[key] is not None:
                 config[key] = data[key]
+        if "policy_kind" in data and data["policy_kind"] is not None:
+            config["policy_kind"] = normalize_player_policy_kind(data["policy_kind"])
+        policy_kind = normalize_player_policy_kind(config.get("policy_kind"))
+        config["policy_kind"] = policy_kind
+        if is_baseline_policy_kind(policy_kind):
+            config["model_config"] = baseline_placeholder_model_config(policy_kind)
+        elif "model_config" in data and data["model_config"] is not None:
+            config["model_config"] = data["model_config"]
         db = await open_db_connection(self._sqlite_path)
         try:
             saved = await ExperimentConfigRepository(db).upsert(config)
@@ -154,11 +176,13 @@ class ExperimentConfigService:
             if self.get_config(cid) is not None:
                 reused.append(cid)
                 continue
+            policy_kind = normalize_player_policy_kind(player.get("policy_kind"))
             await self.create_config(
                 {
                     "id": cid,
                     "name": player.get("name") or cid,
                     "notes": player.get("notes") or "",
+                    "policy_kind": policy_kind,
                     "model_config": player.get("model_config") or {},
                 }
             )

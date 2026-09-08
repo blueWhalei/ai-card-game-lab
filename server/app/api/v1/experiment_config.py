@@ -63,7 +63,10 @@ async def create_experiment_config(
                 "id": body.id,
                 "name": body.name,
                 "notes": body.notes,
-                "model_config": body.model_config_data.model_dump(),
+                "policy_kind": body.policy_kind,
+                "model_config": (
+                    body.model_config_data.model_dump() if body.model_config_data else None
+                ),
             }
         )
     except ValueError as e:
@@ -114,6 +117,8 @@ async def update_experiment_config(
         update_data["name"] = body.name
     if body.notes is not None:
         update_data["notes"] = body.notes
+    if body.policy_kind is not None:
+        update_data["policy_kind"] = body.policy_kind
     if body.model_config_data is not None:
         update_data["model_config"] = body.model_config_data.model_dump()
 

@@ -9,6 +9,7 @@ from app.utils.providers import (
     is_provider_configured,
     looks_like_real_api_key,
     probe_ollama_ready,
+    unconfigured_providers_from_players,
 )
 
 
@@ -73,3 +74,24 @@ def test_probe_ollama_ready_unreachable() -> None:
 
 def test_unknown_provider_unconfigured() -> None:
     assert is_provider_configured(MagicMock(), "not-a-vendor") is False
+
+
+def test_unconfigured_providers_skip_baseline_seats() -> None:
+    settings = Settings(openai_api_key="sk-real-key-value")
+    # Force openai unconfigured regardless of .env / constructor merge.
+    with patch("app.utils.providers.is_provider_configured", return_value=False):
+        missing = unconfigured_providers_from_players(
+            settings,
+            [
+                {"policy_kind": "heuristic", "model_config": {"provider": "openai"}},
+                {"policy_kind": "llm", "model_config": {"provider": "openai"}},
+            ],
+        )
+    assert missing == ["openai"]
+
+    with patch("app.utils.providers.is_provider_configured", return_value=False):
+        only_baseline = unconfigured_providers_from_players(
+            settings,
+            [{"policy_kind": "random", "model_config": {"provider": "openai"}}],
+        )
+    assert only_baseline == []

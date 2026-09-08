@@ -128,6 +128,7 @@ class ExperimentService:
                     "id": cfg["id"],
                     "name": cfg["name"],
                     "notes": cfg.get("notes") or "",
+                    "policy_kind": cfg.get("policy_kind") or "llm",
                     "model_config": deepcopy(cfg.get("model_config") or {}),
                 }
             )

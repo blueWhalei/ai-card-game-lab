@@ -2,10 +2,13 @@ import { apiClient } from './client'
 import type { ApiResponse } from './types'
 import type { ExperimentPack } from './experimentApi'
 
+export type PlayerPolicyKind = 'llm' | 'heuristic' | 'random' | 'first'
+
 export interface ExperimentConfig {
   id: string
   name: string
   notes: string
+  policy_kind: PlayerPolicyKind
   model_config: {
     provider: string
     model_name: string
@@ -29,25 +32,27 @@ export interface CreateExperimentConfigRequest {
   id: string
   name: string
   notes?: string
-  model_config_data: {
-    provider: string
-    model_name: string
-    temperature: number
-    top_p: number
-    max_tokens: number
-  }
-}
-
-export interface UpdateExperimentConfigRequest {
-  name?: string
-  notes?: string
+  policy_kind?: PlayerPolicyKind
   model_config_data?: {
     provider: string
     model_name: string
     temperature: number
     top_p: number
     max_tokens: number
-  }
+  } | null
+}
+
+export interface UpdateExperimentConfigRequest {
+  name?: string
+  notes?: string
+  policy_kind?: PlayerPolicyKind
+  model_config_data?: {
+    provider: string
+    model_name: string
+    temperature: number
+    top_p: number
+    max_tokens: number
+  } | null
 }
 
 export const experimentConfigApi = {

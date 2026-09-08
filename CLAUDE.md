@@ -83,7 +83,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `engine/` — `GameEngine` ABC + `EngineCapability` + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`).
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
   - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`. Clients accept `response_format` and degrade (drop `stream_options`, then `response_format`) when a provider rejects it with 4xx; `OllamaClient` translates it to Ollama's `format`. There is **no** proactive per-provider capability probe or cache — only reactive degrade. Optional **VCR** wrapper (`core/ai/vcr.py`): `VCR_MODE=record|replay` stores/replays chat calls as JSONL under `data/vcr/` (match key = SHA-256 of provider + messages + model/sampling/`response_format`); `replay` miss raises `VcrMissError` (no silent live call). Default `off`.
-  - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy` are the non-LLM baselines. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
+  - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy` are the non-LLM baselines. Live seats pick a policy via player-config `policy_kind` (`AIService`); preflight skips provider checks for baseline seats. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
   - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers. Experiment-level **Scorer** plugins (`build_scorer_registry(game_type=…)`) cover every Dou Dizhu `eval_metric_id` (`train_usable`, `parser_success`, `latency_p50_p95`, `role:landlord`, `ev_loss`); `ExperimentService` overlays results onto summary from `protocol.scorer.eval_metric_ids`. **Puzzle packs** (`puzzle.py` / `replay.py` / `perturb.py` + `PuzzleService`): extract high-spread decisions into `{data_dir}/puzzles/{pack_id}/`, score baselines offline, and **probe** consistency under legal-action / hand-card order shuffles (`POST .../probe`). No UI in Step 4.
   - `collector/` — JSONL writer.
   - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. **Preference (DPO) export** (`preference.py` + `DecisionService.export_preferences`): chosen = rollout `best_action_id`, rejected = model `action_id`; gold labels live in `evaluator_params` at score time (no new columns). Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
@@ -109,7 +109,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 ```
 
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
-- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Player configs UI (`/experiment-configs`); there is no YAML seed.
+- **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Player configs UI (`/experiment-configs`); each has `policy_kind` (`llm` default, or `heuristic` / `random` / `first` baseline — no API). There is no YAML seed.
 
 ## Frontend
 
@@ -220,7 +220,7 @@ Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/dataset
 
 Schema lives in `app/database.py`. Tables:
 
-`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`, `policy_kind`), `experiment_configs`.
+`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`, `policy_kind`), `experiment_configs` (`policy_kind`: `llm` / `heuristic` / `random` / `first`).
 
 Schema changes go through `app/migrations.py`: a numbered migration list tracked by
 `PRAGMA user_version`. `_SCHEMA_SQL` builds a new database; migrations change an existing
@@ -228,7 +228,8 @@ one, so adding a column means editing both. An index over a migration-added colu
 in the migration — `_SCHEMA_SQL` also runs against pre-migration databases. A database
 newer than the running build raises `SchemaVersionError` instead of being read. Greenfield
 DBs already include historically added columns in `_SCHEMA_SQL`; the migration list was empty
-until the first real ALTER (`policy_kind` = migration 1 → `SCHEMA_VERSION = 1`).
+until the first real ALTER (`policy_kind` on decisions = migration 1; player
+  `policy_kind` = migration 2 → `SCHEMA_VERSION = 2`).
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
@@ -332,7 +333,8 @@ Routing is by `game_type`; Service layers must not hardcode a game id beyond def
 
 - If the vendor uses Chat Completions (`POST /chat/completions` + Bearer), add it to the provider list in `dependencies.py` + settings / `.env`. Do not add a new client class.
 - A new `LLMClient` subclass is only for a different protocol (e.g. native Anthropic). Register it on `LLMClientFactory`.
-- Player configs are created and edited in the Player configs UI (SQLite). There is no YAML seed.
+- Player configs are created and edited in the Player configs UI (SQLite). Set
+  `policy_kind` to a baseline for zero-API seats. There is no YAML seed.
 
 ## Key conventions
 

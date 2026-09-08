@@ -20,19 +20,23 @@ from app.core.ai.errors import map_provider_error
 from app.core.ai.prompt import PromptBuilder
 from app.core.ai.stream_chunk import StreamChunk
 from app.core.engine.base import GameAction, GameEngine, GameState, LegalAction
+from app.core.policy import get_baseline_policy_registry
 from app.core.policy.base import (
     ActionChosen,
     Budget,
     LlmRequest,
     LlmUsage,
+    Policy,
     PolicyContext,
     ThinkingDelta,
     ToolResult,
 )
+from app.core.policy.baselines import FirstActionPolicy
+from app.core.policy.kinds import is_baseline_policy_kind
 from app.core.policy.llm import LLMPolicy
 from app.core.stats.scenarios import classify_game_phase
 from app.services.prompt_source import EnginePromptSource
-from app.utils.exceptions import AppError
+from app.utils.exceptions import AppError, InvalidActionError
 
 if TYPE_CHECKING:
     from app.core.ai.base import LLMClient
@@ -124,6 +128,29 @@ class AIService:
             self._client_cache[provider] = client
         return self._client_cache[provider]
 
+    def _build_policy(self, player_config: dict[str, Any], *, stream: bool) -> Policy:
+        """Pick LLM or baseline policy from the seat's ``policy_kind``."""
+        raw = str(player_config.get("policy_kind") or "llm").strip() or "llm"
+        if is_baseline_policy_kind(raw):
+            try:
+                return get_baseline_policy_registry().create(raw)
+            except InvalidActionError:
+                logger.error("unknown_baseline_policy_kind", policy_kind=raw)
+                return FirstActionPolicy()
+        if raw != "llm":
+            # Dirty protocol / pack data: keep the game alive without spending API.
+            logger.error("unknown_player_policy_kind", policy_kind=raw)
+            return FirstActionPolicy()
+        model_cfg = player_config.get("model_config", {})
+        return LLMPolicy(
+            self._get_client(player_config),
+            provider=model_cfg.get("provider", "unknown"),
+            model_name=model_cfg.get("model_name"),
+            temperature=model_cfg.get("temperature"),
+            max_tokens=model_cfg.get("max_tokens"),
+            stream=stream,
+        )
+
     @staticmethod
     def _map_provider_error(provider: str, error: Exception) -> AppError:
         return map_provider_error(provider, error)
@@ -185,15 +212,7 @@ class AIService:
     ) -> AIDecisionResult:
         start_time = time.perf_counter()
         model_cfg = player_config.get("model_config", {})
-
-        policy = LLMPolicy(
-            self._get_client(player_config),
-            provider=model_cfg.get("provider", "unknown"),
-            model_name=model_cfg.get("model_name"),
-            temperature=model_cfg.get("temperature"),
-            max_tokens=model_cfg.get("max_tokens"),
-            stream=stream,
-        )
+        policy = self._build_policy(player_config, stream=stream)
         ctx = PolicyContext(
             advisor=engine,
             rng=random.Random(),

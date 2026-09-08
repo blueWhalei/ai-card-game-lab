@@ -195,6 +195,7 @@ CREATE TABLE IF NOT EXISTS experiment_configs (
     name          TEXT    NOT NULL,
     notes         TEXT    NOT NULL DEFAULT '',
     model_config  TEXT    NOT NULL,
+    policy_kind   TEXT    NOT NULL DEFAULT 'llm',
     created_at    TEXT    NOT NULL,
     updated_at    TEXT    NOT NULL
 );

@@ -5,6 +5,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from app.core.policy.kinds import is_baseline_policy_kind, normalize_player_policy_kind
 from app.core.task_protocol import (
     protocol_collect_mode,
     protocol_deal_seeds,
@@ -48,6 +49,7 @@ def sanitize_player(player: dict[str, Any]) -> dict[str, Any]:
         "id": str(player.get("id") or "").strip(),
         "name": str(player.get("name") or player.get("id") or "").strip(),
         "notes": str(player.get("notes") or ""),
+        "policy_kind": normalize_player_policy_kind(player.get("policy_kind")),
         "model_config": redact_mapping(model_cfg),
     }
 
@@ -69,12 +71,16 @@ def build_requirements(players: list[dict[str, Any]]) -> dict[str, Any]:
     seen_providers: set[str] = set()
     seen_tags: set[str] = set()
     for player in players:
+        if is_baseline_policy_kind(normalize_player_policy_kind(player.get("policy_kind"))):
+            continue
         cfg = player.get("model_config") or {}
         if not isinstance(cfg, dict):
             continue
         provider = str(cfg.get("provider") or "").strip()
         model_name = str(cfg.get("model_name") or "").strip()
-        if provider and provider not in seen_providers:
+        if provider in {"", "baseline"}:
+            continue
+        if provider not in seen_providers:
             seen_providers.add(provider)
             providers.append(provider)
         if provider == "ollama" and model_name and model_name not in seen_tags:

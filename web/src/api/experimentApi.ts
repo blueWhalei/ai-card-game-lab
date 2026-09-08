@@ -80,6 +80,7 @@ export interface ExperimentProtocolPlayer {
   id: string
   name: string
   notes: string
+  policy_kind?: 'llm' | 'heuristic' | 'random' | 'first'
   model_config: {
     provider: string
     model_name: string

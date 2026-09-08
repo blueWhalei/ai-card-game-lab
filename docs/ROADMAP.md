@@ -202,7 +202,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 5. 锦标赛 / 天梯：多选手两两对打，Elo / Bradley-Terry 排名
 6. CLI：`cardlab run --experiment pack.json`、`cardlab export`（`e2e_pipeline.py` 是雏形）
 7. 成本：各 provider 单价表 × tokens 的费用估算；实验开始前给出预算预估
-8. 非 LLM 基线选手（见 `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy`；选手 `kind` 产品化仍待 W2.1）
+8. 非 LLM 基线选手（见 `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy`；选手 `policy_kind` 产品化 ✅ Wave 2b / W2.1）
 
 ## 4. UI/UX 项
 

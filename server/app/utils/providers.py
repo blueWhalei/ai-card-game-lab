@@ -7,6 +7,8 @@ import urllib.error
 import urllib.request
 from typing import TYPE_CHECKING, Any
 
+from app.core.policy.kinds import is_baseline_policy_kind, normalize_player_policy_kind
+
 if TYPE_CHECKING:
     from app.config import Settings
 
@@ -91,10 +93,14 @@ def unconfigured_providers_from_players(
     """Return sorted unique provider ids from protocol/live players that are not ready."""
     missing: set[str] = set()
     for player in players:
+        if is_baseline_policy_kind(normalize_player_policy_kind(player.get("policy_kind"))):
+            continue
         model_cfg = player.get("model_config") or {}
         if not isinstance(model_cfg, dict):
             continue
         provider = str(model_cfg.get("provider") or "").strip()
-        if provider and not is_provider_configured(settings, provider):
+        if provider in {"", "baseline"}:
+            continue
+        if not is_provider_configured(settings, provider):
             missing.add(provider)
     return sorted(missing)

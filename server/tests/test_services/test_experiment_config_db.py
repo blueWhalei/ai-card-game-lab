@@ -34,7 +34,20 @@ async def test_experiment_configs_empty_init_and_crud(tmp_path: Path) -> None:
     )
     assert created["id"] == "cfg_temp_09"
     assert created["notes"] == "created in test"
+    assert created["policy_kind"] == "llm"
     assert "avatar" not in created
+
+    baseline = await svc.create_config(
+        {
+            "id": "cfg_heuristic",
+            "name": "Heuristic",
+            "notes": "",
+            "policy_kind": "heuristic",
+        }
+    )
+    assert baseline["policy_kind"] == "heuristic"
+    assert baseline["model_config"]["provider"] == "baseline"
+    assert baseline["model_config"]["model_name"] == "heuristic"
 
     extra = await svc.create_config(
         {
@@ -48,9 +61,10 @@ async def test_experiment_configs_empty_init_and_crud(tmp_path: Path) -> None:
 
     svc2 = ExperimentConfigService(db_path)
     await svc2.initialize()
-    assert len(svc2.list_configs()) == 2
+    assert len(svc2.list_configs()) == 3
     await svc2.delete_config("cfg_temp_09")
     assert svc2.get_config("cfg_temp_09") is None
+    assert svc2.get_config("cfg_heuristic")["policy_kind"] == "heuristic"
 
 
 @pytest.mark.asyncio

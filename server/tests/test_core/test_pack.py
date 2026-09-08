@@ -39,6 +39,28 @@ def test_sanitize_player_strips_secrets() -> None:
     )
     assert "token" not in player["model_config"]
     assert player["model_config"]["model_name"] == "lora_x"
+    assert player["policy_kind"] == "llm"
+
+
+def test_build_requirements_skips_baseline_players() -> None:
+    from app.core.pack import build_requirements
+
+    req = build_requirements(
+        [
+            {
+                "id": "h",
+                "policy_kind": "heuristic",
+                "model_config": {"provider": "baseline", "model_name": "heuristic"},
+            },
+            {
+                "id": "a",
+                "policy_kind": "llm",
+                "model_config": {"provider": "ollama", "model_name": "qwen"},
+            },
+        ]
+    )
+    assert req["providers"] == ["ollama"]
+    assert req["ollama_tags"] == ["qwen"]
 
 
 def test_build_experiment_pack_lists_ollama_tags() -> None:

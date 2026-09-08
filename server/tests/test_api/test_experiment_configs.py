@@ -63,6 +63,26 @@ async def test_create_get_update_delete(client: AsyncClient) -> None:
     assert missing_response.json()["code"] == "EXPERIMENT_CONFIG_NOT_FOUND"
 
 
+async def test_create_baseline_player(client: AsyncClient) -> None:
+    payload = {
+        "id": "baseline_heuristic",
+        "name": "Heuristic seat",
+        "notes": "",
+        "policy_kind": "heuristic",
+    }
+    create_response = await client.post("/api/v1/experiment-configs", json=payload)
+    assert create_response.status_code == 201
+    created = create_response.json()["data"]
+    assert created["policy_kind"] == "heuristic"
+    assert created["model_config"]["provider"] == "baseline"
+
+    llm_missing_model = await client.post(
+        "/api/v1/experiment-configs",
+        json={"id": "bad_llm", "name": "Bad", "policy_kind": "llm"},
+    )
+    assert llm_missing_model.status_code == 422
+
+
 async def test_create_conflict(client: AsyncClient) -> None:
     payload = {
         "id": "dup_cfg",
