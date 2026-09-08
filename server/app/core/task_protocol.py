@@ -35,6 +35,7 @@ def build_protocol(
     prompt_version: str,
     collect_mode: str,
     protocol_fingerprint: dict[str, Any],
+    evaluator: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frozen experiment protocol written at create time."""
     engine = {
@@ -42,6 +43,11 @@ def build_protocol(
         for key in _ENGINE_KEYS
         if key in protocol_fingerprint
     }
+    scorer: dict[str, Any] = {
+        "eval_metric_ids": list(protocol_fingerprint.get("eval_metric_ids") or []),
+    }
+    if evaluator:
+        scorer["evaluator"] = dict(evaluator)
     return {
         "schema_version": PROTOCOL_SCHEMA_VERSION,
         "frozen_at": frozen_at,
@@ -55,9 +61,7 @@ def build_protocol(
             "players": players,
             "prompt_version": prompt_version,
         },
-        "scorer": {
-            "eval_metric_ids": list(protocol_fingerprint.get("eval_metric_ids") or []),
-        },
+        "scorer": scorer,
         "engine": engine,
     }
 
@@ -162,6 +166,15 @@ def protocol_eval_metric_ids(protocol: dict[str, Any]) -> list[str]:
     return [str(x) for x in (scorer.get("eval_metric_ids") or [])]
 
 
+def protocol_evaluator(protocol: dict[str, Any]) -> dict[str, Any] | None:
+    """Frozen EV knobs under ``scorer.evaluator``, or ``None`` when absent."""
+    scorer = protocol.get("scorer")
+    if not isinstance(scorer, dict):
+        return None
+    raw = scorer.get("evaluator")
+    return dict(raw) if isinstance(raw, dict) else None
+
+
 def protocol_engine(protocol: dict[str, Any]) -> dict[str, Any]:
     engine = protocol.get("engine")
     return dict(engine) if isinstance(engine, dict) else {}
@@ -188,6 +201,7 @@ def flatten_protocol_view(protocol: dict[str, Any] | None) -> dict[str, Any] | N
         "deal_seeds": protocol_deal_seeds(protocol),
         "collect_mode": protocol_collect_mode(protocol),
         "eval_metric_ids": protocol_eval_metric_ids(protocol),
+        "evaluator": protocol_evaluator(protocol),
         **engine,
     }
 

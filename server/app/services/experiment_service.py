@@ -10,6 +10,7 @@ import aiosqlite
 import structlog
 
 from app.core.engine.base import EngineCapability
+from app.core.eval.evaluator_protocol import freeze_evaluator_snapshot
 from app.core.eval.scorer import (
     ScorerRegistry,
     apply_scorer_results,
@@ -151,6 +152,13 @@ class ExperimentService:
         game_type: str,
         collect_mode: str = "free",
     ) -> dict[str, Any]:
+        from app.config import Settings
+
+        settings = Settings()
+        evaluator = freeze_evaluator_snapshot(
+            determinizations=settings.ev_loss_determinizations,
+            max_candidates=settings.ev_loss_max_candidates,
+        )
         return build_protocol(
             players=self._snapshot_players(player_ids),
             source_experiment_id=source_experiment_id,
@@ -160,6 +168,7 @@ class ExperimentService:
             prompt_version=self._prompt_version(),
             collect_mode=collect_mode,
             protocol_fingerprint=self._engine_capability(game_type).protocol_fingerprint(),
+            evaluator=evaluator,
         )
     async def create_experiment(
         self,

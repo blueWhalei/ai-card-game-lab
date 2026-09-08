@@ -119,6 +119,11 @@ def _last_play_id(points: list[dict[str, Any]], winner_id: str | None) -> str | 
 
 
 def _as_highlight(point: dict[str, Any], reason: str) -> dict[str, Any]:
+    action_id = str(point.get("action_id") or "")
+    best_action_id = ""
+    raw_params = point.get("evaluator_params")
+    if isinstance(raw_params, dict):
+        best_action_id = str(raw_params.get("best_action_id") or "")
     return {
         "decision_id": str(point.get("id") or ""),
         "round_number": _round_number(point),
@@ -128,6 +133,8 @@ def _as_highlight(point: dict[str, Any], reason: str) -> dict[str, Any]:
         "cards": [str(c) for c in _cards(point)],
         "parser_ok": point.get("parser_ok"),
         "ev_loss": _ev_loss(point),
+        "action_id": action_id or None,
+        "best_action_id": best_action_id or None,
     }
 
 

@@ -33,9 +33,18 @@ def _pt(
     }
 
 
-def test_empty_points_returns_empty() -> None:
-    assert pick_game_highlights([]) == []
-    assert pick_game_highlights([{"round_number": 1}]) == []
+def test_highlight_includes_ev_explain_fields() -> None:
+    points = [
+        _pt("keep", round_number=1, ev_loss=0.0),
+        _pt("b1", round_number=2, ev_loss=0.7),
+    ]
+    points[1]["action_id"] = "PASS|"
+    points[1]["evaluator_params"] = {"best_action_id": "SINGLE|H3|"}
+    rows = pick_game_highlights(points, winner_id="p1")
+    explained = next(r for r in rows if r["decision_id"] == "b1")
+    assert explained["action_id"] == "PASS|"
+    assert explained["best_action_id"] == "SINGLE|H3|"
+    assert explained["ev_loss"] == 0.7
 
 
 def test_last_play_is_winner_latest_round() -> None:

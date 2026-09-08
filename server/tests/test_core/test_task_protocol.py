@@ -36,8 +36,17 @@ def test_build_protocol_nests_sections() -> None:
             "supports_deal_seed": True,
             "benchmark_seed_count": 50,
         },
+        evaluator={
+            "determinizations": 4,
+            "rollouts_per_world": 1,
+            "max_candidates": 8,
+            "max_steps": 400,
+            "opponent_kind": "heuristic",
+            "seed": 0,
+        },
     )
     assert protocol["schema_version"] == PROTOCOL_SCHEMA_VERSION
+    assert protocol["scorer"]["evaluator"]["determinizations"] == 4
     assert protocol["dataset"]["deal_seeds"] == [1, 2]
     assert protocol["solver"]["players"][0]["id"] == "a"
     assert protocol["scorer"]["eval_metric_ids"] == ["parser_success"]

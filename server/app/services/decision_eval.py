@@ -12,6 +12,7 @@ already in hand.
 from __future__ import annotations
 
 import asyncio
+from typing import Any
 
 import structlog
 
@@ -37,18 +38,25 @@ def resolve_opponent(kind: str) -> ActionSelector:
     return HeuristicPolicy()
 
 
+def _params_cache_key(params: EvaluatorParams) -> tuple[Any, ...]:
+    return tuple(sorted(params.to_dict().items()))
+
+
 class DecisionEvaluator:
     """Computes EV loss for moves as they happen, or returns ``None``.
 
     Never raises: EV loss is an analysis signal, and a game must not fail because
     a simulation did. Callers store ``None`` as "not evaluated", which downstream
     keeps distinct from a loss of 0.0 ("gave up nothing").
+
+    Default knobs come from Settings; per-call ``params`` (from an experiment
+    protocol) override without mutating the default instance.
     """
 
     def __init__(self, params: EvaluatorParams | None = None) -> None:
         self._params = params or EvaluatorParams()
         self._opponent = resolve_opponent(self._params.opponent_kind)
-        self._evaluators: dict[str, RolloutEvaluator] = {}
+        self._evaluators: dict[tuple[Any, ...], RolloutEvaluator] = {}
 
     @property
     def params(self) -> EvaluatorParams:
@@ -63,13 +71,16 @@ class DecisionEvaluator:
         state: GameState,
         player_id: str,
         chosen_action: GameAction,
+        *,
+        params: EvaluatorParams | None = None,
     ) -> EvLoss | None:
         """EV loss for ``chosen_action``, or ``None`` when it cannot be computed."""
         if not self.supports(engine):
             return None
+        effective = params or self._params
         try:
             return await asyncio.to_thread(
-                self._score_sync, engine, state, player_id, chosen_action
+                self._score_sync, engine, state, player_id, chosen_action, effective
             )
         except Exception as error:
             # Broad on purpose: a simulation must never take a game down with it.
@@ -87,17 +98,26 @@ class DecisionEvaluator:
         state: GameState,
         player_id: str,
         chosen_action: GameAction,
+        params: EvaluatorParams,
     ) -> EvLoss:
-        evaluator = self._evaluator_for(engine)
+        evaluator = self._evaluator_for(engine, params)
         observation = engine.observe(state, player_id)
         legal_actions = engine.legal_actions(state, player_id)
         return evaluator.ev_loss(
             observation, legal_actions, engine.action_id(chosen_action)
         )
 
-    def _evaluator_for(self, engine: GameEngine) -> RolloutEvaluator:
-        cached = self._evaluators.get(engine.game_type)
+    def _evaluator_for(
+        self, engine: GameEngine, params: EvaluatorParams
+    ) -> RolloutEvaluator:
+        key = (engine.game_type, *_params_cache_key(params))
+        cached = self._evaluators.get(key)
         if cached is None:
-            cached = RolloutEvaluator(engine, self._opponent, self._params)
-            self._evaluators[engine.game_type] = cached
+            opponent = (
+                self._opponent
+                if params.opponent_kind == self._params.opponent_kind
+                else resolve_opponent(params.opponent_kind)
+            )
+            cached = RolloutEvaluator(engine, opponent, params)
+            self._evaluators[key] = cached
         return cached

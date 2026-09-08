@@ -41,6 +41,16 @@ function actionLabel(item: GameHighlight): string {
   return formatPlayAction({ action_type: item.action_type, cards: item.cards })
 }
 
+function evExplain(item: GameHighlight): string | null {
+  if (!item.best_action_id) return null
+  const ai = item.action_id || actionLabel(item)
+  const loss =
+    item.ev_loss == null || Number.isNaN(Number(item.ev_loss))
+      ? '—'
+      : Number(item.ev_loss).toFixed(2)
+  return t('game.evExplain', { ai, best: item.best_action_id, loss })
+}
+
 function goDecision(item: GameHighlight): void {
   void router.push({
     path: '/decisions',
@@ -87,6 +97,13 @@ function goDecision(item: GameHighlight): void {
         >
           {{ actionLabel(item) }}
         </div>
+        <p
+          v-if="evExplain(item)"
+          class="mt-0.5 font-mono text-caption"
+          :class="tone === 'observer' ? 'text-ink-obs-muted' : 'text-ink-text-muted'"
+        >
+          {{ evExplain(item) }}
+        </p>
         <div class="mt-1.5 flex flex-wrap gap-1">
           <UiButton
             v-if="showJump"

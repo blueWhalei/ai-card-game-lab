@@ -48,6 +48,7 @@ if TYPE_CHECKING:
     from app.core.ai.factory import LLMClientFactory
     from app.core.ai.vcr import VcrMode, VcrStore
     from app.core.engine.observation import Observation
+    from app.core.eval.rollout import EvaluatorParams
     from app.services.decision_eval import DecisionEvaluator
     from app.services.decision_service import DecisionService
 
@@ -116,6 +117,8 @@ class AIService:
         self._vcr_mode = vcr_mode
         self._vcr_store = vcr_store
         self._client_cache: dict[str, LLMClient] = {}
+        # game_id → protocol EV knobs (None = use DecisionEvaluator defaults)
+        self._ev_params_by_game: dict[str, EvaluatorParams | None] = {}
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
@@ -379,7 +382,7 @@ class AIService:
                 "cards": chosen_action.cards or [],
             }
             ev_loss, evaluator_params = await self._score_decision(
-                engine, state, player_id, chosen_action
+                engine, state, player_id, chosen_action, game_id=game_id
             )
 
             await self._decision_service.create_decision_point(
@@ -409,6 +412,8 @@ class AIService:
         state: GameState,
         player_id: str,
         chosen_action: GameAction,
+        *,
+        game_id: str | None = None,
     ) -> tuple[float | None, dict[str, Any] | None]:
         """EV loss for the move, or ``(None, None)`` when scoring is off or fails.
 
@@ -417,7 +422,10 @@ class AIService:
         """
         if self._decision_evaluator is None:
             return None, None
-        result = await self._decision_evaluator.score(engine, state, player_id, chosen_action)
+        override = await self._protocol_evaluator_params(game_id)
+        result = await self._decision_evaluator.score(
+            engine, state, player_id, chosen_action, params=override
+        )
         if result is None:
             return None, None
         params: dict[str, Any] = dict(result.params)
@@ -429,6 +437,42 @@ class AIService:
         params["legal_action_count"] = result.legal_action_count
         params["truncated"] = result.truncated
         return result.loss, params
+
+    async def _protocol_evaluator_params(
+        self, game_id: str | None
+    ) -> EvaluatorParams | None:
+        """Frozen ``scorer.evaluator`` for the game's experiment, if any."""
+        if not game_id or not self._sqlite_path:
+            return None
+        if game_id in self._ev_params_by_game:
+            return self._ev_params_by_game[game_id]
+        from app.core.eval.evaluator_protocol import protocol_evaluator_params
+        from app.database import open_db_connection
+        from app.repositories.experiment_repo import ExperimentRepository
+        from app.repositories.game_repo import GameRepository
+
+        params: EvaluatorParams | None = None
+        try:
+            conn = await open_db_connection(self._sqlite_path)
+            try:
+                try:
+                    game = await GameRepository(conn).get_by_id(game_id)
+                except KeyError:
+                    self._ev_params_by_game[game_id] = None
+                    return None
+                experiment_id = game.get("experiment_id")
+                if experiment_id:
+                    row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
+                    protocol = row.get("protocol") if row else None
+                    if isinstance(protocol, dict):
+                        params = protocol_evaluator_params(protocol)
+            finally:
+                await conn.close()
+        except Exception:
+            logger.warning("protocol_evaluator_lookup_failed", game_id=game_id, exc_info=True)
+            params = None
+        self._ev_params_by_game[game_id] = params
+        return params
 
     @staticmethod
     def _truncate_text(text: str, limit: int = 400) -> str:

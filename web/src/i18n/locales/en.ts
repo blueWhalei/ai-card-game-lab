@@ -802,6 +802,7 @@ const en: typeof zhCN = {
     highlightsTitle: 'Highlights',
     jumpToMove: 'Jump to this move',
     viewDecision: 'Decision',
+    evExplain: 'AI {ai} · EV-best {best} · loss {loss}',
     highlight: {
       last_play: 'Last play',
       blunder: 'Blunder',

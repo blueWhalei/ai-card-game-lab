@@ -216,7 +216,7 @@ Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/dataset
 
 - WebSocket: `WS /api/v1/games/ws/{game_id}`.
 - Live: `GenericBoard` + thinking rail. Thinking seat uses `ink-obs-glow` (not a full-card pulse) and shows a live thought excerpt on the seat. The right rail is thinking above a quiet action log — do not bring back a history/thinking segmented control. The thinking panel shows legal moves, tool win-rate / hand strength, and whether parse fell back to a rule action.
-- Finished games: step replay (play/pause, prev/next, speed). Post-game **highlights** (3–5 moves from stored decision points: last play, blunder, bomb, parse fallback, endgame, high-branch — a `blunder` is `ev_loss >= BLUNDER_EV_LOSS`, and it outranks the others because it is the only reason derived from what a move was worth rather than what it looked like) on the result dialog and observer history panel; jump seeks replay and links to `/pipeline/decisions?game_id=&decision_id=`.
+- Finished games: step replay (play/pause, prev/next, speed). Post-game **highlights** (3–5 moves from stored decision points: last play, blunder, bomb, parse fallback, endgame, high-branch — a `blunder` is `ev_loss >= BLUNDER_EV_LOSS`, and it outranks the others because it is the only reason derived from what a move was worth rather than what it looked like) on the result dialog and observer history panel; jump seeks replay and links to `/pipeline/decisions?game_id=&decision_id=`. When `evaluator_params.best_action_id` is present, the highlight line also shows AI vs EV-best vs loss.
 - Demo game (no experiment): homepage “load demo” → `POST /api/v1/system/seed-demo`.
 
 ## Database (SQLite)
@@ -242,7 +242,7 @@ JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
 Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking, and `ev_loss`. Board fields are taken from the same ``Observation`` the policy saw (`services/decision_snapshot.py`); EV scoring still uses the live ``GameState``.
 
-EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluator` → `core/eval/rollout.py`), while the live state still exists: a stored decision point does not carry the `ActionId` values or public information `sample_hidden_state` needs to rebuild a world. It costs roughly 100 ms of local CPU per move and no API budget; `EV_LOSS_ENABLED=false` turns it off. Scoring never raises — an engine without hidden-state sampling, or any failure, stores `NULL` rather than failing the game.
+EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluator` → `core/eval/rollout.py`), while the live state still exists: a stored decision point does not carry the `ActionId` values or public information `sample_hidden_state` needs to rebuild a world. Experiment create freezes EV knobs into `protocol.scorer.evaluator` (from Settings); scoring prefers that snapshot over the process default. It costs roughly 100 ms of local CPU per move and no API budget; `EV_LOSS_ENABLED=false` turns it off. Scoring never raises — an engine without hidden-state sampling, or any failure, stores `NULL` rather than failing the game.
 
 ### LLM VCR (record / replay)
 

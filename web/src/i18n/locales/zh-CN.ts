@@ -786,6 +786,7 @@ export default {
     highlightsTitle: '本局高光',
     jumpToMove: '跳到这一手',
     viewDecision: '决策点',
+    evExplain: 'AI {ai} · EV最优 {best} · 让出 {loss}',
     highlight: {
       last_play: '最后一手',
       blunder: '失误',
