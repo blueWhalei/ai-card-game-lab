@@ -245,9 +245,7 @@ class GameEngine(ABC):
             return f"{action.action_type} {action.target}"
         return str(action.action_type)
 
-    def order_legal_actions(
-        self, state: GameState, actions: list[GameAction]
-    ) -> list[GameAction]:
+    def order_legal_actions(self, state: GameState, actions: list[GameAction]) -> list[GameAction]:
         """Stable presentation order for legal actions. Override per game."""
         del state  # generic order keeps engine order
         return list(actions)
@@ -314,9 +312,7 @@ class GameEngine(ABC):
         presented = [entry for entry in legal if entry.id in picked]
         return presented, len(legal) - len(presented)
 
-    def resolve_action(
-        self, state: GameState, player_id: str, action_id: ActionId
-    ) -> GameAction:
+    def resolve_action(self, state: GameState, player_id: str, action_id: ActionId) -> GameAction:
         """Map an ``ActionId`` back to a legal action.
 
         Raises:
@@ -345,9 +341,7 @@ class GameEngine(ABC):
             text=self.format_for_prompt(state, player_id),
         )
 
-    def sample_hidden_state(
-        self, observation: Observation, rng: random.Random
-    ) -> GameState:
+    def sample_hidden_state(self, observation: Observation, rng: random.Random) -> GameState:
         """Sample a full state consistent with ``observation`` (determinization).
 
         Required by the rollout evaluator and search policies in imperfect-information
@@ -385,9 +379,7 @@ class GameEngine(ABC):
         ``capability``, which would drag game semantics into ``core/policy``.
         """
         return [
-            tool.name
-            for tool in self.capability.tools
-            if phase is None or tool.applies_to(phase)
+            tool.name for tool in self.capability.tools if phase is None or tool.applies_to(phase)
         ]
 
     def run_tool(
@@ -401,9 +393,7 @@ class GameEngine(ABC):
         for tool in self.capability.tools:
             if tool.name == name:
                 return tool.handler(observation, arguments or {})
-        raise InvalidActionError(
-            name, f"Engine '{self.game_type}' declares no tool named '{name}'"
-        )
+        raise InvalidActionError(name, f"Engine '{self.game_type}' declares no tool named '{name}'")
 
     def terminal_rewards(self, state: GameState) -> dict[str, float]:
         """Per-player payoff of a finished game.
@@ -567,7 +557,6 @@ class GameEngine(ABC):
             >>> print(prompt)
             "你的手牌: [♠A, ♥K, ♦Q]\\n对手剩余: 5张\\n..."
         """
-
 
     @abstractmethod
     def get_public_info(

@@ -48,9 +48,7 @@ class TestWebSocketHandlers:
         orchestration: MagicMock,
     ) -> None:
         mock_ws = AsyncMock(spec=WebSocket)
-        mock_ws.receive_json = AsyncMock(
-            side_effect=[{"type": "ping"}, WebSocketDisconnect()]
-        )
+        mock_ws.receive_json = AsyncMock(side_effect=[{"type": "ping"}, WebSocketDisconnect()])
         mock_ws.send_json = AsyncMock()
 
         with patch("app.websocket.handlers.ws_manager") as mock_manager:
@@ -71,9 +69,7 @@ class TestWebSocketHandlers:
             mock_manager.connect = AsyncMock(side_effect=ConnectionError("Failed"))
 
             with pytest.raises(ConnectionError):
-                await handle_game_websocket(
-                    mock_websocket, "test_game_id", orchestration
-                )
+                await handle_game_websocket(mock_websocket, "test_game_id", orchestration)
 
     @pytest.mark.asyncio
     async def test_handle_game_websocket_sends_observer_snapshot(
@@ -91,8 +87,10 @@ class TestWebSocketHandlers:
 
             await handle_game_websocket(mock_ws, "game-snap", orchestration)
 
-            mock_ws.send_json.assert_called_once_with({
-                "type": "state_update",
-                "game_id": "game-snap",
-                "data": {"game_type": "doudizhu"},
-            })
+            mock_ws.send_json.assert_called_once_with(
+                {
+                    "type": "state_update",
+                    "game_id": "game-snap",
+                    "data": {"game_type": "doudizhu"},
+                }
+            )

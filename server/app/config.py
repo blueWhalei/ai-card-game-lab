@@ -75,4 +75,3 @@ class Settings(BaseSettings):
 
     # Puzzle pack root. Empty → {data_dir}/puzzles.
     puzzle_dir: str = ""
-

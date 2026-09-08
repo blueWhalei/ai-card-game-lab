@@ -47,9 +47,7 @@ def test_include_thinking_only_on_rejected() -> None:
 
 
 def test_skip_missing_best() -> None:
-    record, skip = build_preference_pair(
-        _item(evaluator_params={"determinizations": 4})
-    )
+    record, skip = build_preference_pair(_item(evaluator_params={"determinizations": 4}))
     assert record is None
     assert skip == "missing_best"
 

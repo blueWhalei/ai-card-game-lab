@@ -27,13 +27,28 @@ from app.core.engine.observation import Observation
 from app.utils.exceptions import InvalidActionError
 
 RANK_DISPLAY: dict[str, str] = {
-    "3": "3", "4": "4", "5": "5", "6": "6", "7": "7",
-    "8": "8", "9": "9", "T": "10", "J": "J", "Q": "Q",
-    "K": "K", "A": "A", "2": "2", "BJ": "小王", "RJ": "大王",
+    "3": "3",
+    "4": "4",
+    "5": "5",
+    "6": "6",
+    "7": "7",
+    "8": "8",
+    "9": "9",
+    "T": "10",
+    "J": "J",
+    "Q": "Q",
+    "K": "K",
+    "A": "A",
+    "2": "2",
+    "BJ": "小王",
+    "RJ": "大王",
 }
 
 SUIT_DISPLAY: dict[str, str] = {
-    "S": "♠", "H": "♥", "D": "♦", "C": "♣",
+    "S": "♠",
+    "H": "♥",
+    "D": "♦",
+    "C": "♣",
 }
 
 
@@ -55,7 +70,9 @@ class DoudizhuState(GameState):
     hands: dict[str, list[str]] = field(default_factory=dict)
     roles: dict[str, str] = field(default_factory=dict)
     landlord_cards: list[str] = field(default_factory=list)
-    last_play: tuple[str, ActionType, int, list[str]] | None = None  # (player_id, type, power, cards)
+    last_play: tuple[str, ActionType, int, list[str]] | None = (
+        None  # (player_id, type, power, cards)
+    )
     consecutive_passes: int = 0
     play_history: list[dict[str, Any]] = field(default_factory=list)
     turn_order: list[str] = field(default_factory=list)
@@ -64,7 +81,9 @@ class DoudizhuState(GameState):
     phase: str = "playing"  # "bidding" | "playing"
     bid_order: list[str] = field(default_factory=list)
     bid_index: int = 0
-    current_bids: dict[str, int] = field(default_factory=dict)  # player_id -> score (0=not bid yet / passed)
+    current_bids: dict[str, int] = field(
+        default_factory=dict
+    )  # player_id -> score (0=not bid yet / passed)
     current_highest_bid: int = 0
     current_highest_bidder: str = ""
 
@@ -169,9 +188,7 @@ class DoudizhuEngine(GameEngine):
         cards_str = " ".join(sort_cards(action.cards)) if action.cards else ""
         return f"{action.action_type}: [{cards_str}]"
 
-    def order_legal_actions(
-        self, state: GameState, actions: list[GameAction]
-    ) -> list[GameAction]:
+    def order_legal_actions(self, state: GameState, actions: list[GameAction]) -> list[GameAction]:
         del state
 
         def sort_key(a: GameAction) -> tuple[int, int]:
@@ -239,7 +256,14 @@ class DoudizhuEngine(GameEngine):
             actions = [GameAction(player_id=player_id, action_type=ActionType.BID_PASS)]
             for score in (1, 2, 3):
                 if score > s.current_highest_bid:
-                    actions.append(GameAction(player_id=player_id, action_type=ActionType.BID, cards=[], target=str(score)))
+                    actions.append(
+                        GameAction(
+                            player_id=player_id,
+                            action_type=ActionType.BID,
+                            cards=[],
+                            target=str(score),
+                        )
+                    )
             return actions
 
         # Playing phase
@@ -283,12 +307,14 @@ class DoudizhuEngine(GameEngine):
             s.last_play = (action.player_id, atype, power, action.cards)
             s.consecutive_passes = 0
 
-        s.play_history.append({
-            "round": s.round,
-            "player_id": action.player_id,
-            "action_type": action.action_type,
-            "cards": action.cards,
-        })
+        s.play_history.append(
+            {
+                "round": s.round,
+                "player_id": action.player_id,
+                "action_type": action.action_type,
+                "cards": action.cards,
+            }
+        )
 
         # Check terminal
         if not s.hands.get(action.player_id):
@@ -314,7 +340,9 @@ class DoudizhuEngine(GameEngine):
         if action.action_type == ActionType.BID:
             score = int(action.target or 1)
             if score <= s.current_highest_bid:
-                raise InvalidActionError(str(action.action_type), "Bid must exceed current highest bid")
+                raise InvalidActionError(
+                    str(action.action_type), "Bid must exceed current highest bid"
+                )
             s.current_bids[player_id] = score
             s.current_highest_bid = score
             s.current_highest_bidder = player_id
@@ -326,13 +354,15 @@ class DoudizhuEngine(GameEngine):
         else:
             raise InvalidActionError(str(action.action_type), "Invalid bidding action")
 
-        s.play_history.append({
-            "round": s.round,
-            "player_id": player_id,
-            "action_type": action.action_type,
-            "cards": [],
-            "bid_score": int(action.target or 0) if action.action_type == ActionType.BID else 0,
-        })
+        s.play_history.append(
+            {
+                "round": s.round,
+                "player_id": player_id,
+                "action_type": action.action_type,
+                "cards": [],
+                "bid_score": int(action.target or 0) if action.action_type == ActionType.BID else 0,
+            }
+        )
 
         # Advance to next bidder
         s.bid_index += 1
@@ -413,9 +443,7 @@ class DoudizhuEngine(GameEngine):
             text=self.format_for_prompt(state, player_id),
         )
 
-    def sample_hidden_state(
-        self, observation: Observation, rng: random.Random
-    ) -> DoudizhuState:
+    def sample_hidden_state(self, observation: Observation, rng: random.Random) -> DoudizhuState:
         """Deal the unseen cards at random, respecting everything the viewer knows.
 
         Known: own hand, every played card, hand sizes, and -- once a landlord
@@ -429,19 +457,13 @@ class DoudizhuEngine(GameEngine):
         own_hand: list[str] = list(observation.private.get("hand_cards", []))
         landlord_cards: list[str] = list(pub.get("landlord_cards", []))
 
-        played = {
-            card
-            for entry in pub["play_history"]
-            for card in entry.get("cards", [])
-        }
+        played = {card for entry in pub["play_history"] for card in entry.get("cards", [])}
         accounted = set(own_hand) | played
         unknown = [card for card in FULL_DECK if card not in accounted]
 
         others = [pid for pid in player_ids if pid != viewer]
         forced: dict[str, list[str]] = {pid: [] for pid in others}
-        landlord_id = next(
-            (pid for pid, role in pub["roles"].items() if role == "landlord"), None
-        )
+        landlord_id = next((pid for pid, role in pub["roles"].items() if role == "landlord"), None)
         if landlord_id in forced:
             bottom_in_hand = [card for card in landlord_cards if card in set(unknown)]
             forced[landlord_id] = bottom_in_hand
@@ -535,11 +557,7 @@ class DoudizhuEngine(GameEngine):
                 return bids[score].id
 
         return next(
-            (
-                la.id
-                for la in legal_actions
-                if la.action.action_type == ActionType.BID_PASS
-            ),
+            (la.id for la in legal_actions if la.action.action_type == ActionType.BID_PASS),
             None,
         )
 
@@ -555,9 +573,7 @@ class DoudizhuEngine(GameEngine):
         if not plays:
             return pass_action.id if pass_action else legal_actions[0].id
 
-        cheap = [
-            la for la in plays if la.action.action_type not in _NUCLEAR_TYPES
-        ]
+        cheap = [la for la in plays if la.action.action_type not in _NUCLEAR_TYPES]
         leading = pub.get("last_play") is None or int(pub.get("consecutive_passes", 0)) >= 2
 
         if leading:
@@ -611,9 +627,7 @@ class DoudizhuEngine(GameEngine):
         winning_role = s.roles.get(winner)
         if winning_role is None:
             return {pid: 1.0 if pid == winner else 0.0 for pid in s.player_ids}
-        return {
-            pid: 1.0 if s.roles.get(pid) == winning_role else 0.0 for pid in s.player_ids
-        }
+        return {pid: 1.0 if s.roles.get(pid) == winning_role else 0.0 for pid in s.player_ids}
 
     def is_terminal(self, state: GameState) -> bool:
         return state.is_terminal
@@ -700,7 +714,9 @@ class DoudizhuEngine(GameEngine):
             lp_role = s.roles.get(lp_player, "unknown")
             lp_role_cn = "地主" if lp_role == "landlord" else "农民"
 
-            lines.append(f"- 上家 {lp_player}（{lp_role_cn}）出了 {lp_type}：{_display_cards(lp_cards)}")
+            lines.append(
+                f"- 上家 {lp_player}（{lp_role_cn}）出了 {lp_type}：{_display_cards(lp_cards)}"
+            )
 
             # Add strategic hint based on relationship
             if role == "peasant":
@@ -731,7 +747,6 @@ class DoudizhuEngine(GameEngine):
                     )
 
         return "\n".join(lines)
-
 
     def get_public_info(
         self, state: GameState, viewer_id: str, is_observer: bool = False

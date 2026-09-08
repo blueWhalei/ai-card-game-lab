@@ -197,10 +197,7 @@ def load_pack(root: Path) -> tuple[PuzzlePackManifest, list[Puzzle]]:
         msg = f"expected kind {PUZZLE_PACK_KIND!r}, got {raw.get('kind')!r}"
         raise ValueError(msg)
     if raw.get("schema_version") != PUZZLE_SCHEMA_VERSION:
-        msg = (
-            f"expected schema_version {PUZZLE_SCHEMA_VERSION}, "
-            f"got {raw.get('schema_version')!r}"
-        )
+        msg = f"expected schema_version {PUZZLE_SCHEMA_VERSION}, got {raw.get('schema_version')!r}"
         raise ValueError(msg)
 
     manifest = PuzzlePackManifest.from_dict(raw)

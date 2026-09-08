@@ -93,9 +93,7 @@ class ExperimentRepository:
         return _row_to_dict(row)
 
     async def list_all(self) -> list[dict[str, Any]]:
-        cursor = await self._db.execute(
-            "SELECT * FROM experiments ORDER BY created_at DESC"
-        )
+        cursor = await self._db.execute("SELECT * FROM experiments ORDER BY created_at DESC")
         rows = await cursor.fetchall()
         return [_row_to_dict(row) for row in rows]
 
@@ -429,9 +427,7 @@ class ExperimentRepository:
 
         landlord_games, landlord_wins = seat_as_landlord_counts(seat_rows)
         tokens_total = int(tokens_raw) if tokens_raw is not None else 0
-        tokens_per_game = (
-            round(tokens_total / finished_games, 2) if finished_games > 0 else 0.0
-        )
+        tokens_per_game = round(tokens_total / finished_games, 2) if finished_games > 0 else 0.0
         # Rates (train / parser / landlord WR) come from Scorer overlay in the service.
         scenario_scores = await self._scenario_aggregates(experiment_id)
 

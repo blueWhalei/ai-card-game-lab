@@ -108,9 +108,7 @@ def observation_from_dict(data: dict[str, Any]) -> Observation:
     )
 
 
-def legal_actions_from_dicts(
-    rows: list[dict[str, Any]], *, player_id: str
-) -> list[LegalAction]:
+def legal_actions_from_dicts(rows: list[dict[str, Any]], *, player_id: str) -> list[LegalAction]:
     """Rebuild ``LegalAction`` rows from frozen puzzle JSON."""
     result: list[LegalAction] = []
     for row in rows:
@@ -241,12 +239,8 @@ class PuzzleService:
         scores: list[PuzzleAnswerScore] = []
         for puzzle in puzzles:
             observation = observation_from_dict(puzzle.observation)
-            legal = legal_actions_from_dicts(
-                puzzle.legal_actions, player_id=observation.player_id
-            )
-            chosen_id = await self._decide_action_id(
-                policy, observation, legal, budget, ctx
-            )
+            legal = legal_actions_from_dicts(puzzle.legal_actions, player_id=observation.player_id)
+            chosen_id = await self._decide_action_id(policy, observation, legal, budget, ctx)
             answer = score_answer(puzzle.best_action_id, puzzle.action_values, chosen_id)
             scores.append(answer)
             rows.append(
@@ -340,39 +334,27 @@ class PuzzleService:
             base_rng = random.Random(self._probe_seed(seed, puzzle.puzzle_id, -1))
             base_ctx = PolicyContext(advisor=engine, rng=base_rng)
             observation = observation_from_dict(puzzle.observation)
-            legal = legal_actions_from_dicts(
-                puzzle.legal_actions, player_id=observation.player_id
-            )
-            base_chosen = await self._decide_action_id(
-                policy, observation, legal, budget, base_ctx
-            )
-            base_answer = score_answer(
-                puzzle.best_action_id, puzzle.action_values, base_chosen
-            )
+            legal = legal_actions_from_dicts(puzzle.legal_actions, player_id=observation.player_id)
+            base_chosen = await self._decide_action_id(policy, observation, legal, budget, base_ctx)
+            base_answer = score_answer(puzzle.best_action_id, puzzle.action_values, base_chosen)
             base_scores.append(base_answer)
 
             trials: list[dict[str, Any]] = []
             for trial in range(n_trials):
-                trial_rng = random.Random(
-                    self._probe_seed(seed, puzzle.puzzle_id, trial)
-                )
+                trial_rng = random.Random(self._probe_seed(seed, puzzle.puzzle_id, trial))
                 pert = perturb_puzzle(puzzle, active_kinds, trial_rng)
                 pert_obs = observation_from_dict(pert.observation)
                 pert_legal = legal_actions_from_dicts(
                     pert.legal_actions, player_id=pert_obs.player_id
                 )
-                decide_rng = random.Random(
-                    self._probe_seed(seed, puzzle.puzzle_id, trial + 10_000)
-                )
+                decide_rng = random.Random(self._probe_seed(seed, puzzle.puzzle_id, trial + 10_000))
                 pert_ctx = PolicyContext(advisor=engine, rng=decide_rng)
                 pert_chosen = await self._decide_action_id(
                     policy, pert_obs, pert_legal, budget, pert_ctx
                 )
                 consistent = pert_chosen == base_chosen
                 consistent_flags.append(consistent)
-                pert_answer = score_answer(
-                    puzzle.best_action_id, puzzle.action_values, pert_chosen
-                )
+                pert_answer = score_answer(puzzle.best_action_id, puzzle.action_values, pert_chosen)
                 pert_scores.append(pert_answer)
                 trials.append(
                     {
@@ -402,21 +384,15 @@ class PuzzleService:
             "n_trials": n_trials,
             "kinds": active_kinds,
             "consistency": (
-                round(sum(1 for flag in consistent_flags if flag) / n_flags, 4)
-                if n_flags
-                else 0.0
+                round(sum(1 for flag in consistent_flags if flag) / n_flags, 4) if n_flags else 0.0
             ),
-            "base_accuracy": (
-                round(sum(1 for s in base_scores if s.hit) / n, 4) if n else 0.0
-            ),
+            "base_accuracy": (round(sum(1 for s in base_scores if s.hit) / n, 4) if n else 0.0),
             "pert_accuracy": (
                 round(sum(1 for s in pert_scores if s.hit) / len(pert_scores), 4)
                 if pert_scores
                 else 0.0
             ),
-            "base_mean_ev_loss": (
-                round(sum(s.ev_loss for s in base_scores) / n, 4) if n else 0.0
-            ),
+            "base_mean_ev_loss": (round(sum(s.ev_loss for s in base_scores) / n, 4) if n else 0.0),
             "pert_mean_ev_loss": (
                 round(sum(s.ev_loss for s in pert_scores) / len(pert_scores), 4)
                 if pert_scores
@@ -476,17 +452,13 @@ class PuzzleService:
         return chosen.action_id
 
     @staticmethod
-    def _summarize(
-        results: list[PuzzleAnswerScore], puzzles: list[Puzzle]
-    ) -> dict[str, Any]:
+    def _summarize(results: list[PuzzleAnswerScore], puzzles: list[Puzzle]) -> dict[str, Any]:
         n = len(results)
         hits = sum(1 for result in results if result.hit)
         return {
             "n": n,
             "accuracy": round(hits / n, 4) if n else 0.0,
-            "mean_ev_loss": (
-                round(sum(result.ev_loss for result in results) / n, 4) if n else 0.0
-            ),
+            "mean_ev_loss": (round(sum(result.ev_loss for result in results) / n, 4) if n else 0.0),
             "truncated_n": sum(1 for puzzle in puzzles if puzzle.truncated),
         }
 
@@ -523,12 +495,10 @@ class PuzzleService:
                 if str(g.get("status")) == "finished"
             ]
             rounds_by_game = {
-                str(g["id"]): await RoundRepository(db).list_by_game(str(g["id"]))
-                for g in games
+                str(g["id"]): await RoundRepository(db).list_by_game(str(g["id"])) for g in games
             }
             dp_by_game = {
-                str(g["id"]): await self._decision_lookups(db, str(g["id"]))
-                for g in games
+                str(g["id"]): await self._decision_lookups(db, str(g["id"])) for g in games
             }
 
         candidates: list[Puzzle] = []
@@ -619,9 +589,7 @@ class PuzzleService:
 
         evaluator = self._evaluator_for(engine, params)
         try:
-            state = await asyncio.to_thread(
-                rebuild_state, engine, player_ids, deal_seed, []
-            )
+            state = await asyncio.to_thread(rebuild_state, engine, player_ids, deal_seed, [])
         except Exception as error:
             logger.info(
                 "puzzle_extract_skip",
@@ -660,9 +628,7 @@ class PuzzleService:
                 )
 
             cards_raw = row.get("cards")
-            cards = (
-                json.loads(cards_raw) if isinstance(cards_raw, str) else (cards_raw or [])
-            )
+            cards = json.loads(cards_raw) if isinstance(cards_raw, str) else (cards_raw or [])
             action = match_recorded_action(
                 engine,
                 state,
@@ -740,9 +706,7 @@ class PuzzleService:
             evaluator_params=evaluator.params.to_dict(),
         )
 
-    def _evaluator_for(
-        self, engine: GameEngine, params: EvaluatorParams
-    ) -> RolloutEvaluator:
+    def _evaluator_for(self, engine: GameEngine, params: EvaluatorParams) -> RolloutEvaluator:
         key = f"{engine.game_type}:{json.dumps(params.to_dict(), sort_keys=True)}"
         cached = self._evaluators.get(key)
         if cached is None:

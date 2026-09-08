@@ -40,26 +40,27 @@ def sort_cards(cards: list[str]) -> list[str]:
 
 # ── Action types ─────────────────────────────────────
 
+
 class ActionType(StrEnum):
     PASS = "PASS"
     SINGLE = "SINGLE"
     PAIR = "PAIR"
     TRIPLE = "TRIPLE"
-    TRIPLE_ONE = "TRIPLE_ONE"       # 三带一
-    TRIPLE_TWO = "TRIPLE_TWO"       # 三带二
-    BOMB = "BOMB"                   # 炸弹 (4 of a kind)
-    ROCKET = "ROCKET"               # 火箭 (双王)
-    CHAIN = "CHAIN"                 # 顺子 (>=5 consecutive singles)
-    CHAIN_PAIR = "CHAIN_PAIR"       # 连对 (>=3 consecutive pairs)
-    AIRPLANE = "AIRPLANE"           # 飞机不带 (>=2 consecutive triples)
-    AIRPLANE_SOLO = "AIRPLANE_SOLO" # 飞机带单
-    AIRPLANE_PAIR = "AIRPLANE_PAIR" # 飞机带对
-    FOUR_TWO = "FOUR_TWO"          # 四带二 (4 + 2 singles or 2 pairs)
-    BID = "BID"                     # 叫地主 (bidding phase)
-    BID_PASS = "BID_PASS"           # 不叫 (pass in bidding phase)
+    TRIPLE_ONE = "TRIPLE_ONE"  # 三带一
+    TRIPLE_TWO = "TRIPLE_TWO"  # 三带二
+    BOMB = "BOMB"  # 炸弹 (4 of a kind)
+    ROCKET = "ROCKET"  # 火箭 (双王)
+    CHAIN = "CHAIN"  # 顺子 (>=5 consecutive singles)
+    CHAIN_PAIR = "CHAIN_PAIR"  # 连对 (>=3 consecutive pairs)
+    AIRPLANE = "AIRPLANE"  # 飞机不带 (>=2 consecutive triples)
+    AIRPLANE_SOLO = "AIRPLANE_SOLO"  # 飞机带单
+    AIRPLANE_PAIR = "AIRPLANE_PAIR"  # 飞机带对
+    FOUR_TWO = "FOUR_TWO"  # 四带二 (4 + 2 singles or 2 pairs)
+    BID = "BID"  # 叫地主 (bidding phase)
+    BID_PASS = "BID_PASS"  # 不叫 (pass in bidding phase)
 
 
 # Minimum chain lengths
 MIN_CHAIN_LENGTH = 5
-MIN_CHAIN_PAIR_LENGTH = 3   # 3 consecutive pairs = 6 cards
-MIN_AIRPLANE_LENGTH = 2     # 2 consecutive triples
+MIN_CHAIN_PAIR_LENGTH = 3  # 3 consecutive pairs = 6 cards
+MIN_AIRPLANE_LENGTH = 2  # 2 consecutive triples

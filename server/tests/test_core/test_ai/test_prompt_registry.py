@@ -80,9 +80,7 @@ class TestPromptTemplateRegistry:
     async def test_get_specific_version(self, registry: PromptTemplateRegistry) -> None:
         """Should get specific version when requested."""
         content_v3 = await registry.get_template("doudizhu_playing", version="v3")
-        content_reasoning = await registry.get_template(
-            "doudizhu_playing", version="v3_reasoning"
-        )
+        content_reasoning = await registry.get_template("doudizhu_playing", version="v3_reasoning")
 
         assert content_v3 != content_reasoning
         assert "思考请控制" in content_reasoning
@@ -132,9 +130,7 @@ class TestPromptTemplateRegistryDefaults:
         assert "format_instructions" in content
 
     @pytest.mark.asyncio
-    async def test_playing_v3_reasoning_has_budget(
-        self, registry: PromptTemplateRegistry
-    ) -> None:
+    async def test_playing_v3_reasoning_has_budget(self, registry: PromptTemplateRegistry) -> None:
         """v3_reasoning playing template should spell out the thinking budget."""
         content = await registry.get_template("doudizhu_playing", version="v3_reasoning")
 

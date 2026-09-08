@@ -31,9 +31,7 @@ class ArchiveRepository:
 
     async def count_old_games(self, days: int) -> int:
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-        return await self._scalar(
-            "SELECT COUNT(*) FROM games WHERE created_at < ?", [cutoff]
-        )
+        return await self._scalar("SELECT COUNT(*) FROM games WHERE created_at < ?", [cutoff])
 
     async def fetch_old_games(
         self,

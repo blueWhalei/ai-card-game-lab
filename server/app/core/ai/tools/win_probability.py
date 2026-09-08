@@ -32,8 +32,7 @@ class WinProbabilityTool:
 
     name: str = "win_probability"
     description: str = (
-        "估算当前局势的胜率。基于手牌数量、炸弹情况、出牌位置等因素，"
-        "返回胜率百分比和关键因素分析。"
+        "估算当前局势的胜率。基于手牌数量、炸弹情况、出牌位置等因素，返回胜率百分比和关键因素分析。"
     )
 
     def estimate(

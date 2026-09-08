@@ -38,9 +38,7 @@ class DatasetRepository:
         Raises:
             KeyError: If the dataset does not exist.
         """
-        cursor = await self._db.execute(
-            "SELECT * FROM datasets WHERE id = ?", (dataset_id,)
-        )
+        cursor = await self._db.execute("SELECT * FROM datasets WHERE id = ?", (dataset_id,))
         row = await cursor.fetchone()
         if row is None:
             raise KeyError(dataset_id)
@@ -48,9 +46,7 @@ class DatasetRepository:
 
     async def list_all(self) -> list[dict[str, Any]]:
         """Return all datasets ordered by creation time descending."""
-        cursor = await self._db.execute(
-            "SELECT * FROM datasets ORDER BY created_at DESC"
-        )
+        cursor = await self._db.execute("SELECT * FROM datasets ORDER BY created_at DESC")
         rows = await cursor.fetchall()
         return [self._normalize(dict(r)) for r in rows]
 
@@ -60,9 +56,7 @@ class DatasetRepository:
         Raises:
             KeyError: If the dataset does not exist.
         """
-        cursor = await self._db.execute(
-            "SELECT id FROM datasets WHERE id = ?", (dataset_id,)
-        )
+        cursor = await self._db.execute("SELECT id FROM datasets WHERE id = ?", (dataset_id,))
         if await cursor.fetchone() is None:
             raise KeyError(dataset_id)
         await self._db.execute("DELETE FROM datasets WHERE id = ?", (dataset_id,))

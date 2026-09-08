@@ -136,15 +136,20 @@ class GameOrchestrationService:
         def on_task_done(t: asyncio.Task[None]) -> None:
             exc = t.exception()
             if exc:
-                logger.exception("game_loop_task_error", game_id=game_id, error=str(exc), exc_info=True)
+                logger.exception(
+                    "game_loop_task_error", game_id=game_id, error=str(exc), exc_info=True
+                )
 
         task.add_done_callback(on_task_done)
 
-        await ws_manager.broadcast(game_id, {
-            "type": "game_started",
-            "game_id": game_id,
-            "data": engine.get_public_info(state, "observer", is_observer=True),
-        })
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "game_started",
+                "game_id": game_id,
+                "data": engine.get_public_info(state, "observer", is_observer=True),
+            },
+        )
 
         logger.info("game_execution_started", game_id=game_id, deal_seed=seed)
 
@@ -179,9 +184,7 @@ class GameOrchestrationService:
 
                     logger.info("game_loop_waiting_slot", game_id=game_id)
                     async with self._game_slots:
-                        state = await self._run_round(
-                            game_id, state, engine, bg_round_repo
-                        )
+                        state = await self._run_round(game_id, state, engine, bg_round_repo)
                     self._states[game_id] = state
 
                     await asyncio.sleep(0.5)
@@ -217,7 +220,9 @@ class GameOrchestrationService:
         try:
             await game_repo.update_status(game_id, status)
         except Exception:
-            logger.warning("game_abort_status_failed", game_id=game_id, status=status, exc_info=True)
+            logger.warning(
+                "game_abort_status_failed", game_id=game_id, status=status, exc_info=True
+            )
         try:
             await ws_manager.broadcast(
                 game_id,
@@ -253,34 +258,42 @@ class GameOrchestrationService:
         all_hands = {pid: list(cards) for pid, cards in getattr(state, "hands", {}).items()}
         hand_snapshot = list(getattr(state, "hands", {}).get(current_player, []))
 
-        await ws_manager.broadcast(game_id, {
-            "type": "thinking",
-            "game_id": game_id,
-            "data": {
-                "player_id": current_player,
-                "player_name": player_config["name"] if player_config else current_player,
-                "legal_actions": actions_as_dicts(legal_actions),
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "thinking",
+                "game_id": game_id,
+                "data": {
+                    "player_id": current_player,
+                    "player_name": player_config["name"] if player_config else current_player,
+                    "legal_actions": actions_as_dicts(legal_actions),
+                },
             },
-        })
+        )
 
         streamed_chunks: list[StreamChunk] = []
         use_streaming = ws_manager.get_connection_count(game_id) > 0
 
         def on_chunk(chunk: StreamChunk) -> None:
             streamed_chunks.append(chunk)
+
             async def _broadcast_chunk() -> None:
                 try:
-                    await ws_manager.broadcast(game_id, {
-                        "type": "thinking_chunk",
-                        "game_id": game_id,
-                        "data": {
-                            "player_id": current_player,
-                            "chunk": chunk.text,
-                            "chunk_type": chunk.type,
+                    await ws_manager.broadcast(
+                        game_id,
+                        {
+                            "type": "thinking_chunk",
+                            "game_id": game_id,
+                            "data": {
+                                "player_id": current_player,
+                                "chunk": chunk.text,
+                                "chunk_type": chunk.type,
+                            },
                         },
-                    })
+                    )
                 except Exception:
                     logger.warning("broadcast_chunk_failed", game_id=game_id, exc_info=True)
+
             # Fire-and-forget WS chunk; keep a ref so the task is not GC'd mid-flight.
             task = asyncio.create_task(_broadcast_chunk())
             self._chunk_broadcast_tasks.add(task)
@@ -308,22 +321,44 @@ class GameOrchestrationService:
                 game_id=game_id,
             )
         elapsed_ms = int((time.monotonic() - t0) * 1000)
-        full_thinking = "".join(c.text for c in streamed_chunks) if streamed_chunks else decision.thinking
+        full_thinking = (
+            "".join(c.text for c in streamed_chunks) if streamed_chunks else decision.thinking
+        )
 
         new_state = engine.apply_action(state, decision.action)
 
         # Broadcast updates, persist data, record traces
         await self._broadcast_round_events(
-            game_id, current_player, new_state, decision,
-            full_thinking, elapsed_ms, model_cfg, engine, legal_actions,
+            game_id,
+            current_player,
+            new_state,
+            decision,
+            full_thinking,
+            elapsed_ms,
+            model_cfg,
+            engine,
+            legal_actions,
         )
         await self._persist_round(
-            game_id, current_player, new_state, decision,
-            hand_snapshot, all_hands, elapsed_ms, model_cfg, round_repo,
+            game_id,
+            current_player,
+            new_state,
+            decision,
+            hand_snapshot,
+            all_hands,
+            elapsed_ms,
+            model_cfg,
+            round_repo,
         )
         await self._record_trace(
-            game_id, current_player, new_state, decision,
-            hand_snapshot, legal_actions, elapsed_ms, model_cfg,
+            game_id,
+            current_player,
+            new_state,
+            decision,
+            hand_snapshot,
+            legal_actions,
+            elapsed_ms,
+            model_cfg,
         )
 
         return new_state
@@ -342,50 +377,59 @@ class GameOrchestrationService:
     ) -> None:
         """Broadcast thinking_complete, action, and state_update via WebSocket."""
         explain = explain_from_tools(getattr(decision, "tool_results", None))
-        await ws_manager.broadcast(game_id, {
-            "type": "thinking_complete",
-            "game_id": game_id,
-            "data": {
-                "player_id": current_player,
-                "thinking": full_thinking,
-                "response_time_ms": elapsed_ms,
-                "round": new_state.round,
-                "action_preview": {
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "thinking_complete",
+                "game_id": game_id,
+                "data": {
+                    "player_id": current_player,
+                    "thinking": full_thinking,
+                    "response_time_ms": elapsed_ms,
+                    "round": new_state.round,
+                    "action_preview": {
+                        "action_type": str(decision.action.action_type),
+                        "cards": decision.action.cards,
+                        "target": decision.action.target,
+                    },
+                    "prompt_preview": decision.prompt_preview,
+                    "raw_response_preview": decision.raw_response_preview,
+                    "prompt_messages": decision.messages,
+                    "raw_response_full": decision.raw_response,
+                    "prompt_tokens": decision.usage.get("prompt_tokens"),
+                    "completion_tokens": decision.usage.get("completion_tokens"),
+                    "total_tokens": decision.usage.get("total_tokens"),
+                    "model_provider": model_cfg.get("provider"),
+                    "model_name": model_cfg.get("model_name"),
+                    "legal_actions": actions_as_dicts(legal_actions),
+                    "parser_ok": decision.parser_ok,
+                    **explain,
+                },
+            },
+        )
+
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "action",
+                "game_id": game_id,
+                "data": {
+                    "player_id": current_player,
                     "action_type": str(decision.action.action_type),
                     "cards": decision.action.cards,
-                    "target": decision.action.target,
+                    "round": new_state.round,
                 },
-                "prompt_preview": decision.prompt_preview,
-                "raw_response_preview": decision.raw_response_preview,
-                "prompt_messages": decision.messages,
-                "raw_response_full": decision.raw_response,
-                "prompt_tokens": decision.usage.get("prompt_tokens"),
-                "completion_tokens": decision.usage.get("completion_tokens"),
-                "total_tokens": decision.usage.get("total_tokens"),
-                "model_provider": model_cfg.get("provider"),
-                "model_name": model_cfg.get("model_name"),
-                "legal_actions": actions_as_dicts(legal_actions),
-                "parser_ok": decision.parser_ok,
-                **explain,
             },
-        })
+        )
 
-        await ws_manager.broadcast(game_id, {
-            "type": "action",
-            "game_id": game_id,
-            "data": {
-                "player_id": current_player,
-                "action_type": str(decision.action.action_type),
-                "cards": decision.action.cards,
-                "round": new_state.round,
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "state_update",
+                "game_id": game_id,
+                "data": engine.get_public_info(new_state, "observer", is_observer=True),
             },
-        })
-
-        await ws_manager.broadcast(game_id, {
-            "type": "state_update",
-            "game_id": game_id,
-            "data": engine.get_public_info(new_state, "observer", is_observer=True),
-        })
+        )
 
     async def _persist_round(
         self,
@@ -400,44 +444,49 @@ class GameOrchestrationService:
         round_repo: RoundRepository,
     ) -> None:
         """Persist round data to collector and database."""
-        self._collector.record_round(game_id, {
-            "game_id": game_id,
-            "round_num": new_state.round,
-            "player_id": current_player,
-            "action_type": str(decision.action.action_type),
-            "cards": decision.action.cards,
-            "hand_snapshot": hand_snapshot,
-            "all_hands": all_hands,
-            "prompt": decision.messages,
-            "thinking": decision.thinking,
-            "raw_response": decision.raw_response,
-            "response_time_ms": elapsed_ms,
-            "prompt_tokens": decision.usage.get("prompt_tokens"),
-            "completion_tokens": decision.usage.get("completion_tokens"),
-            "total_tokens": decision.usage.get("total_tokens"),
-            "model_provider": model_cfg.get("provider"),
-            "model_name": model_cfg.get("model_name"),
-        })
+        self._collector.record_round(
+            game_id,
+            {
+                "game_id": game_id,
+                "round_num": new_state.round,
+                "player_id": current_player,
+                "action_type": str(decision.action.action_type),
+                "cards": decision.action.cards,
+                "hand_snapshot": hand_snapshot,
+                "all_hands": all_hands,
+                "prompt": decision.messages,
+                "thinking": decision.thinking,
+                "raw_response": decision.raw_response,
+                "response_time_ms": elapsed_ms,
+                "prompt_tokens": decision.usage.get("prompt_tokens"),
+                "completion_tokens": decision.usage.get("completion_tokens"),
+                "total_tokens": decision.usage.get("total_tokens"),
+                "model_provider": model_cfg.get("provider"),
+                "model_name": model_cfg.get("model_name"),
+            },
+        )
 
         now = datetime.now(tz=UTC).isoformat()
-        await round_repo.create({
-            "game_id": game_id,
-            "round_num": new_state.round,
-            "player_id": current_player,
-            "action_type": str(decision.action.action_type),
-            "cards": decision.action.cards,
-            "hand_snapshot": hand_snapshot,
-            "all_hands": all_hands,
-            "prompt": decision.messages,
-            "raw_response": decision.raw_response,
-            "prompt_tokens": decision.usage.get("prompt_tokens"),
-            "completion_tokens": decision.usage.get("completion_tokens"),
-            "total_tokens": decision.usage.get("total_tokens"),
-            "response_time_ms": elapsed_ms,
-            "model_provider": model_cfg.get("provider"),
-            "model_name": model_cfg.get("model_name"),
-            "created_at": now,
-        })
+        await round_repo.create(
+            {
+                "game_id": game_id,
+                "round_num": new_state.round,
+                "player_id": current_player,
+                "action_type": str(decision.action.action_type),
+                "cards": decision.action.cards,
+                "hand_snapshot": hand_snapshot,
+                "all_hands": all_hands,
+                "prompt": decision.messages,
+                "raw_response": decision.raw_response,
+                "prompt_tokens": decision.usage.get("prompt_tokens"),
+                "completion_tokens": decision.usage.get("completion_tokens"),
+                "total_tokens": decision.usage.get("total_tokens"),
+                "response_time_ms": elapsed_ms,
+                "model_provider": model_cfg.get("provider"),
+                "model_name": model_cfg.get("model_name"),
+                "created_at": now,
+            }
+        )
 
     async def _record_trace(
         self,
@@ -456,10 +505,7 @@ class GameOrchestrationService:
 
         try:
             explain = explain_from_tools(getattr(decision, "tool_results", None))
-            legal = [
-                {"action_type": str(a.action_type), "cards": a.cards}
-                for a in legal_actions
-            ]
+            legal = [{"action_type": str(a.action_type), "cards": a.cards} for a in legal_actions]
             trace_id = await self._trace_service.create_trace(
                 game_id=game_id,
                 round_number=new_state.round,
@@ -531,9 +577,7 @@ class GameOrchestrationService:
                 span_type="win_probability_estimation",
                 start_time=now_iso,
                 end_time=now_iso,
-                data=explain_from_tools(
-                    {"win_probability": tool_results["win_probability"]}
-                ),
+                data=explain_from_tools({"win_probability": tool_results["win_probability"]}),
             )
 
     async def _finish_game(
@@ -566,24 +610,30 @@ class GameOrchestrationService:
             metadata_patch=metadata_patch or None,
         )
 
-        self._collector.end_game(game_id, {
-            "winner_id": winner,
-            "winner_role": state.winner_role,
-            "total_rounds": state.round,
-        })
-
-        winner_config = self._resolve_player_config(game_id, winner) if winner else None
-
-        await ws_manager.broadcast(game_id, {
-            "type": "game_ended",
-            "game_id": game_id,
-            "data": {
+        self._collector.end_game(
+            game_id,
+            {
                 "winner_id": winner,
-                "winner_name": winner_config["name"] if winner_config else winner,
                 "winner_role": state.winner_role,
                 "total_rounds": state.round,
             },
-        })
+        )
+
+        winner_config = self._resolve_player_config(game_id, winner) if winner else None
+
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "game_ended",
+                "game_id": game_id,
+                "data": {
+                    "winner_id": winner,
+                    "winner_name": winner_config["name"] if winner_config else winner,
+                    "winner_role": state.winner_role,
+                    "total_rounds": state.round,
+                },
+            },
+        )
 
         self._states.pop(game_id, None)
         self._tasks.pop(game_id, None)
@@ -617,10 +667,13 @@ class GameOrchestrationService:
         async with connect_sqlite(self._sqlite_path) as db:
             repo = GameRepository(db)
             await repo.update_status(game_id, "paused")
-        await ws_manager.broadcast(game_id, {
-            "type": "game_paused",
-            "game_id": game_id,
-        })
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "game_paused",
+                "game_id": game_id,
+            },
+        )
 
     async def resume_game(self, game_id: str) -> None:
         """Resume a paused game."""
@@ -631,10 +684,13 @@ class GameOrchestrationService:
         async with connect_sqlite(self._sqlite_path) as db:
             repo = GameRepository(db)
             await repo.update_status(game_id, "running")
-        await ws_manager.broadcast(game_id, {
-            "type": "game_resumed",
-            "game_id": game_id,
-        })
+        await ws_manager.broadcast(
+            game_id,
+            {
+                "type": "game_resumed",
+                "game_id": game_id,
+            },
+        )
 
     async def cancel_game(self, game_id: str) -> bool:
         """Cancel an in-memory game loop. Returns False if the game was not active."""

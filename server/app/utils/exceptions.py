@@ -93,9 +93,7 @@ class InvalidPlayerCountError(AppError):
         if min_players == max_players:
             message = f"{game_type} 需要恰好 {min_players} 名选手，当前为 {got}"
         else:
-            message = (
-                f"{game_type} 需要 {min_players}-{max_players} 名选手，当前为 {got}"
-            )
+            message = f"{game_type} 需要 {min_players}-{max_players} 名选手，当前为 {got}"
         super().__init__(
             message=message,
             code="INVALID_PLAYER_COUNT",

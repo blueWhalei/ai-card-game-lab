@@ -134,9 +134,7 @@ async def test_create_training_task_rejects_max_steps_zero(client: AsyncClient) 
     assert res.status_code == 422
 
 
-async def test_create_training_task_without_max_steps(
-    client: AsyncClient, monkeypatch
-) -> None:
+async def test_create_training_task_without_max_steps(client: AsyncClient, monkeypatch) -> None:
     """Create with max_steps omitted must succeed (FE contract)."""
     import app.core.training.sft as sft_mod
     import app.services.training_service as svc_mod
@@ -237,7 +235,7 @@ async def test_create_and_list_task_by_experiment(client: AsyncClient, monkeypat
             json={
                 "name": "exp-linked",
                 "dataset_id": dataset_id,
-                    "experiment_id": exp_id,
+                "experiment_id": exp_id,
                 "config": {},
             },
         )

@@ -219,9 +219,7 @@ class VcrLLMClient(LLMClient):
         if not isinstance(content, str):
             raise VcrMissError(key)
         usage_raw = response.get("usage") or {}
-        usage: dict[str, int | None] = (
-            dict(usage_raw) if isinstance(usage_raw, dict) else {}
-        )
+        usage: dict[str, int | None] = dict(usage_raw) if isinstance(usage_raw, dict) else {}
         return ChatResponse(content=content, usage=usage)
 
     async def _replay_stream(self, key: str) -> AsyncGenerator[StreamChunk, None]:

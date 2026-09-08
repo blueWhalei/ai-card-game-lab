@@ -208,7 +208,5 @@ class Policy(ABC):
             if isinstance(event, ActionChosen):
                 chosen = event
         if chosen is None:
-            raise InvalidActionError(
-                self.kind, "Policy finished without choosing an action"
-            )
+            raise InvalidActionError(self.kind, "Policy finished without choosing an action")
         return chosen

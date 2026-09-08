@@ -30,10 +30,13 @@ async def test_create_game(client: AsyncClient) -> None:
 
 async def test_get_game(client: AsyncClient) -> None:
     # Create first
-    res = await client.post("/api/v1/games", json={
-        "game_type": "doudizhu",
-        "player_ids": VALID_PLAYER_IDS,
-    })
+    res = await client.post(
+        "/api/v1/games",
+        json={
+            "game_type": "doudizhu",
+            "player_ids": VALID_PLAYER_IDS,
+        },
+    )
     game_id = res.json()["data"]["id"]
     # Get
     response = await client.get(f"/api/v1/games/{game_id}")

@@ -136,9 +136,7 @@ async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
         assert "policy_kind" in await _columns(db, "experiment_configs")
-        cursor = await db.execute(
-            "SELECT policy_kind FROM experiment_configs WHERE id = 'cfg_a'"
-        )
+        cursor = await db.execute("SELECT policy_kind FROM experiment_configs WHERE id = 'cfg_a'")
         row = await cursor.fetchone()
         assert row is not None
         assert row[0] == "llm"

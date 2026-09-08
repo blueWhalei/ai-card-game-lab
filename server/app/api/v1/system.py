@@ -57,9 +57,7 @@ async def preflight(
     experiment_id: str | None = None,
     service: SystemService = Depends(get_system_service),
 ) -> ApiResponse[dict[str, Any]]:
-    return ApiResponse(
-        data=await service.get_preflight(scope=scope, experiment_id=experiment_id)
-    )
+    return ApiResponse(data=await service.get_preflight(scope=scope, experiment_id=experiment_id))
 
 
 @router.post("/seed-demo")

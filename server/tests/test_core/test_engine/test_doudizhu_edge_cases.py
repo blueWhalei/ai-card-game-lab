@@ -74,11 +74,14 @@ class TestDoudizhuEngineBiddingPhase:
         state = engine.initialize(player_ids)
         current_player = state.current_player
 
-        state = engine.apply_action(state, GameAction(
-            player_id=current_player,
-            action_type=ActionType.BID,
-            target="2",
-        ))
+        state = engine.apply_action(
+            state,
+            GameAction(
+                player_id=current_player,
+                action_type=ActionType.BID,
+                target="2",
+            ),
+        )
 
         next_player = state.current_player
         legal_actions = engine.get_legal_actions(state, next_player)
@@ -98,11 +101,14 @@ class TestDoudizhuEngineBiddingPhase:
         state = engine.initialize(player_ids)
         current_player = state.current_player
 
-        state = engine.apply_action(state, GameAction(
-            player_id=current_player,
-            action_type=ActionType.BID,
-            target="3",
-        ))
+        state = engine.apply_action(
+            state,
+            GameAction(
+                player_id=current_player,
+                action_type=ActionType.BID,
+                target="3",
+            ),
+        )
 
         assert state.phase == "playing"
         assert state.roles[current_player] == "landlord"
@@ -117,10 +123,13 @@ class TestDoudizhuEngineBiddingPhase:
 
         for _ in player_ids:
             current = state.current_player
-            state = engine.apply_action(state, GameAction(
-                player_id=current,
-                action_type=ActionType.BID_PASS,
-            ))
+            state = engine.apply_action(
+                state,
+                GameAction(
+                    player_id=current,
+                    action_type=ActionType.BID_PASS,
+                ),
+            )
 
         assert state.is_terminal
         assert state.winner_role == "no_bid"
@@ -136,11 +145,14 @@ class TestDoudizhuEngineBiddingPhase:
         current = state.current_player
         other = next(pid for pid in player_ids if pid != current)
         with pytest.raises(InvalidActionError):
-            engine.apply_action(state, GameAction(
-                player_id=other,
-                action_type=ActionType.BID,
-                target="1",
-            ))
+            engine.apply_action(
+                state,
+                GameAction(
+                    player_id=other,
+                    action_type=ActionType.BID,
+                    target="1",
+                ),
+            )
 
 
 class TestDoudizhuEnginePlayingPhase:
@@ -154,14 +166,20 @@ class TestDoudizhuEnginePlayingPhase:
         """Test that 2 consecutive passes allow free play."""
         state = self._skip_to_playing_phase(engine, player_ids)
 
-        state = engine.apply_action(state, GameAction(
-            player_id=state.current_player,
-            action_type=ActionType.PASS,
-        ))
-        state = engine.apply_action(state, GameAction(
-            player_id=state.current_player,
-            action_type=ActionType.PASS,
-        ))
+        state = engine.apply_action(
+            state,
+            GameAction(
+                player_id=state.current_player,
+                action_type=ActionType.PASS,
+            ),
+        )
+        state = engine.apply_action(
+            state,
+            GameAction(
+                player_id=state.current_player,
+                action_type=ActionType.PASS,
+            ),
+        )
 
         legal_actions = engine.get_legal_actions(state, state.current_player)
         pass_actions = [a for a in legal_actions if a.action_type == ActionType.PASS]
@@ -175,15 +193,21 @@ class TestDoudizhuEnginePlayingPhase:
         """Skip bidding phase to get to playing phase."""
         state = engine.initialize(player_ids)
         current_player = state.current_player
-        state = engine.apply_action(state, GameAction(
-            player_id=current_player,
-            action_type=ActionType.BID,
-            target="1",
-        ))
+        state = engine.apply_action(
+            state,
+            GameAction(
+                player_id=current_player,
+                action_type=ActionType.BID,
+                target="1",
+            ),
+        )
         for _ in range(2):
             current = state.current_player
-            state = engine.apply_action(state, GameAction(
-                player_id=current,
-                action_type=ActionType.BID_PASS,
-            ))
+            state = engine.apply_action(
+                state,
+                GameAction(
+                    player_id=current,
+                    action_type=ActionType.BID_PASS,
+                ),
+            )
         return state

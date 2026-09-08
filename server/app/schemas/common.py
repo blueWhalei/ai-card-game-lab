@@ -22,4 +22,3 @@ class PaginatedData(BaseModel, Generic[T]):
     total: int
     page: int
     page_size: int
-

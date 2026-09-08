@@ -47,9 +47,7 @@ def _estimate_win_probability(
     cards = _hand_cards(observation)
     hand_counts = observation.public.get("hand_counts") or {}
     opponent_counts = {
-        pid: int(count)
-        for pid, count in hand_counts.items()
-        if pid != observation.player_id
+        pid: int(count) for pid, count in hand_counts.items() if pid != observation.player_id
     }
     roles = observation.public.get("roles") or {}
     analysis = _analyzer.analyze(cards)

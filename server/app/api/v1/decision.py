@@ -126,9 +126,7 @@ async def list_decision_points(
     max_quality: float | None = Query(None, description="Maximum quality score"),
     game_phase: str | None = Query(None, description="Filter by game phase"),
     outcome: str | None = Query(None, description="Filter by outcome (win/lose/draw)"),
-    train_usable: bool | None = Query(
-        None, description="Filter by train_usable flag (true/false)"
-    ),
+    train_usable: bool | None = Query(None, description="Filter by train_usable flag (true/false)"),
     max_ev_loss: float | None = Query(
         None, description="Keep moves at or below this EV loss (unevaluated moves are kept)"
     ),

@@ -39,11 +39,7 @@ def build_protocol(
     prompts: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frozen experiment protocol written at create time."""
-    engine = {
-        key: protocol_fingerprint[key]
-        for key in _ENGINE_KEYS
-        if key in protocol_fingerprint
-    }
+    engine = {key: protocol_fingerprint[key] for key in _ENGINE_KEYS if key in protocol_fingerprint}
     scorer: dict[str, Any] = {
         "eval_metric_ids": list(protocol_fingerprint.get("eval_metric_ids") or []),
     }

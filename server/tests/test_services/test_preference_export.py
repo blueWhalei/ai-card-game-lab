@@ -107,9 +107,7 @@ class TestExportPreferences:
         assert json.loads(record["chosen"])["action_id"] == "PLAY|3|"
         assert json.loads(record["rejected"])["action_id"] == "PASS||"
 
-    async def test_skips_missing_best_and_gap(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_skips_missing_best_and_gap(self, decision_service: DecisionService) -> None:
         await decision_service.create_decision_point(
             game_id="game-1",
             round_number=1,

@@ -63,9 +63,7 @@ class GameService:
 
     def _validate_player_ids(self, player_ids: list[str]) -> None:
         missing = [
-            pid
-            for pid in player_ids
-            if self._experiment_config_service.get_config(pid) is None
+            pid for pid in player_ids if self._experiment_config_service.get_config(pid) is None
         ]
         if missing:
             raise InvalidPlayerIdsError(missing)
@@ -274,9 +272,7 @@ class GameService:
                     (json_mod.dumps(metadata, ensure_ascii=False), game_id),
                 )
             else:
-                await conn.execute(
-                    "UPDATE games SET status = 'running' WHERE id = ?", (game_id,)
-                )
+                await conn.execute("UPDATE games SET status = 'running' WHERE id = ?", (game_id,))
             await conn.commit()
 
             await self._orchestration_service.start_game_execution(

@@ -159,9 +159,7 @@ def parse_pack(raw: Any) -> dict[str, Any]:
             "players": players,
             "requirements": raw.get("requirements") or build_requirements(players),
         }
-    if kind == KIND_EXPERIMENT_PACK or (
-        kind is None and isinstance(raw.get("experiment"), dict)
-    ):
+    if kind == KIND_EXPERIMENT_PACK or (kind is None and isinstance(raw.get("experiment"), dict)):
         experiment = dict(raw.get("experiment") or {})
         protocol = raw.get("protocol") if isinstance(raw.get("protocol"), dict) else None
         players = sanitize_players(list(raw.get("players") or []))

@@ -162,9 +162,7 @@ class DecisionRepository:
         params: list[Any] = []
 
         if experiment_id:
-            conditions.append(
-                "game_id IN (SELECT id FROM games WHERE experiment_id = ?)"
-            )
+            conditions.append("game_id IN (SELECT id FROM games WHERE experiment_id = ?)")
             params.append(experiment_id)
         if game_id:
             conditions.append("game_id = ?")
@@ -255,9 +253,7 @@ class DecisionRepository:
 
     async def get_quality_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Return avg/min/max quality scores."""
-        where, params = self._experiment_where(
-            experiment_id, extra="quality_score IS NOT NULL"
-        )
+        where, params = self._experiment_where(experiment_id, extra="quality_score IS NOT NULL")
         cursor = await self._db.execute(
             f"""
             SELECT

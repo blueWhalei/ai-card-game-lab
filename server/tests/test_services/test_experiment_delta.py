@@ -134,8 +134,7 @@ def test_verdict_key_table(
     expected: str,
 ) -> None:
     assert (
-        verdict_key(overall_diff=overall_diff, inconclusive_reason=inconclusive_reason)
-        == expected
+        verdict_key(overall_diff=overall_diff, inconclusive_reason=inconclusive_reason) == expected
     )
 
 

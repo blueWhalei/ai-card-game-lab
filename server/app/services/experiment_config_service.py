@@ -163,9 +163,7 @@ class ExperimentConfigService:
             await db.close()
         del self._configs[config_id]
 
-    async def import_players(
-        self, players: list[dict[str, Any]]
-    ) -> dict[str, list[str]]:
+    async def import_players(self, players: list[dict[str, Any]]) -> dict[str, list[str]]:
         """Create missing players; never overwrite an existing id."""
         created: list[str] = []
         reused: list[str] = []

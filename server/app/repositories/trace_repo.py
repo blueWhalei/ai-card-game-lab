@@ -224,13 +224,22 @@ class TraceRepository:
         return {
             "total_traces": count_row["total"] if count_row else 0,
             "avg_response_time_ms": round(
-                metrics_row["avg_response_time"] if metrics_row and metrics_row["avg_response_time"] else 0, 2
+                metrics_row["avg_response_time"]
+                if metrics_row and metrics_row["avg_response_time"]
+                else 0,
+                2,
             ),
             "min_response_time_ms": round(
-                metrics_row["min_response_time"] if metrics_row and metrics_row["min_response_time"] else 0, 2
+                metrics_row["min_response_time"]
+                if metrics_row and metrics_row["min_response_time"]
+                else 0,
+                2,
             ),
             "max_response_time_ms": round(
-                metrics_row["max_response_time"] if metrics_row and metrics_row["max_response_time"] else 0, 2
+                metrics_row["max_response_time"]
+                if metrics_row and metrics_row["max_response_time"]
+                else 0,
+                2,
             ),
             "parser_success_count": metrics_row["parser_success"] if metrics_row else 0,
         }
@@ -297,9 +306,7 @@ def _trace_filter_sql(
         conditions.append(f"{a}.model = ?")
         params.append(model)
     if parser_ok is True:
-        conditions.append(
-            f"json_extract({a}.metrics, '$.parser_ok') = 1"
-        )
+        conditions.append(f"json_extract({a}.metrics, '$.parser_ok') = 1")
     elif parser_ok is False:
         conditions.append(
             f"(json_extract({a}.metrics, '$.parser_ok') IS NULL "

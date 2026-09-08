@@ -39,6 +39,7 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     await init_db(test_settings.sqlite_path)
 
     from app import dependencies
+
     dependencies.get_settings.cache_clear()
     if hasattr(dependencies, "get_skill_service"):
         dependencies.get_skill_service.cache_clear()

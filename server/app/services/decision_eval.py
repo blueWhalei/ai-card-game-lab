@@ -103,13 +103,9 @@ class DecisionEvaluator:
         evaluator = self._evaluator_for(engine, params)
         observation = engine.observe(state, player_id)
         legal_actions = engine.legal_actions(state, player_id)
-        return evaluator.ev_loss(
-            observation, legal_actions, engine.action_id(chosen_action)
-        )
+        return evaluator.ev_loss(observation, legal_actions, engine.action_id(chosen_action))
 
-    def _evaluator_for(
-        self, engine: GameEngine, params: EvaluatorParams
-    ) -> RolloutEvaluator:
+    def _evaluator_for(self, engine: GameEngine, params: EvaluatorParams) -> RolloutEvaluator:
         key = (engine.game_type, *_params_cache_key(params))
         cached = self._evaluators.get(key)
         if cached is None:

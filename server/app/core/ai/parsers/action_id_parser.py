@@ -96,9 +96,7 @@ class ActionIdParser:
         if len(mentioned) == 1:
             return ParsedDecision(action_id=mentioned[0], thinking=raw_response[:200])
 
-        raise AIParseError(
-            f"No legal action_id in reply (got {raw_response[:120]!r})"
-        )
+        raise AIParseError(f"No legal action_id in reply (got {raw_response[:120]!r})")
 
     @staticmethod
     def _candidate_objects(raw_response: str) -> list[dict[str, object]]:

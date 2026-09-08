@@ -109,8 +109,9 @@ def _reply(action_id: str, thinking: str = "分析") -> str:
     return json.dumps({"thinking": thinking, "action_id": action_id}, ensure_ascii=False)
 
 
-async def _run(policy: LLMPolicy, observation: Any, legal: list[Any], ctx: PolicyContext,
-               budget: Budget) -> list[Any]:
+async def _run(
+    policy: LLMPolicy, observation: Any, legal: list[Any], ctx: PolicyContext, budget: Budget
+) -> list[Any]:
     return [event async for event in policy.decide(observation, legal, budget, ctx)]
 
 

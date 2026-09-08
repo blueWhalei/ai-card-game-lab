@@ -42,6 +42,7 @@ REASONING_MODEL_PATTERNS = [
     r"qwq",
 ]
 
+
 def is_reasoning_model(model_name: str | None) -> bool:
     """Check if the model is a reasoning/thinking model.
 

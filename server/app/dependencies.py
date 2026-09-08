@@ -103,7 +103,6 @@ async def get_db(
         yield db
 
 
-
 @lru_cache
 def get_engine_registry() -> GameEngineRegistry:
     """Singleton game engine registry."""
@@ -120,8 +119,18 @@ def get_llm_factory() -> LLMClientFactory:
 
     openai_compatible_providers: list[tuple[str, str, str, str]] = [
         ("openai", settings.openai_api_key, settings.openai_base_url, "gpt-4o-mini"),
-        ("dashscope", settings.dashscope_api_key, settings.dashscope_base_url, "qwen-turbo"),  # qwen-turbo: fast; qwen-max: powerful
-        ("deepseek", settings.deepseek_api_key, settings.deepseek_base_url, settings.deepseek_model),
+        (
+            "dashscope",
+            settings.dashscope_api_key,
+            settings.dashscope_base_url,
+            "qwen-turbo",
+        ),  # qwen-turbo: fast; qwen-max: powerful
+        (
+            "deepseek",
+            settings.deepseek_api_key,
+            settings.deepseek_base_url,
+            settings.deepseek_model,
+        ),
         ("kimi", settings.kimi_api_key, settings.kimi_base_url, "moonshot-v1-8k"),
         ("minimax", settings.minimax_api_key, settings.minimax_base_url, "MiniMax-Text-01"),
         ("zhipu", settings.zhipu_api_key, settings.zhipu_base_url, "glm-4-flash"),
@@ -131,35 +140,39 @@ def get_llm_factory() -> LLMClientFactory:
 
     for provider_name, api_key, base_url, default_model in openai_compatible_providers:
         pn, ak, bu, dm = provider_name, api_key, base_url, default_model
-        factory.register(type(
-            f"Configured_{pn}",
-            (OpenAICompatibleClient,),
-            {
-                "__init__": lambda self, _pn=pn, _ak=ak, _bu=bu, _dm=dm, **kw: (
-                    OpenAICompatibleClient.__init__(
-                        self,
-                        provider_name=_pn,
-                        api_key=_ak,
-                        base_url=_bu,
-                        model=_dm,
-                        **kw,
+        factory.register(
+            type(
+                f"Configured_{pn}",
+                (OpenAICompatibleClient,),
+                {
+                    "__init__": lambda self, _pn=pn, _ak=ak, _bu=bu, _dm=dm, **kw: (
+                        OpenAICompatibleClient.__init__(
+                            self,
+                            provider_name=_pn,
+                            api_key=_ak,
+                            base_url=_bu,
+                            model=_dm,
+                            **kw,
+                        )
                     )
-                )
-            },
-        ))
+                },
+            )
+        )
 
     ollama_base = settings.ollama_base_url
-    factory.register(type(
-        "Configured_ollama",
-        (OllamaClient,),
-        {
-            "__init__": lambda self, _bu=ollama_base, **kw: OllamaClient.__init__(
-                self,
-                base_url=_bu,
-                **kw,
-            )
-        },
-    ))
+    factory.register(
+        type(
+            "Configured_ollama",
+            (OllamaClient,),
+            {
+                "__init__": lambda self, _bu=ollama_base, **kw: OllamaClient.__init__(
+                    self,
+                    base_url=_bu,
+                    **kw,
+                )
+            },
+        )
+    )
 
     return factory
 
@@ -214,9 +227,7 @@ def get_vcr_store() -> VcrStore | None:
         return None
 
     directory = (
-        Path(settings.vcr_dir)
-        if settings.vcr_dir.strip()
-        else Path(settings.data_dir) / "vcr"
+        Path(settings.vcr_dir) if settings.vcr_dir.strip() else Path(settings.data_dir) / "vcr"
     )
     cassette = settings.vcr_cassette.strip() or "default"
     return VcrStore(directory, cassette)

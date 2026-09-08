@@ -104,11 +104,7 @@ async def test_probe_reproducible_with_same_seed(
 ) -> None:
     puzzle_dir = tmp_path / "puzzles"
     manifest = _order_sensitive_pack(puzzle_dir)
-    a = await probe_service.probe(
-        manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5
-    )
-    b = await probe_service.probe(
-        manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5
-    )
+    a = await probe_service.probe(manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5)
+    b = await probe_service.probe(manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5)
     assert a["summary"] == b["summary"]
     assert a["puzzles"][0]["trials"] == b["puzzles"][0]["trials"]

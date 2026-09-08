@@ -147,9 +147,9 @@ class PromptRepository:
             WHERE template_key = ? AND version = ?
             """,
             (
-                __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat(),
+                __import__("datetime")
+                .datetime.now(__import__("datetime").timezone.utc)
+                .isoformat(),
                 template_key,
                 version,
             ),
@@ -166,9 +166,9 @@ class PromptRepository:
             WHERE template_key = ? AND version = ?
             """,
             (
-                __import__("datetime").datetime.now(
-                    __import__("datetime").timezone.utc
-                ).isoformat(),
+                __import__("datetime")
+                .datetime.now(__import__("datetime").timezone.utc)
+                .isoformat(),
                 template_key,
                 version,
             ),

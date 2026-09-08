@@ -225,9 +225,7 @@ class TestDecisionServiceUpdateOutcome:
     """Test updating decision outcomes."""
 
     @pytest.mark.asyncio
-    async def test_update_outcome_nonexistent_game(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_update_outcome_nonexistent_game(self, decision_service: DecisionService) -> None:
         updated = await decision_service.update_outcome("nonexistent-game", "winner-1")
         assert updated == 0
 

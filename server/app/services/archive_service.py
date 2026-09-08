@@ -96,9 +96,7 @@ class ArchiveService:
                     freed_bytes=0,
                 )
 
-            archive_file = await self._write_archive(
-                games, rounds, traces, decisions, cutoff_str
-            )
+            archive_file = await self._write_archive(games, rounds, traces, decisions, cutoff_str)
 
             db_size_before = Path(self._sqlite_path).stat().st_size
 
@@ -234,9 +232,7 @@ class ArchiveService:
             "decisions": decisions,
         }
 
-        await asyncio.to_thread(
-            _write_gzip_json, archive_file, archive_data
-        )
+        await asyncio.to_thread(_write_gzip_json, archive_file, archive_data)
 
         return archive_file
 

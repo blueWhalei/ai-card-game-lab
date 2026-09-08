@@ -81,9 +81,7 @@ class TestPersistence:
         assert stored is not None
         assert stored["policy_kind"] == "heuristic"
 
-    async def test_unscored_decision_stays_null(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_unscored_decision_stays_null(self, decision_service: DecisionService) -> None:
         """NULL is "not evaluated", which must not read as "gave up nothing"."""
         decision_id = await _create(decision_service, decision_ev_loss=None)
 
@@ -95,9 +93,7 @@ class TestPersistence:
 
 
 class TestFiltering:
-    async def test_max_ev_loss_drops_worse_moves(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_max_ev_loss_drops_worse_moves(self, decision_service: DecisionService) -> None:
         await _create(decision_service, decision_ev_loss=0.1, round_number=1)
         await _create(decision_service, decision_ev_loss=0.9, round_number=2)
 
@@ -118,9 +114,7 @@ class TestFiltering:
         assert total == 1
         assert items[0]["ev_loss"] is None
 
-    async def test_export_applies_max_ev_loss(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_export_applies_max_ev_loss(self, decision_service: DecisionService) -> None:
         await _create(decision_service, decision_ev_loss=0.1, round_number=1)
         await _create(decision_service, decision_ev_loss=0.9, round_number=2)
 
@@ -146,9 +140,7 @@ class TestStats:
         assert stats["max_ev_loss"] == pytest.approx(0.8)
         assert stats["blunder_count"] == 1
 
-    async def test_stats_without_any_scores(
-        self, decision_service: DecisionService
-    ) -> None:
+    async def test_stats_without_any_scores(self, decision_service: DecisionService) -> None:
         await _create(decision_service, decision_ev_loss=None)
 
         stats = await decision_service.get_stats()
@@ -174,9 +166,7 @@ class _ExplodingEngine(DoudizhuEngine):
 
 
 class TestDecisionEvaluator:
-    def _live_decision(
-        self, engine: GameEngine
-    ) -> tuple[GameState, str, GameAction]:
+    def _live_decision(self, engine: GameEngine) -> tuple[GameState, str, GameAction]:
         state = engine.initialize(["p1", "p2", "p3"], deal_seed=7)
         player_id = engine.get_current_player(state)
         legal = engine.legal_actions(state, player_id)

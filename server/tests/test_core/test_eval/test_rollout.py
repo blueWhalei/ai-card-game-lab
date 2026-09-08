@@ -44,9 +44,7 @@ def test_ev_loss_is_never_negative(engine: GameEngine) -> None:
     player_id = engine.get_current_player(state)
     legal = engine.legal_actions(state, player_id)
 
-    result = _evaluator(engine).ev_loss(
-        engine.observe(state, player_id), legal, legal[-1].id
-    )
+    result = _evaluator(engine).ev_loss(engine.observe(state, player_id), legal, legal[-1].id)
 
     assert result.loss >= 0.0
     assert result.best_value >= result.chosen_value
@@ -60,9 +58,7 @@ def test_the_action_under_review_is_always_evaluated(engine: GameEngine) -> None
     legal = engine.legal_actions(state, player_id)
     assert len(legal) > _FAST.max_candidates
 
-    result = _evaluator(engine).ev_loss(
-        engine.observe(state, player_id), legal, legal[-1].id
-    )
+    result = _evaluator(engine).ev_loss(engine.observe(state, player_id), legal, legal[-1].id)
 
     assert legal[-1].id in result.values
     assert result.candidates_evaluated <= _FAST.max_candidates
@@ -108,9 +104,7 @@ def test_illegal_choice_is_rejected(engine: GameEngine) -> None:
     legal = engine.legal_actions(state, player_id)
 
     with pytest.raises(InvalidActionError):
-        _evaluator(engine).ev_loss(
-            engine.observe(state, player_id), legal, "NOPE|nothing|"
-        )
+        _evaluator(engine).ev_loss(engine.observe(state, player_id), legal, "NOPE|nothing|")
 
 
 @pytest.mark.parametrize("engine", _SAMPLING_ENGINES, ids=lambda e: e.game_type)
@@ -119,9 +113,7 @@ def test_params_travel_with_the_result(engine: GameEngine) -> None:
     player_id = engine.get_current_player(state)
     legal = engine.legal_actions(state, player_id)
 
-    result = _evaluator(engine).ev_loss(
-        engine.observe(state, player_id), legal, legal[0].id
-    )
+    result = _evaluator(engine).ev_loss(engine.observe(state, player_id), legal, legal[0].id)
 
     assert result.params == _FAST.to_dict()
 

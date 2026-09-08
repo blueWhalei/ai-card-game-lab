@@ -45,7 +45,9 @@ def test_bidding_legal_actions_only_for_current_player() -> None:
         ActionType.BID,
         ActionType.BID,
     ]
-    assert [action.target for action in current_actions if action.action_type == ActionType.BID] == ["1", "2", "3"]
+    assert [
+        action.target for action in current_actions if action.action_type == ActionType.BID
+    ] == ["1", "2", "3"]
     assert other_actions == []
 
 
@@ -102,15 +104,12 @@ def test_apply_bid_rejects_bid_not_exceeding_current_highest() -> None:
     state = engine.apply_action(state, bid_two)
 
     next_player = engine.get_current_player(state)
-    invalid_bid = GameAction(player_id=next_player, action_type=ActionType.BID, cards=[], target="2")
+    invalid_bid = GameAction(
+        player_id=next_player, action_type=ActionType.BID, cards=[], target="2"
+    )
 
     with pytest.raises(InvalidActionError):
         engine.apply_action(state, invalid_bid)
-
-
-
-
-
 
 
 def test_the_bid_menu_offers_the_highest_bid_first() -> None:

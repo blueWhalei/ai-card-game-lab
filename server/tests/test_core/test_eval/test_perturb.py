@@ -47,9 +47,7 @@ def test_shuffle_legal_actions_preserves_ids_and_gold() -> None:
     orig_ids = [row["id"] for row in original.legal_actions]
     pert = None
     for seed in range(50):
-        candidate = perturb_puzzle(
-            original, ["shuffle_legal_actions"], random.Random(seed)
-        )
+        candidate = perturb_puzzle(original, ["shuffle_legal_actions"], random.Random(seed))
         if [row["id"] for row in candidate.legal_actions] != orig_ids:
             pert = candidate
             break
@@ -67,9 +65,7 @@ def test_shuffle_hand_cards_preserves_multiset_and_forbidden_fields() -> None:
     hand_before = list(original.observation["private"]["hand_cards"])
     pert = None
     for seed in range(50):
-        candidate = perturb_puzzle(
-            original, ["shuffle_hand_cards"], random.Random(seed)
-        )
+        candidate = perturb_puzzle(original, ["shuffle_hand_cards"], random.Random(seed))
         if candidate.observation["private"]["hand_cards"] != hand_before:
             pert = candidate
             break

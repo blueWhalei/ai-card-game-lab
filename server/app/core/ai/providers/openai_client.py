@@ -179,10 +179,7 @@ class OpenAICompatibleClient(LLMClient):
                     async with client.stream(
                         "POST", url, json=req_payload, headers=headers
                     ) as response:
-                        if (
-                            400 <= response.status_code < 500
-                            and (include_usage or include_schema)
-                        ):
+                        if 400 <= response.status_code < 500 and (include_usage or include_schema):
                             body = (await response.aread())[:300]
                             dropped = "stream_options" if include_usage else "response_format"
                             logger.warning(
@@ -246,11 +243,7 @@ class OpenAICompatibleClient(LLMClient):
                                         )
 
                                     # usage-only chunk（choices 为空，无文本内容）
-                                    if (
-                                        chunk_usage is not None
-                                        and not reasoning
-                                        and not content
-                                    ):
+                                    if chunk_usage is not None and not reasoning and not content:
                                         yield StreamChunk(
                                             type="content", text="", usage=chunk_usage
                                         )
@@ -272,4 +265,3 @@ class OpenAICompatibleClient(LLMClient):
 
     def supports(self, provider: str) -> bool:
         return provider.lower() == self._provider_name
-

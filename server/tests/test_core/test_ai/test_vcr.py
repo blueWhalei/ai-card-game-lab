@@ -139,9 +139,7 @@ async def test_record_overwrite_same_key(tmp_path: Path) -> None:
             super().__init__()
             self.payload = "first"
 
-        async def chat(
-            self, messages: list[dict[str, Any]], **kwargs: Any
-        ) -> ChatResponse:
+        async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> ChatResponse:
             self.chat_calls += 1
             return ChatResponse(content=self.payload, usage={})
 

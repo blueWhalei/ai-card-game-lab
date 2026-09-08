@@ -30,7 +30,7 @@ logger = structlog.get_logger()
 
 _DEFAULT_SYSTEM = (
     "你是一个 AI 卡牌游戏玩家。根据当前局面从可选动作里选一个，"
-    '把它的 id 原样填进 action_id，按 JSON 输出：'
+    "把它的 id 原样填进 action_id，按 JSON 输出："
     '{"thinking":"...","action_id":"..."}'
 )
 
@@ -46,7 +46,9 @@ def is_lora_adapter(model_path: str | Path) -> bool:
     path = Path(model_path)
     if path.is_file():
         return False
-    return (path / "adapter_config.json").is_file() or (path / "adapter_model.safetensors").is_file()
+    return (path / "adapter_config.json").is_file() or (
+        path / "adapter_model.safetensors"
+    ).is_file()
 
 
 def merge_lora_to_hf(

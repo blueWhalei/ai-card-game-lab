@@ -31,11 +31,13 @@ async def handle_game_websocket(
     try:
         public_info = orchestration_service.observer_snapshot(game_id)
         if public_info is not None:
-            await websocket.send_json({
-                "type": "state_update",
-                "game_id": game_id,
-                "data": public_info,
-            })
+            await websocket.send_json(
+                {
+                    "type": "state_update",
+                    "game_id": game_id,
+                    "data": public_info,
+                }
+            )
     except Exception:
         logger.warning("ws_state_snapshot_failed", game_id=game_id, exc_info=True)
 

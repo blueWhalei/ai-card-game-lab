@@ -40,9 +40,7 @@ class TrainingTaskRepository:
 
     async def get_by_id(self, task_id: str) -> dict[str, Any]:
         """Fetch a single task by ID. Raises KeyError if not found."""
-        cursor = await self._db.execute(
-            "SELECT * FROM training_tasks WHERE id = ?", (task_id,)
-        )
+        cursor = await self._db.execute("SELECT * FROM training_tasks WHERE id = ?", (task_id,))
         row = await cursor.fetchone()
         if row is None:
             raise KeyError(f"Training task {task_id} not found")
@@ -99,15 +97,14 @@ class TrainingTaskRepository:
                 params.append(val)
         params.append(task_id)
         await self._db.execute(
-            f"UPDATE training_tasks SET {', '.join(sets)} WHERE id = ?", params,
+            f"UPDATE training_tasks SET {', '.join(sets)} WHERE id = ?",
+            params,
         )
         await self._db.commit()
 
     async def delete(self, task_id: str) -> None:
         """Delete a training task by ID."""
-        cursor = await self._db.execute(
-            "DELETE FROM training_tasks WHERE id = ?", (task_id,)
-        )
+        cursor = await self._db.execute("DELETE FROM training_tasks WHERE id = ?", (task_id,))
         await self._db.commit()
         if cursor.rowcount == 0:
             raise KeyError(f"Training task {task_id} not found")

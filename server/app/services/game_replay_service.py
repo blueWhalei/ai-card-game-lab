@@ -15,7 +15,6 @@ from app.repositories.round_repo import RoundRepository
 from app.utils.exceptions import GameNotFoundError
 
 if TYPE_CHECKING:
-
     from app.core.collector.jsonl_writer import JsonlWriter
 
 logger = structlog.get_logger()
@@ -79,20 +78,20 @@ class GameReplayService:
             hand_snapshot = self._parse_json_field(
                 hand_snapshot_raw, game_id, round_num, "hand_snapshot"
             )
-            all_hands = self._parse_json_field(
-                all_hands_raw, game_id, round_num, "all_hands"
-            )
+            all_hands = self._parse_json_field(all_hands_raw, game_id, round_num, "all_hands")
             prompt = self._parse_json_field(prompt_raw, game_id, round_num, "prompt")
 
-            replay_rounds.append({
-                **dict(round_row),
-                "cards": cards,
-                "hand_snapshot": hand_snapshot,
-                "all_hands": all_hands,
-                "prompt": prompt,
-                "thinking": thinking,
-                "total_tokens": round_row.get("total_tokens"),
-            })
+            replay_rounds.append(
+                {
+                    **dict(round_row),
+                    "cards": cards,
+                    "hand_snapshot": hand_snapshot,
+                    "all_hands": all_hands,
+                    "prompt": prompt,
+                    "thinking": thinking,
+                    "total_tokens": round_row.get("total_tokens"),
+                }
+            )
 
         return {
             "game": dict(game),
@@ -192,9 +191,7 @@ class GameReplayService:
         thinking_map = self._read_thinking_map_from_jsonl(game_id)
         return [thinking_map[key] for key in sorted(thinking_map)]
 
-    def read_thinking_list_by_player(
-        self, game_id: str
-    ) -> dict[str, list[str]]:
+    def read_thinking_list_by_player(self, game_id: str) -> dict[str, list[str]]:
         """Read thinking texts grouped by player_id from a game's JSONL file.
 
         Args:

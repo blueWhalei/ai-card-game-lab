@@ -161,9 +161,7 @@ def test_declared_tools_are_callable_and_json_safe(engine: GameEngine) -> None:
 
     published = engine.capability.to_public_dict()
     json.dumps(published)
-    assert [t["name"] for t in published["tools"]] == [
-        t.name for t in engine.capability.tools
-    ]
+    assert [t["name"] for t in published["tools"]] == [t.name for t in engine.capability.tools]
 
 
 @pytest.mark.parametrize("engine", _ENGINES, ids=lambda e: e.game_type)

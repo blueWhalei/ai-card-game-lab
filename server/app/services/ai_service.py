@@ -121,9 +121,7 @@ class AIService:
         # game_id → protocol EV knobs (None = use DecisionEvaluator defaults)
         self._ev_params_by_game: dict[str, EvaluatorParams | None] = {}
         # game_id → (prompt_version, prompts map); None prompts = live DB
-        self._prompt_freeze_by_game: dict[
-            str, tuple[str, dict[str, dict[str, Any]]] | None
-        ] = {}
+        self._prompt_freeze_by_game: dict[str, tuple[str, dict[str, dict[str, Any]]] | None] = {}
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
@@ -294,9 +292,8 @@ class AIService:
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
-        recorded_version = (
-            prompt_source.prompt_version_label
-            or self._prompt_builder.version_for(model_cfg.get("model_name"))
+        recorded_version = prompt_source.prompt_version_label or self._prompt_builder.version_for(
+            model_cfg.get("model_name")
         )
         return AIDecisionResult(
             action=action,
@@ -333,9 +330,7 @@ class AIService:
             text = event.result.get("text")
             if isinstance(text, str) and text:
                 existing = trace.tool_results.get("tool_analysis")
-                trace.tool_results["tool_analysis"] = (
-                    f"{existing}\n{text}" if existing else text
-                )
+                trace.tool_results["tool_analysis"] = f"{existing}\n{text}" if existing else text
         elif isinstance(event, ActionChosen):
             trace.chosen = event
 
@@ -504,9 +499,7 @@ class AIService:
             self._prompt_freeze_by_game[game_id] = None
         return version, prompts
 
-    async def _protocol_evaluator_params(
-        self, game_id: str | None
-    ) -> EvaluatorParams | None:
+    async def _protocol_evaluator_params(self, game_id: str | None) -> EvaluatorParams | None:
         """Frozen ``scorer.evaluator`` for the game's experiment, if any."""
         if not game_id or not self._sqlite_path:
             return None

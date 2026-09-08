@@ -55,7 +55,9 @@ async def test_update_result_merges_landlord_id_preserves_deal_seed(db_path: str
             finished_at=now,
             metadata_patch={"landlord_id": "cfg_a"},
         )
-        cursor = await db.execute("SELECT metadata, winner_role FROM games WHERE id = ?", ("g-meta",))
+        cursor = await db.execute(
+            "SELECT metadata, winner_role FROM games WHERE id = ?", ("g-meta",)
+        )
         row = await cursor.fetchone()
         assert row is not None
         meta = json.loads(row["metadata"])
@@ -389,4 +391,3 @@ async def test_summary_scenario_scores_split_buckets(db_path: str) -> None:
     assert scores["endgame"]["parser_success_rate"] == 0.0
     assert scores["bomb"]["n"] == 1
     assert scores["bomb"]["train_usable_n"] == 1
-

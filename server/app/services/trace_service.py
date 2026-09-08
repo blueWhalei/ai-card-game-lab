@@ -156,9 +156,7 @@ class TraceService:
         offset: int = 0,
     ) -> list[dict[str, Any]]:
         """Get traces for games belonging to an experiment."""
-        items, _ = await self.list_traces(
-            experiment_id=experiment_id, limit=limit, offset=offset
-        )
+        items, _ = await self.list_traces(experiment_id=experiment_id, limit=limit, offset=offset)
         return items
 
     async def get_trace_by_id(self, trace_id: str) -> dict[str, Any] | None:
@@ -221,7 +219,5 @@ class TraceService:
             "response_time_diff": round(
                 stats2["avg_response_time_ms"] - stats1["avg_response_time_ms"], 2
             ),
-            "success_rate_diff": round(
-                stats2["success_rate"] - stats1["success_rate"], 2
-            ),
+            "success_rate_diff": round(stats2["success_rate"] - stats1["success_rate"], 2),
         }

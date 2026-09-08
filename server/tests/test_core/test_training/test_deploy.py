@@ -78,9 +78,7 @@ def test_export_bundle_without_merge(tmp_path: Path) -> None:
     assert Path(meta["modelfile"]).is_file()
     assert meta["merged"] is False
     assert meta["gguf_ready"] is False
-    saved = json.loads(
-        (Path(meta["deploy_dir"]) / "export_meta.json").read_text(encoding="utf-8")
-    )
+    saved = json.loads((Path(meta["deploy_dir"]) / "export_meta.json").read_text(encoding="utf-8"))
     assert saved["task_id"] == "task2"
 
 
@@ -124,9 +122,7 @@ def test_convert_merged_to_gguf_mocked_success(tmp_path: Path) -> None:
 
     def _fake_run(cmd: list[str], **kwargs: object) -> MagicMock:
         # Second call (quantize) should create model.gguf
-        if "llama-quantize" in str(cmd[0]) or (
-            len(cmd) > 1 and "llama-quantize" in str(cmd[0])
-        ):
+        if "llama-quantize" in str(cmd[0]) or (len(cmd) > 1 and "llama-quantize" in str(cmd[0])):
             out = Path(cmd[2]) if len(cmd) > 2 else deploy / "model.gguf"
             # scripts pass: quantize f16 -> q4
             if len(cmd) >= 3:
@@ -211,7 +207,8 @@ def test_push_lora_ollama_failure_raises(tmp_path: Path) -> None:
         patch(
             "app.core.training.deploy.try_ollama_create",
             return_value={"created": False, "reason": "ollama_cli_not_found"},
-        ),pytest.raises(DeployOllamaFailedError)
+        ),
+        pytest.raises(DeployOllamaFailedError),
     ):
         push_lora_to_ollama(
             task_id=task_id,

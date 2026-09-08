@@ -243,9 +243,7 @@ def _run_lora_sft_sync(
             from peft import prepare_model_for_kbit_training
             from transformers import BitsAndBytesConfig
 
-            compute_dtype = (
-                torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
-            )
+            compute_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
             bnb_config = BitsAndBytesConfig(
                 load_in_4bit=True,
                 bnb_4bit_quant_type="nf4",
@@ -263,9 +261,7 @@ def _run_lora_sft_sync(
             model = AutoModelForCausalLM.from_pretrained(
                 base_model,
                 trust_remote_code=True,
-                torch_dtype=(
-                    torch.float16 if torch.cuda.is_available() else torch.float32
-                ),
+                torch_dtype=(torch.float16 if torch.cuda.is_available() else torch.float32),
             )
         lora = LoraConfig(
             task_type=TaskType.CAUSAL_LM,

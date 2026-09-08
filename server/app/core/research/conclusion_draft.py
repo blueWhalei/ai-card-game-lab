@@ -127,9 +127,7 @@ def build_conclusion_draft(
         overall_diff = float(raw_diff) if raw_diff is not None else None
         ci = delta.get("this_landlord_win_rate_ci")
         scenario_diffs = (
-            delta.get("scenario_diffs")
-            if isinstance(delta.get("scenario_diffs"), dict)
-            else None
+            delta.get("scenario_diffs") if isinstance(delta.get("scenario_diffs"), dict) else None
         )
 
     lines: list[str] = []
@@ -202,8 +200,7 @@ def build_conclusion_draft(
             loss = item.get("ev_loss")
             loss_s = f"{float(loss):.2f}" if loss is not None else "?"
             lines.append(
-                f"- game={game_id} round={round_number} "
-                f"action={action_id} ev_loss={loss_s}"
+                f"- game={game_id} round={round_number} action={action_id} ev_loss={loss_s}"
             )
 
     text = "\n".join(lines).strip() + "\n"

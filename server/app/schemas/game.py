@@ -16,4 +16,3 @@ class BatchCreateRequest(BaseModel):
     player_ids: list[str]
     count: int = Field(ge=1, le=50, default=1)
     experiment_id: str | None = None
-

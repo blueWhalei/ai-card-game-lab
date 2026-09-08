@@ -58,9 +58,7 @@ async def test_policy_chooses_a_legal_action(engine: GameEngine, kind: str) -> N
 
 
 @pytest.mark.parametrize(("engine", "kind"), _CASES, ids=_CASE_IDS)
-async def test_policy_is_reproducible_for_one_rng_seed(
-    engine: GameEngine, kind: str
-) -> None:
+async def test_policy_is_reproducible_for_one_rng_seed(engine: GameEngine, kind: str) -> None:
     policy = _POLICY_REGISTRY.create(kind)
     state = _initial_state(engine)
     player_id = engine.get_current_player(state)
@@ -74,9 +72,7 @@ async def test_policy_is_reproducible_for_one_rng_seed(
 
 
 @pytest.mark.parametrize(("engine", "kind"), _CASES, ids=_CASE_IDS)
-async def test_policy_rejects_an_empty_action_list(
-    engine: GameEngine, kind: str
-) -> None:
+async def test_policy_rejects_an_empty_action_list(engine: GameEngine, kind: str) -> None:
     policy = _POLICY_REGISTRY.create(kind)
     state = _initial_state(engine)
     obs = engine.observe(state, engine.get_current_player(state))
@@ -97,9 +93,7 @@ async def test_policy_can_drive_a_full_game(engine: GameEngine, kind: str) -> No
             break
         player_id = engine.get_current_player(state)
         legal = engine.legal_actions(state, player_id)
-        chosen = await policy.decide_action(
-            engine.observe(state, player_id), legal, Budget(), ctx
-        )
+        chosen = await policy.decide_action(engine.observe(state, player_id), legal, Budget(), ctx)
         state = engine.apply_action(
             state, engine.resolve_action(state, player_id, chosen.action_id)
         )

@@ -121,5 +121,3 @@ async def deactivate_template(
             detail=f"Template {template_key}:{body.version} not found",
         )
     return ApiResponse(data=template)
-
-

@@ -174,9 +174,7 @@ class SystemService:
         """Return storage usage statistics (file I/O offloaded to thread)."""
         db_path = Path(self._settings.sqlite_path)
         data_dir = Path(self._settings.data_dir)
-        return await asyncio.to_thread(
-            _compute_storage_stats, db_path, data_dir
-        )
+        return await asyncio.to_thread(_compute_storage_stats, db_path, data_dir)
 
     async def get_preflight(
         self,
@@ -328,9 +326,7 @@ class SystemService:
                 can_collect = protocol_ok and seats_ok
         can_train = train_deps if need_train else True
         # For scope=collect, can_train stays True (not in scope); ok only cares about scoped blocks
-        block_failed = any(
-            (not c["ok"]) and c["severity"] == "block" for c in checks
-        )
+        block_failed = any((not c["ok"]) and c["severity"] == "block" for c in checks)
         warnings = [str(c["message"]) for c in checks if not c["ok"]]
         return {
             "ok": not block_failed,
@@ -367,9 +363,7 @@ class SystemService:
                 protocol = proto if isinstance(proto, dict) else None
             finally:
                 await conn.close()
-        return self._preflight_sync(
-            scope=scope, experiment_id=experiment_id, protocol=protocol
-        )
+        return self._preflight_sync(scope=scope, experiment_id=experiment_id, protocol=protocol)
 
     def get_runtime_stats(self) -> dict[str, object]:
         from app.core.training.runtime_stats import get_runtime_stats as _snap

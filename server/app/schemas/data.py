@@ -1,6 +1,5 @@
 """Pydantic models for data management endpoints."""
 
-
 from pydantic import BaseModel, Field
 
 

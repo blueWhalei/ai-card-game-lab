@@ -40,9 +40,7 @@ async def test_game_loops_respect_concurrency_limit() -> None:
     engine.initialize.return_value = MagicMock(game_type="doudizhu")
     service._engine_registry.get.return_value = engine
 
-    with patch(
-        "app.services.game_orchestration_service.ws_manager"
-    ) as mock_ws:
+    with patch("app.services.game_orchestration_service.ws_manager") as mock_ws:
         mock_ws.broadcast = AsyncMock()
         await service.start_game_execution("g1", "doudizhu", ["a", "b", "c"])
         await service.start_game_execution("g2", "doudizhu", ["a", "b", "c"])

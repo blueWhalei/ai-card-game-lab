@@ -40,9 +40,7 @@ from app.utils.id_generator import generate_id
 logger = structlog.get_logger()
 
 # Terminal states that cancel_task must not overwrite.
-_TERMINAL_STATUSES: frozenset[str] = frozenset(
-    {"completed", "failed", "cancelled"}
-)
+_TERMINAL_STATUSES: frozenset[str] = frozenset({"completed", "failed", "cancelled"})
 
 
 def _count_jsonl_lines(path: str) -> int:
@@ -56,6 +54,8 @@ def _count_jsonl_lines(path: str) -> int:
             if line.strip():
                 count += 1
     return count
+
+
 _ACTIVE_STATUSES: frozenset[str] = frozenset({"pending", "exporting", "training"})
 
 
@@ -244,9 +244,7 @@ class TrainingService:
         current = await self.get_task(task_id)
         status = str(current.get("status") or "")
         if status in _TERMINAL_STATUSES:
-            raise ValueError(
-                f"Task {task_id} is already '{status}'; cannot cancel a terminal task"
-            )
+            raise ValueError(f"Task {task_id} is already '{status}'; cannot cancel a terminal task")
         if status not in _ACTIVE_STATUSES:
             raise ValueError(
                 f"Task {task_id} has unknown status '{status}'; expected one of "
@@ -364,9 +362,7 @@ class TrainingService:
         if not model_path:
             raise DeployNotLoraError("Task has no model_path; train to completion first")
         if task.get("status") != "completed":
-            raise DeployNotLoraError(
-                f"Task status is {task.get('status')}, expected completed"
-            )
+            raise DeployNotLoraError(f"Task status is {task.get('status')}, expected completed")
         if not Path(str(model_path)).is_dir():
             raise DeployNotLoraError(
                 "Model path is not a LoRA adapter directory; train to completion first"
@@ -468,7 +464,7 @@ class TrainingService:
         ids = [re.sub(r"[^a-zA-Z0-9_-]", "_", pid)[:40] for pid in ids]
         if len(ids) < seat_count:
             ids = ids + [f"verify_p{i}" for i in range(len(ids) + 1, seat_count + 1)]
-        ids = ids[: seat_count]
+        ids = ids[:seat_count]
 
         for i, pid in enumerate(ids):
             model_config = {

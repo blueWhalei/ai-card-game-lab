@@ -35,15 +35,9 @@ class EventBus:
 
     def __init__(self) -> None:
         """Initialize the event bus with empty handler registries."""
-        self._async_handlers: dict[type[DomainEvent], list[AsyncEventHandler]] = (
-            defaultdict(list)
-        )
-        self._sync_handlers: dict[type[DomainEvent], list[SyncEventHandler]] = (
-            defaultdict(list)
-        )
-        self._protocol_handlers: dict[type[DomainEvent], list[EventHandler]] = (
-            defaultdict(list)
-        )
+        self._async_handlers: dict[type[DomainEvent], list[AsyncEventHandler]] = defaultdict(list)
+        self._sync_handlers: dict[type[DomainEvent], list[SyncEventHandler]] = defaultdict(list)
+        self._protocol_handlers: dict[type[DomainEvent], list[EventHandler]] = defaultdict(list)
 
     def subscribe(self, handler: AsyncEventHandler | SyncEventHandler | EventHandler) -> None:
         """Register a handler to receive events.

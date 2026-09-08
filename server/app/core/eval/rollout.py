@@ -120,9 +120,7 @@ class RolloutEvaluator:
         rollouts = 0
 
         for world_index in range(self._params.determinizations):
-            world = self._engine.sample_hidden_state(
-                observation, self._rng("world", world_index)
-            )
+            world = self._engine.sample_hidden_state(observation, self._rng("world", world_index))
             for repeat in range(self._params.rollouts_per_world):
                 for candidate in candidates:
                     # Same rng stream for every candidate in this world: common
@@ -136,9 +134,7 @@ class RolloutEvaluator:
                     )
             rollouts += self._params.rollouts_per_world
 
-        return {
-            action_id: total / rollouts for action_id, total in totals.items()
-        }
+        return {action_id: total / rollouts for action_id, total in totals.items()}
 
     def ev_loss(
         self,
@@ -150,9 +146,7 @@ class RolloutEvaluator:
         if not any(action.id == chosen_action_id for action in legal_actions):
             raise InvalidActionError(chosen_action_id, "Chosen action is not legal here")
 
-        values = self.action_values(
-            observation, legal_actions, must_include=chosen_action_id
-        )
+        values = self.action_values(observation, legal_actions, must_include=chosen_action_id)
         best_action_id = max(values, key=lambda action_id: values[action_id])
 
         return EvLoss(
@@ -188,9 +182,7 @@ class RolloutEvaluator:
     ) -> float:
         """Apply one candidate, then let the reference selector finish the game."""
         engine = self._engine
-        state = engine.apply_action(
-            world, engine.resolve_action(world, viewer_id, first_action_id)
-        )
+        state = engine.apply_action(world, engine.resolve_action(world, viewer_id, first_action_id))
         ctx = PolicyContext(advisor=engine, rng=rng, session_id=None)
 
         for _ in range(self._params.max_steps):
@@ -200,12 +192,8 @@ class RolloutEvaluator:
             legal = engine.legal_actions(state, player_id)
             if not legal:
                 break
-            action_id = self._opponent.choose(
-                engine.observe(state, player_id), legal, ctx
-            )
-            state = engine.apply_action(
-                state, engine.resolve_action(state, player_id, action_id)
-            )
+            action_id = self._opponent.choose(engine.observe(state, player_id), legal, ctx)
+            state = engine.apply_action(state, engine.resolve_action(state, player_id, action_id))
 
         # Scoring an unfinished game would invent signal (0.0 is a real loss
         # payoff), so refuse instead of guessing.

@@ -33,9 +33,7 @@ class TestArchiveServiceStats:
         assert stats["archive_files"] == 0
 
     @pytest.mark.asyncio
-    async def test_get_archive_stats_with_archives(
-        self, archive_service: ArchiveService
-    ) -> None:
+    async def test_get_archive_stats_with_archives(self, archive_service: ArchiveService) -> None:
         """Test stats with existing archive files."""
         archive_dir = Path(archive_service._archive_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
@@ -58,9 +56,7 @@ class TestArchiveServiceArchive:
         assert result.archive_file is None
 
     @pytest.mark.asyncio
-    async def test_archive_with_no_old_games(
-        self, archive_service: ArchiveService
-    ) -> None:
+    async def test_archive_with_no_old_games(self, archive_service: ArchiveService) -> None:
         """Test archive when no old games exist."""
         request = ArchiveRequest(days_old=30, dry_run=False)
         result = await archive_service.archive_old_games(request)
@@ -79,9 +75,7 @@ class TestArchiveServiceCleanup:
         assert result.freed_bytes == 0
 
     @pytest.mark.asyncio
-    async def test_cleanup_with_no_old_data(
-        self, archive_service: ArchiveService
-    ) -> None:
+    async def test_cleanup_with_no_old_data(self, archive_service: ArchiveService) -> None:
         """Test cleanup when no old data exists."""
         request = CleanupRequest(days_old=90, dry_run=False)
         result = await archive_service.cleanup_old_data(request)
@@ -98,9 +92,7 @@ class TestArchiveServiceArchives:
         assert archives == []
 
     @pytest.mark.asyncio
-    async def test_list_archives_with_files(
-        self, archive_service: ArchiveService
-    ) -> None:
+    async def test_list_archives_with_files(self, archive_service: ArchiveService) -> None:
         """Test listing archives with files."""
         archive_dir = Path(archive_service._archive_dir)
         archive_dir.mkdir(parents=True, exist_ok=True)
@@ -123,9 +115,7 @@ class TestArchiveServiceArchives:
         assert not archive_file.exists()
 
     @pytest.mark.asyncio
-    async def test_delete_nonexistent_archive(
-        self, archive_service: ArchiveService
-    ) -> None:
+    async def test_delete_nonexistent_archive(self, archive_service: ArchiveService) -> None:
         """Test deleting a nonexistent archive."""
         deleted = await archive_service.delete_archive("nonexistent.jsonl.gz")
         assert deleted is False

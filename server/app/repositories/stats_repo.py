@@ -96,9 +96,7 @@ class StatsRepository:
     async def tokens_by_model(self) -> dict[str, int]:
         name_col = "r.model_name" if self._experiment_id else "model_name"
         token_col = "r.total_tokens" if self._experiment_id else "total_tokens"
-        frm, params = self._rounds_scope(
-            f"{token_col} IS NOT NULL AND {name_col} IS NOT NULL"
-        )
+        frm, params = self._rounds_scope(f"{token_col} IS NOT NULL AND {name_col} IS NOT NULL")
         cursor = await self._db.execute(
             f"SELECT {name_col}, SUM({token_col}) as total {frm} GROUP BY {name_col}",
             params,
@@ -183,9 +181,7 @@ class StatsRepository:
     async def response_time_by_model(self) -> dict[str, float]:
         name_col = "r.model_name" if self._experiment_id else "model_name"
         ms_col = "r.response_time_ms" if self._experiment_id else "response_time_ms"
-        frm, params = self._rounds_scope(
-            f"{ms_col} IS NOT NULL AND {name_col} IS NOT NULL"
-        )
+        frm, params = self._rounds_scope(f"{ms_col} IS NOT NULL AND {name_col} IS NOT NULL")
         cursor = await self._db.execute(
             f"SELECT {name_col}, AVG({ms_col}) as avg_ms {frm} GROUP BY {name_col}",
             params,

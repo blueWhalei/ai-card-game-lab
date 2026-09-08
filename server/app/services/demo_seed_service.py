@@ -141,9 +141,7 @@ def _demo_protocol(
     from app.core.task_protocol import prompt_content_hash
 
     engine = DoudizhuEngine()
-    content = (
-        "你是{game_type_cn}演示玩家。\n规则：\n{rules}\n\n{format_instructions}"
-    )
+    content = "你是{game_type_cn}演示玩家。\n规则：\n{rules}\n\n{format_instructions}"
     prompts = {
         key: {
             "version": "demo",

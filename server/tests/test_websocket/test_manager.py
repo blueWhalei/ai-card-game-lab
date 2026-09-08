@@ -57,7 +57,9 @@ class TestConnectionManagerConnect:
         assert len(connection_manager._active["new_game"]) == 1
 
     @pytest.mark.asyncio
-    async def test_connect_appends_to_existing_game(self, connection_manager: ConnectionManager) -> None:
+    async def test_connect_appends_to_existing_game(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that connect appends to existing game entry."""
         from unittest.mock import AsyncMock
 
@@ -78,7 +80,9 @@ class TestConnectionManagerDisconnect:
     """Test WebSocket disconnection management."""
 
     @pytest.mark.asyncio
-    async def test_disconnect_removes_connection(self, connection_manager: ConnectionManager) -> None:
+    async def test_disconnect_removes_connection(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that disconnect removes a connection from the registry."""
         from unittest.mock import AsyncMock
 
@@ -94,7 +98,9 @@ class TestConnectionManagerDisconnect:
         assert game_id not in connection_manager._active
 
     @pytest.mark.asyncio
-    async def test_disconnect_removes_game_entry_when_empty(self, connection_manager: ConnectionManager) -> None:
+    async def test_disconnect_removes_game_entry_when_empty(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that disconnect removes game entry when no connections remain."""
         from unittest.mock import AsyncMock
 
@@ -110,7 +116,9 @@ class TestConnectionManagerDisconnect:
         assert game_id not in connection_manager._active
 
     @pytest.mark.asyncio
-    async def test_disconnect_ignores_unknown_game(self, connection_manager: ConnectionManager) -> None:
+    async def test_disconnect_ignores_unknown_game(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that disconnect handles unknown game IDs gracefully."""
         from unittest.mock import AsyncMock
 
@@ -125,7 +133,9 @@ class TestConnectionManagerBroadcast:
     """Test WebSocket broadcast functionality."""
 
     @pytest.mark.asyncio
-    async def test_broadcast_sends_to_all_connections(self, connection_manager: ConnectionManager) -> None:
+    async def test_broadcast_sends_to_all_connections(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that broadcast sends message to all connections for a game."""
         from unittest.mock import AsyncMock
 
@@ -148,7 +158,9 @@ class TestConnectionManagerBroadcast:
         mock_ws2.send_json.assert_called_once_with(test_message)
 
     @pytest.mark.asyncio
-    async def test_broadcast_ignores_unknown_game(self, connection_manager: ConnectionManager) -> None:
+    async def test_broadcast_ignores_unknown_game(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that broadcast handles unknown game IDs gracefully."""
         test_message = {"type": "test", "data": "hello"}
 
@@ -156,7 +168,9 @@ class TestConnectionManagerBroadcast:
         await connection_manager.broadcast("unknown_game", test_message)
 
     @pytest.mark.asyncio
-    async def test_broadcast_removes_dead_connections(self, connection_manager: ConnectionManager) -> None:
+    async def test_broadcast_removes_dead_connections(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that broadcast removes connections that fail to send."""
         from unittest.mock import AsyncMock
 
@@ -181,13 +195,17 @@ class TestConnectionManagerBroadcast:
 class TestConnectionManagerConnectionCount:
     """Test connection count tracking."""
 
-    def test_get_connection_count_for_nonexistent_game(self, connection_manager: ConnectionManager) -> None:
+    def test_get_connection_count_for_nonexistent_game(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that get_connection_count returns 0 for non-existent games."""
         count = connection_manager.get_connection_count("non_existent_game")
         assert count == 0
 
     @pytest.mark.asyncio
-    async def test_get_connection_count_for_existing_game(self, connection_manager: ConnectionManager) -> None:
+    async def test_get_connection_count_for_existing_game(
+        self, connection_manager: ConnectionManager
+    ) -> None:
         """Test that get_connection_count returns correct count for existing games."""
         from unittest.mock import AsyncMock
 

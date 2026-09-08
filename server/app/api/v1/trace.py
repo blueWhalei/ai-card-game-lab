@@ -63,9 +63,7 @@ async def list_traces(
     experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     player_id: str | None = Query(None, description="Filter by player ID"),
     model: str | None = Query(None, description="Filter by model"),
-    parser_ok: bool | None = Query(
-        None, description="Filter by parser success (true/false)"
-    ),
+    parser_ok: bool | None = Query(None, description="Filter by parser success (true/false)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=200),
     service: TraceService = Depends(get_trace_service),
@@ -99,9 +97,7 @@ async def get_metrics(
     experiment_id: str | None = Query(None, description="Filter by experiment ID"),
     player_id: str | None = Query(None, description="Filter by player ID"),
     model: str | None = Query(None, description="Filter by model"),
-    parser_ok: bool | None = Query(
-        None, description="Filter by parser success (true/false)"
-    ),
+    parser_ok: bool | None = Query(None, description="Filter by parser success (true/false)"),
     start_time: str | None = Query(None, description="Start time (ISO format)"),
     end_time: str | None = Query(None, description="End time (ISO format)"),
     service: TraceService = Depends(get_trace_service),

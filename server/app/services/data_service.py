@@ -96,12 +96,14 @@ class DataService:
         result: list[dict[str, Any]] = []
         for mname, gcount in model_game_counts.items():
             wins = model_wins.get(mname, 0)
-            result.append({
-                "model": mname,
-                "games": gcount,
-                "wins": wins,
-                "win_rate": round(wins / gcount, 4) if gcount > 0 else 0,
-            })
+            result.append(
+                {
+                    "model": mname,
+                    "games": gcount,
+                    "wins": wins,
+                    "win_rate": round(wins / gcount, 4) if gcount > 0 else 0,
+                }
+            )
         result.sort(key=lambda x: x["win_rate"], reverse=True)
         return result
 
@@ -160,22 +162,22 @@ class DataService:
         eval_file = split_meta.get("eval_file_path")
         if eval_file:
             try:
-                filters["eval_file_path"] = str(
-                    Path(eval_file).relative_to(self._data_dir)
-                )
+                filters["eval_file_path"] = str(Path(eval_file).relative_to(self._data_dir))
             except ValueError:
                 filters["eval_file_path"] = eval_file
         async with connect_sqlite(self._sqlite_path) as db:
             repo = DatasetRepository(db)
-            return await repo.create({
-                "id": dataset_id,
-                "name": request.name,
-                "game_type": request.game_type,
-                "filters": filters,
-                "sample_count": sample_count,
-                "file_path": str(output_path.relative_to(self._data_dir)),
-                "created_at": now,
-            })
+            return await repo.create(
+                {
+                    "id": dataset_id,
+                    "name": request.name,
+                    "game_type": request.game_type,
+                    "filters": filters,
+                    "sample_count": sample_count,
+                    "file_path": str(output_path.relative_to(self._data_dir)),
+                    "created_at": now,
+                }
+            )
 
     async def delete_dataset(self, dataset_id: str) -> None:
         """Delete a dataset and its file."""
@@ -189,4 +191,3 @@ class DataService:
             file_path = self._data_dir / ds["file_path"]
             file_path.unlink(missing_ok=True)
             await repo.delete(dataset_id)
-
