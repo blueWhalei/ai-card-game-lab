@@ -245,7 +245,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 —— **已完成 2026-09-08**：5a duck-typed AEC `CardLabAECEnv`；5b EV 偏好 JSONL（`export-preferences`；蒸馏对仍待） | 训练升级，不自研训练器 |
-| 6 | MCP server + 研究助手草稿 —— **已完成 2026-09-08**：6a stdio 只读 MCP；6b 结论草稿（模板+确认写入） | 平台可被 agent 使用 |
+| 6 | MCP server + 研究助手草稿 —— **已完成 2026-09-08**：6a stdio MCP（读 + Wave 3a 写 `start_collect`/`cancel_collect`）；6b 结论草稿（模板+确认写入；坏手深链 Wave 3a） | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
 
 其中 1 与 2 是"技术护城河"级别：一个把选手从 prompt 变成可组合的智能体，
@@ -320,10 +320,10 @@ Policy.decide(observation: Observation,
 
 | 变化 | 承载 | 版本 |
 |------|------|------|
-| protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；后续再加 policy kind/budget、evaluator 参数 | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
+| protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；~~`scorer.evaluator` EV 旋钮~~ ✅ Wave 4d | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
 | 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；`tool_calls` 仍待 | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
-| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL`，列表从空起步 | 首条 ALTER = 迁移 1（`policy_kind`）→ `SCHEMA_VERSION = 1` |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind` → **`SCHEMA_VERSION = 2`** |
 
 ### 9.5 分层与目录
 
@@ -334,7 +334,7 @@ core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle p
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）
-app/mcp/       stdio MCP（6a ✅ 只读；Wave 3a ✅ start_collect / cancel_collect；HTTP MCP 仍待）
+app/mcp/       stdio MCP（6a ✅ 读；Wave 3a ✅ start_collect / cancel_collect；HTTP MCP 仍待）
 core/research/ conclusion_draft 模板草稿（6b ✅；坏手深链 Wave 3a ✅）
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```
