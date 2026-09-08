@@ -39,6 +39,7 @@ E2E wrapper: `scripts/e2e_pipeline.ps1` / `scripts/e2e_pipeline.sh` (calls `serv
 cd server
 poetry install
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+poetry run python -m app.mcp   # stdio MCP (Cursor); logs on stderr
 poetry run pytest
 poetry run pytest tests/test_api/test_system.py
 poetry run pytest -k "test_health"
@@ -89,6 +90,24 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `events/` — in-process `EventBus` + game lifecycle events.
   - `env/` — duck-typed PettingZoo-style **AEC** wrapper (`CardLabAECEnv`): `reset` / `agent_iter` / `last` / `step(index)`; non-learner seats use an injected baseline `ActionSelector` (default heuristic). No hard `pettingzoo` dependency. Reward from `engine.terminal_rewards()`.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
+- **MCP** (`app/mcp/`) — stdio Model Context Protocol server (`python -m app.mcp`, official `mcp` 2.x `MCPServer`). Read-only tools call Services directly: `list_experiments`, `get_experiment` (games off by default), `list_decision_points`, `get_decision_stats`. Logs go to stderr. Cursor example:
+
+```json
+{
+  "mcpServers": {
+    "cardlab": {
+      "command": "poetry",
+      "args": ["run", "python", "-m", "app.mcp"],
+      "cwd": "<repo>/server",
+      "env": {
+        "SQLITE_PATH": "<repo>/data/db/app.db",
+        "DATA_DIR": "<repo>/data"
+      }
+    }
+  }
+}
+```
+
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
 - **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Player configs UI (`/experiment-configs`); there is no YAML seed.
 
