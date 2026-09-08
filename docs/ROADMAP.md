@@ -117,10 +117,12 @@ schema 命名（`dataset` / `solver` / `scorer` / `engine` 四段，`schema_vers
 对手 rollout 策略、determinization 次数、n 是评估器参数并记录在决策点上，
 使 EV loss 数值可复现、可比较。
 
-**2.2.3 静态题库（puzzle set）作为第二种 benchmark**
+**2.2.3 静态题库（puzzle set）作为第二种 benchmark** —— **4a 已完成 2026-09-08**
 
 从对局抽"高分歧局面"存成题（局面 + 合法动作 + 各动作 EV）。模型离线做题：
 快、便宜、完全可复现。给模型一个类似棋类 puzzle rating 的"战术分"。题库可版本化。
+实现：`deal_seed` 回放重算 EV → `data/puzzles/{pack_id}/`；`POST /api/v1/puzzles/extract`
+与 `/packs/{id}/run`（baseline）；无 UI。鲁棒性探针见 §2.2.5（4b）。
 
 **2.2.4 录制—重放（VCR）** —— **已完成 2026-09-07**
 
@@ -228,7 +230,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight） | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
-| 4 | puzzle set + 鲁棒性探针 | 第二种 benchmark |
+| 4 | puzzle set + 鲁棒性探针 —— **4a 已完成 2026-09-08**：静态题库抽取/跑题 API（`core/eval/puzzle` + `PuzzleService` + `/api/v1/puzzles`）；**4b 鲁棒性探针仍待** | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
@@ -314,7 +316,7 @@ Policy.decide(observation: Observation,
 ```
 core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observation、ActionId、ToolSpec、Scorer）
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
-core/eval/     Evaluator、determinization、EV loss；ScorerRegistry（实验级五指标 ✅；puzzle 抽取仍待 Step 4）
+core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack IO / replay / extract+run（4a ✅；4b 鲁棒性仍待）
 core/env/      AEC 环境包装
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体

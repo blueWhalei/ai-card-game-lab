@@ -83,7 +83,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `engine/observer_types.py` — `ObserverSnapshot` protocol for the observer UI.
   - `ai/` — `LLMClient` ABC + `LLMClientFactory`. Two implementations: `OpenAICompatibleClient` (OpenAI, DashScope, DeepSeek, Kimi, Zhipu, Yi, Baichuan, MiniMax) and `OllamaClient`. Wired in `dependencies.py`. Streaming uses `stream_options: {"include_usage": true}`; final `StreamChunk` may carry `usage`. Clients accept `response_format` and degrade (drop `stream_options`, then `response_format`) when a provider rejects it with 4xx; `OllamaClient` translates it to Ollama's `format`. Optional **VCR** wrapper (`core/ai/vcr.py`): `VCR_MODE=record|replay` stores/replays chat calls as JSONL under `data/vcr/` (match key = SHA-256 of provider + messages + model/sampling/`response_format`); `replay` miss raises `VcrMissError` (no silent live call). Default `off`.
   - `policy/` — `Policy` ABC: an async **event stream** (`ThinkingDelta` / `ToolCall` / `ToolResult` / `LlmRequest` / `LlmUsage` / `ActionChosen`) ending in exactly one `ActionChosen`. `LLMPolicy` owns everything about asking a model (prompt assembly, tools, retries, timeout, streaming fallback, parsing); `RulePolicy` / `RandomPolicy` are the non-LLM baselines. A `Budget` caps LLM and tool calls; `PolicyContext` injects `EngineAdvisor`, `PromptSource`, and the rng.
-  - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers. Experiment-level **Scorer** plugins (`build_scorer_registry(game_type=…)`) cover every Dou Dizhu `eval_metric_id` (`train_usable`, `parser_success`, `latency_p50_p95`, `role:landlord`, `ev_loss`); `ExperimentService` overlays results onto summary from `protocol.scorer.eval_metric_ids`.
+  - `eval/` — `rollout.py` scores candidate actions by determinized rollouts with common random numbers. Experiment-level **Scorer** plugins (`build_scorer_registry(game_type=…)`) cover every Dou Dizhu `eval_metric_id` (`train_usable`, `parser_success`, `latency_p50_p95`, `role:landlord`, `ev_loss`); `ExperimentService` overlays results onto summary from `protocol.scorer.eval_metric_ids`. **Puzzle packs** (`puzzle.py` / `replay.py` + `PuzzleService`): extract high-spread decisions from finished experiment games into `{data_dir}/puzzles/{pack_id}/`, then score baselines offline (accuracy + mean EV loss). No UI in Step 4a.
   - `collector/` — JSONL writer.
   - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
   - `events/` — in-process `EventBus` + game lifecycle events.
@@ -174,6 +174,10 @@ GET      /api/v1/experiments/{id}/export
 POST     /api/v1/experiments/import
 POST     /api/v1/experiments/{id}/collect
 POST     /api/v1/experiments/{id}/cancel-collect
+POST     /api/v1/puzzles/extract
+GET      /api/v1/puzzles/packs
+GET      /api/v1/puzzles/packs/{pack_id}
+POST     /api/v1/puzzles/packs/{pack_id}/run
 GET      /api/v1/system/benchmark-seeds
 GET      /api/v1/system/preflight
 ```
