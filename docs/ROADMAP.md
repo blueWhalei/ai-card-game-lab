@@ -48,7 +48,7 @@ Policy.decide(observation, legal_actions, budget) -> Decision
 - `SingleShotLLMPolicy` — 现状
 - `ToolLoopPolicy` — ReAct：模型主动调用工具后再决策
 - `SearchAugmentedPolicy` — LLM 提议 k 个候选，rollout 评估 n 次，再选择
-- `RulePolicy` / `RandomPolicy` — 非 LLM 基线；也让 CI 能跑零成本真实对局
+- `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy` — 非 LLM 基线；也让 CI 能跑零成本真实对局
 - `HumanPolicy` — 人类席位（观战界面替某座位出牌 / 中途接管）
 - `EnsemblePolicy` — 多模型投票或大模型仲裁
 
@@ -202,7 +202,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 5. 锦标赛 / 天梯：多选手两两对打，Elo / Bradley-Terry 排名
 6. CLI：`cardlab run --experiment pack.json`、`cardlab export`（`e2e_pipeline.py` 是雏形）
 7. 成本：各 provider 单价表 × tokens 的费用估算；实验开始前给出预算预估
-8. 非 LLM 基线选手（见 `RulePolicy`）
+8. 非 LLM 基线选手（见 `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy`；选手 `kind` 产品化仍待 W2.1）
 
 ## 4. UI/UX 项
 
@@ -237,7 +237,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 序 | 项 | 解锁 |
 |----|----|------|
 | 0 | 引擎四项新能力（§9.1）+ `Observation` / action id 规范化 —— **已完成 2026-09-06** | 一切抽象的地基；不先做这步，Policy 会绑死在斗地主上 |
-| 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + `RulePolicy` 基线 —— **已完成**：1a 2026-09-06（接口 + 注册表 + 三个非 LLM 基线 + 引擎 `suggest_action`）；1b+1c 2026-09-07（`LLMPolicy` 接管提示词 / 工具 / 重试 / 解析，`AIService` 退化为事件消费者，动作 id 协议 + JSON Schema `enum`） | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
+| 1 | `Policy` 事件流接口 + `PolicyRegistry` + structured output + 非 LLM 基线 —— **已完成**：1a 2026-09-06（接口 + 注册表 + `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy` + 引擎 `suggest_action`）；1b+1c 2026-09-07（`LLMPolicy` 接管提示词 / 工具 / 重试 / 解析，`AIService` 退化为事件消费者，动作 id 协议 + JSON Schema `enum`） | 解析问题消失；CI 可跑真实对局；Service 与 core 边界确定 |
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight） | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
@@ -255,7 +255,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 ## 8. 待展开的设计问题
 
-- rollout 评估器的对手模型选择（随机 / 规则 / 同 Policy 自博弈）与 determinization 次数、n 的默认值
+- ~~rollout 评估器的对手模型选择与默认值~~ ✅ 默认 `heuristic`；`opponent_kind` 可切 `random` / `first` / `heuristic`（Wave 1）；同 Policy 自博弈仍待
 - ~~EV loss 与现有 `quality_score` / `train_usable` 字段的迁移关系~~ ✅ 并存：`train_usable`
   判结构有效性，`ev_loss` 判棋力，导出侧是两个独立开关（见 `step2b-ev-loss-wiring.md`）
 - ~~软兜底解析算不算成功~~ ✅ 算失败：兜底动作记 `parse_fallback` 且不进训练集。代价是
@@ -330,7 +330,7 @@ core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、
 core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅）
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
-core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
+core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）
 app/mcp/       stdio MCP（6a ✅ 只读；写操作仍待）
 core/research/ conclusion_draft 模板草稿（6b ✅）
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体

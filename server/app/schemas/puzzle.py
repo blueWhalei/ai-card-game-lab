@@ -15,12 +15,18 @@ class PuzzleExtractRequest(BaseModel):
 
 
 class PuzzleRunRequest(BaseModel):
-    baseline_kind: Literal["rule", "first", "random", "heuristic"] = "heuristic"
+    baseline_kind: Literal["rule", "first", "random", "heuristic"] = Field(
+        default="heuristic",
+        description="Non-LLM baseline. ``rule`` is an alias for ``first`` (FirstActionPolicy), not HeuristicPolicy.",
+    )
     seed: int = 0
 
 
 class PuzzleProbeRequest(BaseModel):
-    baseline_kind: Literal["rule", "first", "random", "heuristic"] = "heuristic"
+    baseline_kind: Literal["rule", "first", "random", "heuristic"] = Field(
+        default="heuristic",
+        description="Non-LLM baseline. ``rule`` is an alias for ``first`` (FirstActionPolicy), not HeuristicPolicy.",
+    )
     seed: int = 0
     n_trials: int = Field(default=3, ge=1, le=50)
     kinds: list[Literal["shuffle_legal_actions", "shuffle_hand_cards"]] | None = None
