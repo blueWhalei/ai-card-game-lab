@@ -10,6 +10,7 @@ from app.api.v1 import (
     experiment_config_stats,
     game,
     prompt,
+    puzzles,
     system,
     trace,
     training,
@@ -41,3 +42,4 @@ api_router.include_router(trace.router, prefix="/api/v1/traces", tags=["traces"]
 api_router.include_router(
     decision.router, prefix="/api/v1/decision-points", tags=["decision-points"]
 )
+api_router.include_router(puzzles.router, prefix="/api/v1/puzzles", tags=["puzzles"])

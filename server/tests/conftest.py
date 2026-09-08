@@ -54,6 +54,8 @@ async def client(test_settings: Settings) -> AsyncGenerator[AsyncClient, None]:
     dependencies.get_decision_service.cache_clear()
     dependencies.get_data_service.cache_clear()
     dependencies.get_demo_seed_service.cache_clear()
+    if hasattr(dependencies, "get_puzzle_service"):
+        dependencies.get_puzzle_service.cache_clear()
 
     with pytest.MonkeyPatch.context() as m:
         m.setenv("SQLITE_PATH", test_settings.sqlite_path)
