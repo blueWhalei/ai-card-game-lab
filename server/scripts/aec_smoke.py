@@ -22,14 +22,12 @@ def main() -> None:
         opponent_seed=0,
     )
     env.reset(seed=42)
-    steps = 0
-    for _agent in env.agent_iter():
+    for steps, _agent in enumerate(env.agent_iter()):
         _obs, reward, term, _trunc, info = env.last()
         if term:
             print(f"done steps={steps} reward={reward} info={info}")
             break
         env.step(0)
-        steps += 1
 
 
 if __name__ == "__main__":
