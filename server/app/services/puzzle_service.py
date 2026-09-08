@@ -21,6 +21,11 @@ import structlog
 from app.core.engine.base import GameAction, GameEngine, LegalAction
 from app.core.engine.observation import Observation
 from app.core.engine.registry import GameEngineRegistry
+from app.core.eval.perturb import (
+    PerturbKind,
+    ensure_perturb_kinds,
+    perturb_puzzle,
+)
 from app.core.eval.puzzle import (
     Puzzle,
     PuzzleAnswerScore,
@@ -275,6 +280,175 @@ class PuzzleService:
             **summary,
         )
         return report
+
+    async def probe(
+        self,
+        pack_id: str,
+        *,
+        baseline_kind: BaselineKind = "heuristic",
+        seed: int = 0,
+        n_trials: int = 3,
+        kinds: list[PerturbKind] | None = None,
+    ) -> dict[str, Any]:
+        """Measure action-id consistency under safe presentation shuffles."""
+        if n_trials < 1:
+            raise AppError(
+                message="n_trials must be >= 1",
+                code="PUZZLE_INVALID_N_TRIALS",
+                status_code=400,
+            )
+        root = self._puzzle_dir / pack_id
+        if not root.is_dir():
+            raise AppError(
+                message=f"Puzzle pack not found: {pack_id}",
+                code="PUZZLE_PACK_NOT_FOUND",
+                status_code=404,
+            )
+        try:
+            manifest, puzzles = load_pack(root)
+        except ValueError as error:
+            raise AppError(
+                message=str(error),
+                code="PUZZLE_PACK_INVALID",
+                status_code=400,
+            ) from error
+
+        try:
+            active_kinds = ensure_perturb_kinds(kinds)
+        except ValueError as error:
+            raise AppError(
+                message=str(error),
+                code="PUZZLE_INVALID_PERTURB",
+                status_code=400,
+            ) from error
+
+        policy = baseline_policy(baseline_kind)
+        engine = self._engine_registry.get(manifest.game_type)
+        budget = Budget()
+
+        puzzle_rows: list[dict[str, Any]] = []
+        consistent_flags: list[bool] = []
+        base_scores: list[PuzzleAnswerScore] = []
+        pert_scores: list[PuzzleAnswerScore] = []
+
+        for puzzle in puzzles:
+            base_rng = random.Random(self._probe_seed(seed, puzzle.puzzle_id, -1))
+            base_ctx = PolicyContext(advisor=engine, rng=base_rng)
+            observation = observation_from_dict(puzzle.observation)
+            legal = legal_actions_from_dicts(
+                puzzle.legal_actions, player_id=observation.player_id
+            )
+            base_chosen = await self._decide_action_id(
+                policy, observation, legal, budget, base_ctx
+            )
+            base_answer = score_answer(
+                puzzle.best_action_id, puzzle.action_values, base_chosen
+            )
+            base_scores.append(base_answer)
+
+            trials: list[dict[str, Any]] = []
+            for trial in range(n_trials):
+                trial_rng = random.Random(
+                    self._probe_seed(seed, puzzle.puzzle_id, trial)
+                )
+                pert = perturb_puzzle(puzzle, active_kinds, trial_rng)
+                pert_obs = observation_from_dict(pert.observation)
+                pert_legal = legal_actions_from_dicts(
+                    pert.legal_actions, player_id=pert_obs.player_id
+                )
+                decide_rng = random.Random(
+                    self._probe_seed(seed, puzzle.puzzle_id, trial + 10_000)
+                )
+                pert_ctx = PolicyContext(advisor=engine, rng=decide_rng)
+                pert_chosen = await self._decide_action_id(
+                    policy, pert_obs, pert_legal, budget, pert_ctx
+                )
+                consistent = pert_chosen == base_chosen
+                consistent_flags.append(consistent)
+                pert_answer = score_answer(
+                    puzzle.best_action_id, puzzle.action_values, pert_chosen
+                )
+                pert_scores.append(pert_answer)
+                trials.append(
+                    {
+                        "trial": trial,
+                        "chosen_action_id": pert_chosen,
+                        "consistent": consistent,
+                        "hit": pert_answer.hit,
+                        "ev_loss": pert_answer.ev_loss,
+                    }
+                )
+
+            puzzle_rows.append(
+                {
+                    "puzzle_id": puzzle.puzzle_id,
+                    "base_chosen_action_id": base_chosen,
+                    "best_action_id": puzzle.best_action_id,
+                    "base_hit": base_answer.hit,
+                    "base_ev_loss": base_answer.ev_loss,
+                    "trials": trials,
+                }
+            )
+
+        n = len(puzzles)
+        n_flags = len(consistent_flags)
+        summary = {
+            "n": n,
+            "n_trials": n_trials,
+            "kinds": active_kinds,
+            "consistency": (
+                round(sum(1 for flag in consistent_flags if flag) / n_flags, 4)
+                if n_flags
+                else 0.0
+            ),
+            "base_accuracy": (
+                round(sum(1 for s in base_scores if s.hit) / n, 4) if n else 0.0
+            ),
+            "pert_accuracy": (
+                round(sum(1 for s in pert_scores if s.hit) / len(pert_scores), 4)
+                if pert_scores
+                else 0.0
+            ),
+            "base_mean_ev_loss": (
+                round(sum(s.ev_loss for s in base_scores) / n, 4) if n else 0.0
+            ),
+            "pert_mean_ev_loss": (
+                round(sum(s.ev_loss for s in pert_scores) / len(pert_scores), 4)
+                if pert_scores
+                else 0.0
+            ),
+        }
+        run_id = f"probe_{secrets.token_hex(4)}"
+        report = {
+            "run_id": run_id,
+            "pack_id": pack_id,
+            "baseline_kind": baseline_kind,
+            "seed": seed,
+            "created_at": datetime.now(tz=UTC).isoformat(),
+            "summary": summary,
+            "puzzles": puzzle_rows,
+        }
+        runs_dir = root / "runs"
+        runs_dir.mkdir(parents=True, exist_ok=True)
+        (runs_dir / f"{run_id}.json").write_text(
+            json.dumps(report, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        logger.info(
+            "puzzle_probe_done",
+            pack_id=pack_id,
+            run_id=run_id,
+            baseline_kind=baseline_kind,
+            consistency=summary["consistency"],
+            n=n,
+            n_trials=n_trials,
+        )
+        return report
+
+    @staticmethod
+    def _probe_seed(seed: int, puzzle_id: str, trial: int) -> int:
+        digest = hashlib.sha256(f"{seed}|{puzzle_id}|{trial}".encode()).hexdigest()
+        return int(digest[:16], 16)
 
     @staticmethod
     async def _decide_action_id(

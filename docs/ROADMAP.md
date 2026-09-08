@@ -130,10 +130,13 @@ schema 命名（`dataset` / `solver` / `scorer` / `engine` 四段，`schema_vers
 审计"改 prompt 后相同局面输出是否变化"。实现：`VcrLLMClient` 包装 provider client；
 cassette 为 `data/vcr/*.jsonl`。
 
-**2.2.5 鲁棒性探针**
+**2.2.5 鲁棒性探针** —— **4b 已完成 2026-09-08**
 
 表示扰动（牌面符号、顺序、zh/en）、座位位置偏差、合法动作列表顺序打乱。
 同局面一致性区分"理解"与"模式匹配"。
+本阶段落地：题包上 `shuffle_legal_actions` + `shuffle_hand_cards`；
+`POST /api/v1/puzzles/packs/{id}/probe` 报 consistency（扰动前后同选率）及相对金标 hit/EV loss。
+座位旋转 / zh-en / 牌面符号替换未做。
 
 **2.2.6 双层指标 + 更严谨的配对统计**
 
@@ -230,7 +233,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 2 | rollout 评估器 → 决策级 EV loss —— **已完成**：core 2026-09-06（`core/eval/`，含 determinization 与 common random numbers），接线 2026-09-07（决策点 `ev_loss` / `max_ev_loss` 过滤 / `blunder` highlight） | 评测样本效率、SFT 过滤、highlights 三件事同时改变 |
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
-| 4 | puzzle set + 鲁棒性探针 —— **4a 已完成 2026-09-08**：静态题库抽取/跑题 API（`core/eval/puzzle` + `PuzzleService` + `/api/v1/puzzles`）；**4b 鲁棒性探针仍待** | 第二种 benchmark |
+| 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
@@ -316,7 +319,7 @@ Policy.decide(observation: Observation,
 ```
 core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observation、ActionId、ToolSpec、Scorer）
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
-core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack IO / replay / extract+run（4a ✅；4b 鲁棒性仍待）
+core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅）
 core/env/      AEC 环境包装
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体

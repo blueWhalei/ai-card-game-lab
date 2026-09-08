@@ -8,7 +8,12 @@ from fastapi import APIRouter, Depends, Query
 
 from app.dependencies import get_puzzle_service
 from app.schemas.common import ApiResponse
-from app.schemas.puzzle import PuzzleExtractRequest, PuzzlePackSummary, PuzzleRunRequest
+from app.schemas.puzzle import (
+    PuzzleExtractRequest,
+    PuzzlePackSummary,
+    PuzzleProbeRequest,
+    PuzzleRunRequest,
+)
 from app.services.puzzle_service import PuzzleService
 
 router = APIRouter(tags=["puzzles"])
@@ -75,5 +80,21 @@ async def run_puzzle_pack(
         pack_id,
         baseline_kind=body.baseline_kind,
         seed=body.seed,
+    )
+    return ApiResponse(data=report)
+
+
+@router.post("/packs/{pack_id}/probe", response_model=ApiResponse[dict[str, Any]])
+async def probe_puzzle_pack(
+    pack_id: str,
+    body: PuzzleProbeRequest,
+    service: PuzzleService = Depends(get_puzzle_service),
+) -> ApiResponse[dict[str, Any]]:
+    report = await service.probe(
+        pack_id,
+        baseline_kind=body.baseline_kind,
+        seed=body.seed,
+        n_trials=body.n_trials,
+        kinds=body.kinds,
     )
     return ApiResponse(data=report)

@@ -57,3 +57,34 @@ async def test_extract_empty_list_and_run(client: AsyncClient, tmp_path) -> None
 async def test_pack_not_found(client: AsyncClient) -> None:
     response = await client.get("/api/v1/puzzles/packs/does-not-exist")
     assert response.status_code == 404
+
+
+async def test_probe_empty_pack(client: AsyncClient, tmp_path) -> None:
+    now = datetime.now(tz=UTC).isoformat()
+    async with connect_sqlite(str(tmp_path / "test.db")) as db:
+        await ExperimentRepository(db).create(
+            experiment_id="exp-api-probe",
+            name="api probe",
+            notes="",
+            game_type="doudizhu",
+            player_ids=["p1", "p2", "p3"],
+            target_games=1,
+            created_at=now,
+            updated_at=now,
+        )
+
+    extract = await client.post(
+        "/api/v1/puzzles/extract",
+        json={"experiment_id": "exp-api-probe"},
+    )
+    pack_id = extract.json()["data"]["pack_id"]
+
+    probe = await client.post(
+        f"/api/v1/puzzles/packs/{pack_id}/probe",
+        json={"baseline_kind": "rule", "n_trials": 2},
+    )
+    assert probe.status_code == 200
+    summary = probe.json()["data"]["summary"]
+    assert summary["n"] == 0
+    assert summary["consistency"] == 0.0
+    assert summary["n_trials"] == 2

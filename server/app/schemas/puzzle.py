@@ -19,6 +19,13 @@ class PuzzleRunRequest(BaseModel):
     seed: int = 0
 
 
+class PuzzleProbeRequest(BaseModel):
+    baseline_kind: Literal["rule", "first", "random", "heuristic"] = "heuristic"
+    seed: int = 0
+    n_trials: int = Field(default=3, ge=1, le=50)
+    kinds: list[Literal["shuffle_legal_actions", "shuffle_hand_cards"]] | None = None
+
+
 class PuzzlePackSummary(BaseModel):
     pack_id: str
     created_at: str
