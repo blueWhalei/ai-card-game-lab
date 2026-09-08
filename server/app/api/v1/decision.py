@@ -34,6 +34,7 @@ class DecisionPointResponse(BaseModel):
     ev_loss: float | None = None
     evaluator_params: dict[str, Any] | None = None
     policy_kind: str = "llm"
+    tool_calls: list[dict[str, Any]] | None = None
     created_at: str
     parser_ok: bool | None = None
     win_probability: dict[str, Any] | None = None

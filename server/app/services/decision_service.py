@@ -45,6 +45,7 @@ class DecisionService:
         evaluator_params: dict[str, Any] | None = None,
         parse_fallback: bool = False,
         policy_kind: str = "llm",
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> str:
         """Create a new decision point record with train_usable evaluated.
 
@@ -85,6 +86,7 @@ class DecisionService:
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
                 policy_kind=policy_kind,
+                tool_calls=tool_calls,
             )
 
         logger.info(
@@ -168,13 +170,49 @@ class DecisionService:
         game_id: str,
         winner_id: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Pick 3–5 post-game highlight moves from stored decision points."""
+        """Pick 3–5 post-game highlight moves; enrich with heuristic baseline."""
         items, _total = await self.list_decision_points(
             game_id=game_id,
             limit=500,
             offset=0,
         )
-        return pick_game_highlights(items, winner_id=winner_id)
+        highlights = pick_game_highlights(items, winner_id=winner_id)
+        if not highlights:
+            return highlights
+
+        by_id = {str(p.get("id") or ""): p for p in items if p.get("id")}
+        game_type = await self._game_type_for(game_id)
+        if not game_type:
+            return highlights
+
+        from app.dependencies import get_engine_registry
+        from app.services.decision_snapshot import baseline_suggestion_for_point
+
+        try:
+            engine = get_engine_registry().get(game_type)
+        except Exception:
+            return highlights
+
+        for row in highlights:
+            point = by_id.get(str(row.get("decision_id") or ""))
+            if not point:
+                continue
+            baseline_id, baseline_label = baseline_suggestion_for_point(point, engine)
+            if baseline_id:
+                row["baseline_action_id"] = baseline_id
+                row["baseline_label"] = baseline_label
+        return highlights
+
+    async def _game_type_for(self, game_id: str) -> str | None:
+        from app.repositories.game_repo import GameRepository
+
+        async with connect_or_reuse(self._sqlite_path) as db:
+            try:
+                game = await GameRepository(db).get_by_id(game_id)
+            except KeyError:
+                return None
+            raw = game.get("game_type")
+            return str(raw) if raw else None
 
     async def get_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
         """Get aggregate statistics for decision points."""

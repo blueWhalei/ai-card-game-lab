@@ -66,9 +66,14 @@ async def _v2_experiment_config_policy_kind(db: aiosqlite.Connection) -> None:
     await _add_column(db, "experiment_configs", "policy_kind", "TEXT NOT NULL DEFAULT 'llm'")
 
 
+async def _v3_decision_tool_calls(db: aiosqlite.Connection) -> None:
+    await _add_column(db, "decision_points", "tool_calls", "TEXT")
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "decision_points.policy_kind", _v1_decision_policy_kind),
     Migration(2, "experiment_configs.policy_kind", _v2_experiment_config_policy_kind),
+    Migration(3, "decision_points.tool_calls", _v3_decision_tool_calls),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0

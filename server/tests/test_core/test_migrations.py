@@ -32,6 +32,7 @@ async def test_a_fresh_database_is_stamped_at_the_current_version(tmp_path: Path
             "prompt_messages",
             "parse_fallback",
             "policy_kind",
+            "tool_calls",
         } <= decision_columns
         assert "policy_kind" in await _columns(db, "experiment_configs")
 
@@ -98,8 +99,9 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 2
+        assert SCHEMA_VERSION == 3
         assert "policy_kind" in await _columns(db, "decision_points")
+        assert "tool_calls" in await _columns(db, "decision_points")
 
 
 async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
@@ -132,7 +134,7 @@ async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
     await init_db(sqlite_path)
 
     async with connect_sqlite(sqlite_path) as db:
-        assert await get_schema_version(db) == 2
+        assert await get_schema_version(db) == SCHEMA_VERSION
         assert "policy_kind" in await _columns(db, "experiment_configs")
         cursor = await db.execute(
             "SELECT policy_kind FROM experiment_configs WHERE id = 'cfg_a'"
@@ -140,3 +142,47 @@ async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
         row = await cursor.fetchone()
         assert row is not None
         assert row[0] == "llm"
+
+
+async def test_migration_3_adds_tool_calls_to_legacy_decision_points(
+    tmp_path: Path,
+) -> None:
+    """A database stamped at v2 gains decision_points.tool_calls at v3."""
+    sqlite_path = str(tmp_path / "legacy_v2.db")
+    async with aiosqlite.connect(sqlite_path) as db:
+        await db.execute(
+            """
+            CREATE TABLE decision_points (
+                id TEXT PRIMARY KEY,
+                game_id TEXT NOT NULL,
+                round_number INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                hand_cards TEXT NOT NULL,
+                opponent_hands TEXT,
+                last_action TEXT,
+                game_phase TEXT NOT NULL,
+                legal_actions TEXT NOT NULL,
+                chosen_action TEXT NOT NULL,
+                action_id TEXT NOT NULL DEFAULT '',
+                prompt_messages TEXT,
+                thinking TEXT,
+                outcome TEXT,
+                quality_score REAL DEFAULT 0.5,
+                train_usable INTEGER NOT NULL DEFAULT 1,
+                train_usable_reason TEXT NOT NULL DEFAULT '',
+                parse_fallback INTEGER NOT NULL DEFAULT 0,
+                ev_loss REAL,
+                evaluator_params TEXT,
+                policy_kind TEXT NOT NULL DEFAULT 'llm',
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        await db.execute("PRAGMA user_version = 2")
+        await db.commit()
+
+    await init_db(sqlite_path)
+
+    async with connect_sqlite(sqlite_path) as db:
+        assert await get_schema_version(db) == 3
+        assert "tool_calls" in await _columns(db, "decision_points")

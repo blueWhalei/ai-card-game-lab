@@ -209,7 +209,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 ## 4. UI/UX 项
 
 - Demo 数据应产出一个**已走到 verdict 阶段**的完整实验，零成本看到五阶段终点
-- 回放解说层：关键决策点叠加 "AI 选 X，EV 最优 Y，loss z"（依赖 §2.2.2；已完成 2026-09-08，高光列表；live 基线 Policy 对比仍待）
+- 回放解说层：关键决策点叠加 "AI 选 X，基线 Y，EV 最优 Z，loss w"（依赖 §2.2.2；高光列表 ✅ Wave 4d + Wave 5；live 每帧基线仍不做）
 - 全站阻塞态审计：每个阻塞态遵守"替换状态行与 CTA，而不是 banner + 无效按钮"
 - 拆分 `ExperimentDetailView.vue`（`useExperimentDetail()` composable + 阶段容器）
 - i18n 按页面拆目录 `locales/zh-CN/{experiment,game,...}.ts`
@@ -321,9 +321,9 @@ Policy.decide(observation: Observation,
 | 变化 | 承载 | 版本 |
 |------|------|------|
 | protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；~~`scorer.evaluator` EV 旋钮~~ ✅ Wave 4d | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
-| 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；`tool_calls` 仍待 | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
+| 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；~~`tool_calls`~~ ✅ Wave 5（迁移 3，摘要形） | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
-| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind` → **`SCHEMA_VERSION = 2`** |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind`；迁移 3 = 决策 `tool_calls` → **`SCHEMA_VERSION = 3`** |
 
 ### 9.5 分层与目录
 

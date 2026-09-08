@@ -43,6 +43,8 @@ export interface DecisionPoint {
     rocket: boolean
     strength_score: number
   } | null
+  /** Compact tool-use summary from the turn (names + result keys only). */
+  tool_calls?: Array<{ name: string; keys?: string[]; has_text?: boolean }> | null
   created_at: string
 }
 

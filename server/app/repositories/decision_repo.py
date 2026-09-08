@@ -53,6 +53,7 @@ class DecisionRepository:
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
         policy_kind: str = "llm",
+        tool_calls: list[dict[str, Any]] | None = None,
     ) -> None:
         """Insert a new decision point record.
 
@@ -66,8 +67,8 @@ class DecisionRepository:
                 opponent_hands, last_action, game_phase, legal_actions,
                 chosen_action, action_id, prompt_messages, thinking,
                 train_usable, train_usable_reason, parse_fallback,
-                ev_loss, evaluator_params, policy_kind, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ev_loss, evaluator_params, policy_kind, tool_calls, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -89,6 +90,7 @@ class DecisionRepository:
                 ev_loss,
                 json.dumps(evaluator_params, ensure_ascii=False) if evaluator_params else None,
                 policy_kind or "llm",
+                json.dumps(tool_calls, ensure_ascii=False) if tool_calls else None,
                 created_at,
             ),
         )
@@ -440,6 +442,20 @@ def _parse_json_object(raw: Any) -> dict[str, Any] | None:
     return None
 
 
+def _parse_json_list(raw: Any) -> list[Any] | None:
+    if raw is None or raw == "":
+        return None
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, str):
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        return parsed if isinstance(parsed, list) else None
+    return None
+
+
 def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
     """Convert a decision_points row to a dictionary with JSON fields parsed.
 
@@ -470,6 +486,7 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "ev_loss": row["ev_loss"],
         "evaluator_params": _parse_json_object(row["evaluator_params"]),
         "policy_kind": row["policy_kind"] if "policy_kind" in keys else "llm",
+        "tool_calls": _parse_json_list(row["tool_calls"] if "tool_calls" in keys else None),
         "created_at": row["created_at"],
         "win_probability": _parse_json_object(
             row["win_probability_json"] if "win_probability_json" in keys else None

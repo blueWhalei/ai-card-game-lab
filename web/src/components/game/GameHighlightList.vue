@@ -42,13 +42,22 @@ function actionLabel(item: GameHighlight): string {
 }
 
 function evExplain(item: GameHighlight): string | null {
-  if (!item.best_action_id) return null
+  const baseline = item.baseline_label || item.baseline_action_id || null
+  if (!item.best_action_id && !baseline) return null
   const ai = item.action_id || actionLabel(item)
-  const loss =
-    item.ev_loss == null || Number.isNaN(Number(item.ev_loss))
-      ? '—'
-      : Number(item.ev_loss).toFixed(2)
-  return t('game.evExplain', { ai, best: item.best_action_id, loss })
+  const parts = [t('game.evExplainAi', { ai })]
+  if (baseline) {
+    parts.push(t('game.evExplainBaseline', { base: baseline }))
+  }
+  if (item.best_action_id) {
+    parts.push(t('game.evExplainBest', { best: item.best_action_id }))
+    const loss =
+      item.ev_loss == null || Number.isNaN(Number(item.ev_loss))
+        ? '—'
+        : Number(item.ev_loss).toFixed(2)
+    parts.push(t('game.evExplainLoss', { loss }))
+  }
+  return parts.join(' · ')
 }
 
 function goDecision(item: GameHighlight): void {

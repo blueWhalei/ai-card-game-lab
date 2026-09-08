@@ -35,6 +35,7 @@ from app.core.policy.baselines import FirstActionPolicy
 from app.core.policy.kinds import is_baseline_policy_kind
 from app.core.policy.llm import LLMPolicy
 from app.services.decision_snapshot import (
+    compact_tool_calls,
     game_phase_from_observation,
     hand_cards_from_observation,
     last_action_from_observation,
@@ -277,6 +278,7 @@ class AIService:
                 prompt_messages=trace.messages,
                 game_id=game_id,
                 policy_kind=policy.kind,
+                tool_results=trace.tool_results or None,
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
@@ -352,6 +354,7 @@ class AIService:
         prompt_messages: list[dict[str, str]],
         game_id: str | None = None,
         policy_kind: str = "llm",
+        tool_results: dict[str, Any] | None = None,
     ) -> None:
         """Record a decision point for SFT training data.
 
@@ -402,6 +405,7 @@ class AIService:
                 evaluator_params=evaluator_params,
                 parse_fallback=chosen.parse_fallback,
                 policy_kind=policy_kind,
+                tool_calls=compact_tool_calls(tool_results),
             )
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)

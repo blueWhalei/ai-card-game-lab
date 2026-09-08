@@ -80,6 +80,8 @@ export interface GameHighlight {
   ev_loss?: number | null
   action_id?: string | null
   best_action_id?: string | null
+  baseline_action_id?: string | null
+  baseline_label?: string | null
 }
 
 export const gameApi = {

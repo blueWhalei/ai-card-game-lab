@@ -181,6 +181,7 @@ CREATE TABLE IF NOT EXISTS decision_points (
     ev_loss         REAL,
     evaluator_params TEXT,
     policy_kind     TEXT    NOT NULL DEFAULT 'llm',
+    tool_calls      TEXT,
     created_at      TEXT    NOT NULL
 );
 

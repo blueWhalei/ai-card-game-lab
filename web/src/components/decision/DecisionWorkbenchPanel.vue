@@ -771,6 +771,14 @@ onMounted(async () => {
               </div>
             </div>
 
+            <div
+              v-if="selectedPoint.tool_calls?.length"
+              class="text-caption text-ink-text-muted"
+            >
+              {{ t('decision.toolsUsed') }}：
+              {{ selectedPoint.tool_calls.map((c) => c.name).join(' · ') }}
+            </div>
+
             <div>
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.chosen') }}</div>
               <div class="mt-1 rounded-ink bg-ink-primary-muted p-2 font-medium text-ink-text">

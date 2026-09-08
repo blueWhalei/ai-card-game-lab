@@ -223,7 +223,7 @@ Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/dataset
 
 Schema lives in `app/database.py`. Tables:
 
-`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`, `policy_kind`), `experiment_configs` (`policy_kind`: `llm` / `heuristic` / `random` / `first`).
+`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`, `policy_kind`, `tool_calls`), `experiment_configs` (`policy_kind`: `llm` / `heuristic` / `random` / `first`).
 
 Schema changes go through `app/migrations.py`: a numbered migration list tracked by
 `PRAGMA user_version`. `_SCHEMA_SQL` builds a new database; migrations change an existing
@@ -232,7 +232,7 @@ in the migration — `_SCHEMA_SQL` also runs against pre-migration databases. A 
 newer than the running build raises `SchemaVersionError` instead of being read. Greenfield
 DBs already include historically added columns in `_SCHEMA_SQL`; the migration list was empty
 until the first real ALTER (`policy_kind` on decisions = migration 1; player
-  `policy_kind` = migration 2 → `SCHEMA_VERSION = 2`).
+`policy_kind` = migration 2; decision `tool_calls` = migration 3 → `SCHEMA_VERSION = 3`).
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
@@ -240,7 +240,7 @@ JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
 ## Decision points (SFT)
 
-Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking, and `ev_loss`. Board fields are taken from the same ``Observation`` the policy saw (`services/decision_snapshot.py`); EV scoring still uses the live ``GameState``.
+Each AI move stores state–action: hand, opponent counts, last action, phase, legal actions, chosen action, thinking, `ev_loss`, and optional `tool_calls` (compact tool-name summary from the turn). Board fields are taken from the same ``Observation`` the policy saw (`services/decision_snapshot.py`); EV scoring still uses the live ``GameState``.
 
 EV loss is scored inline in `AIService._record_decision_point` (`DecisionEvaluator` → `core/eval/rollout.py`), while the live state still exists: a stored decision point does not carry the `ActionId` values or public information `sample_hidden_state` needs to rebuild a world. Experiment create freezes EV knobs into `protocol.scorer.evaluator` (from Settings); scoring prefers that snapshot over the process default. It costs roughly 100 ms of local CPU per move and no API budget; `EV_LOSS_ENABLED=false` turns it off. Scoring never raises — an engine without hidden-state sampling, or any failure, stores `NULL` rather than failing the game.
 
