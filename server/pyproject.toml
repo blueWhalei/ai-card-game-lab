@@ -21,6 +21,7 @@ ruff = ">=0.8.0"
 mypy = ">=1.13.0"
 pytest = ">=8.0.0"
 pytest-asyncio = ">=0.24.0"
+pytest-cov = ">=5.0.0"
 httpx = ">=0.27.0"
 
 # Optional: real LoRA SFT (poetry install --with training)
@@ -94,7 +95,42 @@ warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
 
+# Training stack (optional extras + third-party stubs) — out of CI gate for now.
+[[tool.mypy.overrides]]
+module = [
+    "app.core.training",
+    "app.core.training.*",
+]
+ignore_errors = true
+
+[[tool.mypy.overrides]]
+module = [
+    "torch",
+    "torch.*",
+    "transformers",
+    "transformers.*",
+    "peft",
+    "peft.*",
+    "datasets",
+    "datasets.*",
+    "accelerate",
+    "accelerate.*",
+    "bitsandbytes",
+    "bitsandbytes.*",
+    "safetensors",
+    "safetensors.*",
+]
+ignore_missing_imports = true
+
 # ── pytest ────────────────────────────────────────────
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["app"]
+branch = false
+
+[tool.coverage.report]
+show_missing = true
+skip_empty = true

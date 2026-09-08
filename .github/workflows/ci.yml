@@ -24,10 +24,14 @@ jobs:
           virtualenvs-in-project: true
       - name: Install dependencies
         run: poetry install --no-interaction
-      - name: Test
-        run: poetry run pytest
-      - name: Ruff
+      - name: Ruff check
         run: poetry run ruff check .
+      - name: Ruff format
+        run: poetry run ruff format --check .
+      - name: Mypy (app/core)
+        run: poetry run mypy app/core
+      - name: Test
+        run: poetry run pytest --cov=app --cov-report=term-missing
 
   frontend:
     runs-on: ubuntu-latest

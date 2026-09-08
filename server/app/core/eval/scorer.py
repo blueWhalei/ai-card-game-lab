@@ -131,9 +131,8 @@ def apply_scorer_results(
         out["landlord_win_rate"] = landlord.value
         out["decisive_games"] = landlord.n
         wins_by_role = dict(out.get("wins_by_role") or {})
-        wins_by_role["landlord"] = int(
-            landlord.extras.get("landlord_role_wins", wins_by_role.get("landlord", 0))
-        )
+        raw_wins = landlord.extras.get("landlord_role_wins", wins_by_role.get("landlord", 0))
+        wins_by_role["landlord"] = 0 if raw_wins is None else int(raw_wins)
         out["wins_by_role"] = wins_by_role
     latency = results.get("latency_p50_p95")
     if latency is not None:

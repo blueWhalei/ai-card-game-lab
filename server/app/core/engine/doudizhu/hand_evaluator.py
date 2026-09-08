@@ -91,9 +91,7 @@ def classify(cards: list[str]) -> tuple[ActionType, int] | None:
             return (ActionType.CHAIN_PAIR, uq[0])
 
     # Airplane (飞机): >= 2 consecutive triples
-    triple_ranks = sorted(
-        [_rank_to_power(r) for r, c in rank_counts.items() if c >= 3]
-    )
+    triple_ranks = sorted([_rank_to_power(r) for r, c in rank_counts.items() if c >= 3])
     if len(triple_ranks) >= MIN_AIRPLANE_LENGTH:
         seq = _longest_consecutive_sub(triple_ranks, max_power=11)
         if seq and len(seq) >= MIN_AIRPLANE_LENGTH:
@@ -104,7 +102,9 @@ def classify(cards: list[str]) -> tuple[ActionType, int] | None:
             if remaining == num_triples:
                 return (ActionType.AIRPLANE_SOLO, seq[0])
             if remaining == num_triples * 2:
-                pair_kickers = [r for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) not in seq]
+                pair_kickers = [
+                    r for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) not in seq
+                ]
                 if len(pair_kickers) >= num_triples:
                     return (ActionType.AIRPLANE_PAIR, seq[0])
 
@@ -152,7 +152,9 @@ def get_legal_plays(
         results.extend(_enumerate_all(hand_sorted, player_id))
     else:
         last_type, last_power, last_cards = last_play
-        results.extend(_enumerate_beating(hand_sorted, last_type, last_power, last_cards, player_id))
+        results.extend(
+            _enumerate_beating(hand_sorted, last_type, last_power, last_cards, player_id)
+        )
         results.append(GameAction(player_id=player_id, action_type=ActionType.PASS))
 
     return results
@@ -163,6 +165,7 @@ def get_legal_plays(
 
 def _rank_to_power(rank: str) -> int:
     from app.core.engine.doudizhu.cards import RANK_POWER
+
     return RANK_POWER[rank]
 
 
@@ -216,8 +219,13 @@ _ACTION_PRIORITY: dict[ActionType, int] = {
 
 def _sort_actions_by_priority(actions: list[GameAction]) -> list[GameAction]:
     """Sort actions by priority (combo types first, singles last)."""
+
     def sort_key(a: GameAction) -> int:
-        return _ACTION_PRIORITY.get(a.action_type, 0)
+        try:
+            return _ACTION_PRIORITY[ActionType(a.action_type)]
+        except (KeyError, ValueError):
+            return 0
+
     return sorted(actions, key=sort_key, reverse=True)
 
 
@@ -235,82 +243,98 @@ def _enumerate_all(hand: list[str], player_id: str) -> list[GameAction]:
 
     # Singles
     for r, cards in cards_by_rank.items():
-        results.append(GameAction(player_id=player_id, action_type=ActionType.SINGLE, cards=[cards[0]]))
+        results.append(
+            GameAction(player_id=player_id, action_type=ActionType.SINGLE, cards=[cards[0]])
+        )
 
     # Pairs
     for r, cards in cards_by_rank.items():
         if len(cards) >= 2:
-            results.append(GameAction(player_id=player_id, action_type=ActionType.PAIR, cards=cards[:2]))
+            results.append(
+                GameAction(player_id=player_id, action_type=ActionType.PAIR, cards=cards[:2])
+            )
 
     # Triples
     for r, cards in cards_by_rank.items():
         if len(cards) >= 3:
             triple = cards[:3]
-            results.append(GameAction(player_id=player_id, action_type=ActionType.TRIPLE, cards=triple))
+            results.append(
+                GameAction(player_id=player_id, action_type=ActionType.TRIPLE, cards=triple)
+            )
             # Triple + 1
             for kr, kcards in cards_by_rank.items():
                 if kr != r:
-                    results.append(GameAction(
-                        player_id=player_id,
-                        action_type=ActionType.TRIPLE_ONE,
-                        cards=triple + [kcards[0]],
-                    ))
+                    results.append(
+                        GameAction(
+                            player_id=player_id,
+                            action_type=ActionType.TRIPLE_ONE,
+                            cards=triple + [kcards[0]],
+                        )
+                    )
             # Triple + 2
             for kr, kcards in cards_by_rank.items():
                 if kr != r and len(kcards) >= 2:
-                    results.append(GameAction(
-                        player_id=player_id,
-                        action_type=ActionType.TRIPLE_TWO,
-                        cards=triple + kcards[:2],
-                    ))
+                    results.append(
+                        GameAction(
+                            player_id=player_id,
+                            action_type=ActionType.TRIPLE_TWO,
+                            cards=triple + kcards[:2],
+                        )
+                    )
 
     # Bombs
     for r, cards in cards_by_rank.items():
         if len(cards) == 4:
-            results.append(GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4]))
+            results.append(
+                GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4])
+            )
 
     # Rocket
     if BLACK_JOKER in hand and RED_JOKER in hand:
-        results.append(GameAction(
-            player_id=player_id,
-            action_type=ActionType.ROCKET,
-            cards=[BLACK_JOKER, RED_JOKER],
-        ))
+        results.append(
+            GameAction(
+                player_id=player_id,
+                action_type=ActionType.ROCKET,
+                cards=[BLACK_JOKER, RED_JOKER],
+            )
+        )
 
     # Chains (顺子): 5+ consecutive singles
-    power_ranks = sorted(set(
-        _rank_to_power(r) for r in rank_counts if _rank_to_power(r) <= 11
-    ))
+    power_ranks = sorted(set(_rank_to_power(r) for r in rank_counts if _rank_to_power(r) <= 11))
     for chain in _find_consecutive_seqs(power_ranks, MIN_CHAIN_LENGTH):
         chain_cards = []
         for p in chain:
             r = _power_to_rank(p)
             chain_cards.append(cards_by_rank[r][0])
-        results.append(GameAction(
-            player_id=player_id,
-            action_type=ActionType.CHAIN,
-            cards=chain_cards,
-        ))
+        results.append(
+            GameAction(
+                player_id=player_id,
+                action_type=ActionType.CHAIN,
+                cards=chain_cards,
+            )
+        )
 
     # Chain pairs (连对): 3+ consecutive pairs
-    pair_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) <= 11
-    ))
+    pair_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) <= 11)
+    )
     for chain in _find_consecutive_seqs(pair_powers, MIN_CHAIN_PAIR_LENGTH):
         chain_cards = []
         for p in chain:
             r = _power_to_rank(p)
             chain_cards.extend(cards_by_rank[r][:2])
-        results.append(GameAction(
-            player_id=player_id,
-            action_type=ActionType.CHAIN_PAIR,
-            cards=chain_cards,
-        ))
+        results.append(
+            GameAction(
+                player_id=player_id,
+                action_type=ActionType.CHAIN_PAIR,
+                cards=chain_cards,
+            )
+        )
 
     # Airplanes (飞机): 2+ consecutive triples
-    triple_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11
-    ))
+    triple_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11)
+    )
     for chain in _find_consecutive_seqs(triple_powers, MIN_AIRPLANE_LENGTH):
         plane_cards: list[str] = []
         used_ranks = set()
@@ -318,21 +342,25 @@ def _enumerate_all(hand: list[str], player_id: str) -> list[GameAction]:
             r = _power_to_rank(p)
             plane_cards.extend(cards_by_rank[r][:3])
             used_ranks.add(r)
-        results.append(GameAction(
-            player_id=player_id,
-            action_type=ActionType.AIRPLANE,
-            cards=plane_cards,
-        ))
+        results.append(
+            GameAction(
+                player_id=player_id,
+                action_type=ActionType.AIRPLANE,
+                cards=plane_cards,
+            )
+        )
         # Airplane + solo wings
         kicker_ranks = [r for r in rank_counts if r not in used_ranks]
         if len(kicker_ranks) >= len(chain):
             for combo in combinations(kicker_ranks, len(chain)):
                 kicker_cards = [cards_by_rank[r][0] for r in combo]
-                results.append(GameAction(
-                    player_id=player_id,
-                    action_type=ActionType.AIRPLANE_SOLO,
-                    cards=plane_cards + kicker_cards,
-                ))
+                results.append(
+                    GameAction(
+                        player_id=player_id,
+                        action_type=ActionType.AIRPLANE_SOLO,
+                        cards=plane_cards + kicker_cards,
+                    )
+                )
         # Airplane + pair wings
         pair_kicker_ranks = [r for r, c in rank_counts.items() if c >= 2 and r not in used_ranks]
         if len(pair_kicker_ranks) >= len(chain):
@@ -340,11 +368,13 @@ def _enumerate_all(hand: list[str], player_id: str) -> list[GameAction]:
                 kicker_cards = []
                 for r in combo:
                     kicker_cards.extend(cards_by_rank[r][:2])
-                results.append(GameAction(
-                    player_id=player_id,
-                    action_type=ActionType.AIRPLANE_PAIR,
-                    cards=plane_cards + kicker_cards,
-                ))
+                results.append(
+                    GameAction(
+                        player_id=player_id,
+                        action_type=ActionType.AIRPLANE_PAIR,
+                        cards=plane_cards + kicker_cards,
+                    )
+                )
 
     # Four + 2 singles
     for r, cards in cards_by_rank.items():
@@ -352,20 +382,24 @@ def _enumerate_all(hand: list[str], player_id: str) -> list[GameAction]:
             other_ranks = [k for k in cards_by_rank if k != r]
             for combo in combinations(other_ranks, 2):
                 kicker_cards = [cards_by_rank[combo[0]][0], cards_by_rank[combo[1]][0]]
-                results.append(GameAction(
-                    player_id=player_id,
-                    action_type=ActionType.FOUR_TWO,
-                    cards=cards[:4] + kicker_cards,
-                ))
+                results.append(
+                    GameAction(
+                        player_id=player_id,
+                        action_type=ActionType.FOUR_TWO,
+                        cards=cards[:4] + kicker_cards,
+                    )
+                )
             # Four + 2 pairs
             pair_ranks = [k for k in cards_by_rank if k != r and len(cards_by_rank[k]) >= 2]
             for combo in combinations(pair_ranks, 2):
                 kicker_cards = cards_by_rank[combo[0]][:2] + cards_by_rank[combo[1]][:2]
-                results.append(GameAction(
-                    player_id=player_id,
-                    action_type=ActionType.FOUR_TWO,
-                    cards=cards[:4] + kicker_cards,
-                ))
+                results.append(
+                    GameAction(
+                        player_id=player_id,
+                        action_type=ActionType.FOUR_TWO,
+                        cards=cards[:4] + kicker_cards,
+                    )
+                )
 
     # Sort by priority: combo types first, singles last
     return _sort_actions_by_priority(results)
@@ -392,17 +426,23 @@ def _enumerate_beating(
     if last_type == ActionType.SINGLE:
         for r, cards in cards_by_rank.items():
             if _rank_to_power(r) > last_power:
-                results.append(GameAction(player_id=player_id, action_type=ActionType.SINGLE, cards=[cards[0]]))
+                results.append(
+                    GameAction(player_id=player_id, action_type=ActionType.SINGLE, cards=[cards[0]])
+                )
 
     elif last_type == ActionType.PAIR:
         for r, cards in cards_by_rank.items():
             if len(cards) >= 2 and _rank_to_power(r) > last_power:
-                results.append(GameAction(player_id=player_id, action_type=ActionType.PAIR, cards=cards[:2]))
+                results.append(
+                    GameAction(player_id=player_id, action_type=ActionType.PAIR, cards=cards[:2])
+                )
 
     elif last_type == ActionType.TRIPLE:
         for r, cards in cards_by_rank.items():
             if len(cards) >= 3 and _rank_to_power(r) > last_power:
-                results.append(GameAction(player_id=player_id, action_type=ActionType.TRIPLE, cards=cards[:3]))
+                results.append(
+                    GameAction(player_id=player_id, action_type=ActionType.TRIPLE, cards=cards[:3])
+                )
 
     elif last_type == ActionType.TRIPLE_ONE:
         for r, cards in cards_by_rank.items():
@@ -410,11 +450,13 @@ def _enumerate_beating(
                 triple = cards[:3]
                 for kr, kcards in cards_by_rank.items():
                     if kr != r:
-                        results.append(GameAction(
-                            player_id=player_id,
-                            action_type=ActionType.TRIPLE_ONE,
-                            cards=triple + [kcards[0]],
-                        ))
+                        results.append(
+                            GameAction(
+                                player_id=player_id,
+                                action_type=ActionType.TRIPLE_ONE,
+                                cards=triple + [kcards[0]],
+                            )
+                        )
 
     elif last_type == ActionType.TRIPLE_TWO:
         for r, cards in cards_by_rank.items():
@@ -422,11 +464,13 @@ def _enumerate_beating(
                 triple = cards[:3]
                 for kr, kcards in cards_by_rank.items():
                     if kr != r and len(kcards) >= 2:
-                        results.append(GameAction(
-                            player_id=player_id,
-                            action_type=ActionType.TRIPLE_TWO,
-                            cards=triple + kcards[:2],
-                        ))
+                        results.append(
+                            GameAction(
+                                player_id=player_id,
+                                action_type=ActionType.TRIPLE_TWO,
+                                cards=triple + kcards[:2],
+                            )
+                        )
 
     elif last_type == ActionType.CHAIN:
         # Must find SAME-LENGTH chain with higher starting power
@@ -436,22 +480,30 @@ def _enumerate_beating(
     elif last_type == ActionType.CHAIN_PAIR:
         # Must find same-length chain pair
         last_pair_count = len(last_cards) // 2
-        _add_chain_pairs_beating(results, rank_counts, cards_by_rank, last_power, last_pair_count, player_id)
+        _add_chain_pairs_beating(
+            results, rank_counts, cards_by_rank, last_power, last_pair_count, player_id
+        )
 
     elif last_type == ActionType.AIRPLANE:
         # Must find same-length airplane
         last_triple_count = len(last_cards) // 3
-        _add_airplanes_beating(results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id)
+        _add_airplanes_beating(
+            results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id
+        )
 
     elif last_type == ActionType.AIRPLANE_SOLO:
         # Airplane + solo wings: 4 cards per triple (3 + 1)
         last_triple_count = len(last_cards) // 4
-        _add_airplane_solos_beating(results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id)
+        _add_airplane_solos_beating(
+            results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id
+        )
 
     elif last_type == ActionType.AIRPLANE_PAIR:
         # Airplane + pair wings: 5 cards per triple (3 + 2)
         last_triple_count = len(last_cards) // 5
-        _add_airplane_pairs_beating(results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id)
+        _add_airplane_pairs_beating(
+            results, rank_counts, cards_by_rank, last_power, last_triple_count, player_id
+        )
 
     elif last_type == ActionType.FOUR_TWO:
         for r, cards in cards_by_rank.items():
@@ -461,40 +513,50 @@ def _enumerate_beating(
                 if len(other_ranks) >= 2:
                     for combo in combinations(other_ranks, 2):
                         kicker_cards = [cards_by_rank[combo[0]][0], cards_by_rank[combo[1]][0]]
-                        results.append(GameAction(
-                            player_id=player_id,
-                            action_type=ActionType.FOUR_TWO,
-                            cards=cards[:4] + kicker_cards,
-                        ))
+                        results.append(
+                            GameAction(
+                                player_id=player_id,
+                                action_type=ActionType.FOUR_TWO,
+                                cards=cards[:4] + kicker_cards,
+                            )
+                        )
                 # Four + 2 pairs
                 pair_ranks = [k for k in cards_by_rank if k != r and len(cards_by_rank[k]) >= 2]
                 if len(pair_ranks) >= 2:
                     for combo in combinations(pair_ranks, 2):
                         kicker_cards = cards_by_rank[combo[0]][:2] + cards_by_rank[combo[1]][:2]
-                        results.append(GameAction(
-                            player_id=player_id,
-                            action_type=ActionType.FOUR_TWO,
-                            cards=cards[:4] + kicker_cards,
-                        ))
+                        results.append(
+                            GameAction(
+                                player_id=player_id,
+                                action_type=ActionType.FOUR_TWO,
+                                cards=cards[:4] + kicker_cards,
+                            )
+                        )
 
     elif last_type == ActionType.BOMB:
         for r, cards in cards_by_rank.items():
             if len(cards) == 4 and _rank_to_power(r) > last_power:
-                results.append(GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4]))
+                results.append(
+                    GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4])
+                )
 
     # Bombs always beat non-bombs (except rocket)
     if last_type not in (ActionType.BOMB, ActionType.ROCKET):
         for r, cards in cards_by_rank.items():
             if len(cards) == 4:
-                results.append(GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4]))
+                results.append(
+                    GameAction(player_id=player_id, action_type=ActionType.BOMB, cards=cards[:4])
+                )
 
     # Rocket always available
     if BLACK_JOKER in hand and RED_JOKER in hand:
-        results.append(GameAction(
-            player_id=player_id,
-            action_type=ActionType.ROCKET,
-            cards=[BLACK_JOKER, RED_JOKER],
-        ))
+        results.append(
+            GameAction(
+                player_id=player_id,
+                action_type=ActionType.ROCKET,
+                cards=[BLACK_JOKER, RED_JOKER],
+            )
+        )
 
     # Sort by priority: combo types first
     return _sort_actions_by_priority(results)
@@ -509,18 +571,18 @@ def _add_chains_beating(
     player_id: str,
 ) -> None:
     """Find chains that beat the given chain (same length, higher starting power)."""
-    available = sorted(set(
-        _rank_to_power(r) for r in rank_counts if _rank_to_power(r) <= 11
-    ))
+    available = sorted(set(_rank_to_power(r) for r in rank_counts if _rank_to_power(r) <= 11))
     # Only find chains of EXACTLY the same length
     for seq in _find_consecutive_seqs_exact(available, last_length):
         if seq[0] > last_power:
             chain_cards = [cards_by_rank[_power_to_rank(p)][0] for p in seq]
-            results.append(GameAction(
-                player_id=player_id,
-                action_type=ActionType.CHAIN,
-                cards=chain_cards,
-            ))
+            results.append(
+                GameAction(
+                    player_id=player_id,
+                    action_type=ActionType.CHAIN,
+                    cards=chain_cards,
+                )
+            )
 
 
 def _add_chain_pairs_beating(
@@ -532,20 +594,22 @@ def _add_chain_pairs_beating(
     player_id: str,
 ) -> None:
     """Find chain pairs that beat the given chain pair (same length, higher power)."""
-    pair_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) <= 11
-    ))
+    pair_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 2 and _rank_to_power(r) <= 11)
+    )
     # Only find chain pairs of EXACTLY the same length
     for seq in _find_consecutive_seqs_exact(pair_powers, last_pair_count):
         if seq[0] > last_power:
             chain_cards: list[str] = []
             for p in seq:
                 chain_cards.extend(cards_by_rank[_power_to_rank(p)][:2])
-            results.append(GameAction(
-                player_id=player_id,
-                action_type=ActionType.CHAIN_PAIR,
-                cards=chain_cards,
-            ))
+            results.append(
+                GameAction(
+                    player_id=player_id,
+                    action_type=ActionType.CHAIN_PAIR,
+                    cards=chain_cards,
+                )
+            )
 
 
 def _add_airplanes_beating(
@@ -557,20 +621,22 @@ def _add_airplanes_beating(
     player_id: str,
 ) -> None:
     """Find airplanes that beat the given airplane (same length, higher power)."""
-    triple_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11
-    ))
+    triple_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11)
+    )
     for seq in _find_consecutive_seqs_exact(triple_powers, last_triple_count):
         if seq[0] > last_power:
             plane_cards: list[str] = []
             for p in seq:
                 r = _power_to_rank(p)
                 plane_cards.extend(cards_by_rank[r][:3])
-            results.append(GameAction(
-                player_id=player_id,
-                action_type=ActionType.AIRPLANE,
-                cards=plane_cards,
-            ))
+            results.append(
+                GameAction(
+                    player_id=player_id,
+                    action_type=ActionType.AIRPLANE,
+                    cards=plane_cards,
+                )
+            )
 
 
 def _add_airplane_solos_beating(
@@ -582,9 +648,9 @@ def _add_airplane_solos_beating(
     player_id: str,
 ) -> None:
     """Find airplane+solo that beat the given airplane+solo."""
-    triple_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11
-    ))
+    triple_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11)
+    )
     for seq in _find_consecutive_seqs_exact(triple_powers, last_triple_count):
         if seq[0] > last_power:
             plane_cards: list[str] = []
@@ -598,11 +664,13 @@ def _add_airplane_solos_beating(
             if len(kicker_ranks) >= last_triple_count:
                 for combo in combinations(kicker_ranks, last_triple_count):
                     kicker_cards = [cards_by_rank[r][0] for r in combo]
-                    results.append(GameAction(
-                        player_id=player_id,
-                        action_type=ActionType.AIRPLANE_SOLO,
-                        cards=plane_cards + kicker_cards,
-                    ))
+                    results.append(
+                        GameAction(
+                            player_id=player_id,
+                            action_type=ActionType.AIRPLANE_SOLO,
+                            cards=plane_cards + kicker_cards,
+                        )
+                    )
 
 
 def _add_airplane_pairs_beating(
@@ -614,9 +682,9 @@ def _add_airplane_pairs_beating(
     player_id: str,
 ) -> None:
     """Find airplane+pair that beat the given airplane+pair."""
-    triple_powers = sorted(set(
-        _rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11
-    ))
+    triple_powers = sorted(
+        set(_rank_to_power(r) for r, c in rank_counts.items() if c >= 3 and _rank_to_power(r) <= 11)
+    )
     for seq in _find_consecutive_seqs_exact(triple_powers, last_triple_count):
         if seq[0] > last_power:
             plane_cards: list[str] = []
@@ -626,17 +694,22 @@ def _add_airplane_pairs_beating(
                 plane_cards.extend(cards_by_rank[r][:3])
                 used_ranks.add(r)
             # Find pair kickers
-            pair_kicker_ranks = [r for r, c in rank_counts.items() if c >= 2 and r not in used_ranks]
+            pair_kicker_ranks = [
+                r for r, c in rank_counts.items() if c >= 2 and r not in used_ranks
+            ]
             if len(pair_kicker_ranks) >= last_triple_count:
                 for combo in combinations(pair_kicker_ranks, last_triple_count):
                     kicker_cards: list[str] = []
                     for r in combo:
                         kicker_cards.extend(cards_by_rank[r][:2])
-                    results.append(GameAction(
-                        player_id=player_id,
-                        action_type=ActionType.AIRPLANE_PAIR,
-                        cards=plane_cards + kicker_cards,
-                    ))
+                    results.append(
+                        GameAction(
+                            player_id=player_id,
+                            action_type=ActionType.AIRPLANE_PAIR,
+                            cards=plane_cards + kicker_cards,
+                        )
+                    )
+
 
 def _find_consecutive_seqs(values: list[int], min_length: int) -> list[list[int]]:
     """Find all consecutive subsequences of at least min_length."""
@@ -679,6 +752,7 @@ def _split_consecutive(values: list[int]) -> list[list[int]]:
 def _power_to_rank(power: int) -> str:
     """Convert numeric power back to rank string."""
     from app.core.engine.doudizhu.cards import RANKS
+
     if power == 13:
         return BLACK_JOKER
     if power == 14:
