@@ -87,6 +87,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `collector/` — JSONL writer.
   - `training/` — ChatML export + PEFT LoRA SFT (`sft.py`), optional 4-bit QLoRA, CPU-smoke clamps, deploy/GGUF/Ollama helpers. Missing training deps refuse task creation. Status: `pending` → `exporting` → `training` → `completed` / `failed` / `cancelled`. There is no project-level `Trainer` ABC.
   - `events/` — in-process `EventBus` + game lifecycle events.
+  - `env/` — duck-typed PettingZoo-style **AEC** wrapper (`CardLabAECEnv`): `reset` / `agent_iter` / `last` / `step(index)`; non-learner seats use an injected baseline `ActionSelector` (default heuristic). No hard `pettingzoo` dependency. Reward from `engine.terminal_rewards()`.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
 - **Schemas** (`app/schemas/`) — Pydantic request/response models. Shared `ApiResponse` / `PaginatedData`.
 - **Config** — `app/config.py` (`pydantic-settings`) from env / project-root `.env`. Player configs live in SQLite and are created in the Player configs UI (`/experiment-configs`); there is no YAML seed.

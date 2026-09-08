@@ -147,13 +147,17 @@ cassette 为 `data/vcr/*.jsonl`。
 
 ### 2.3 训练层：从 SFT 到可验证奖励
 
-**2.3.1 CardLab 作为 RL environment，而不是自研 RL 训练器**
+**2.3.1 CardLab 作为 RL environment，而不是自研 RL 训练器** —— **5a 已完成 2026-09-08**
 
 游戏结局是天然的 verifiable reward（RLVR / GRPO 的理想场景）。正确姿势是暴露 env 接口，
 由 verl、TRL GRPOTrainer、Unsloth、SkyRL 等框架 rollout。三人回合制是多智能体，
 接口对齐 **PettingZoo AEC**（`reset(seed) / agent_iter() / last() / step(action)`）而非单智能体
 Gym，否则接每个框架都要自己包一层。奖励来自 `engine.terminal_rewards()`。我们维护环境与评测，训练栈交给专业工具。
 这也把 issue 重灾区（GPU / llama.cpp / 平台差异）移出主路径。
+
+实现：`core/env/aec.py` 的 duck-typed `CardLabAECEnv`（**不硬依赖** pettingzoo）；
+`step(int)` 为合法菜单下标；非 learner 座位默认 `HeuristicPolicy` 自动走。
+偏好数据导出见 §2.3.2（5b）。
 
 **2.3.2 从现有决策点自动构造偏好数据**
 
@@ -234,7 +238,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
-| 5 | RL env 接口 + 偏好数据导出 | 训练升级，不自研训练器 |
+| 5 | RL env 接口 + 偏好数据导出 —— **5a 已完成 2026-09-08**：duck-typed AEC `CardLabAECEnv`（`core/env/`）；**5b 偏好导出仍待** | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
 
@@ -320,7 +324,7 @@ Policy.decide(observation: Observation,
 core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observation、ActionId、ToolSpec、Scorer）
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
 core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅）
-core/env/      AEC 环境包装
+core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅；偏好导出仍待 5b）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```
