@@ -90,7 +90,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `events/` — in-process `EventBus` + game lifecycle events.
   - `env/` — duck-typed PettingZoo-style **AEC** wrapper (`CardLabAECEnv`): `reset` / `agent_iter` / `last` / `step(index)`; non-learner seats use an injected baseline `ActionSelector` (default heuristic). No hard `pettingzoo` dependency. Reward from `engine.terminal_rewards()`.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
-- **MCP** (`app/mcp/`) — stdio Model Context Protocol server (`python -m app.mcp`, official `mcp` 2.x `MCPServer`). Read-only tools call Services directly: `list_experiments`, `get_experiment` (games off by default), `list_decision_points`, `get_decision_stats`. Logs go to stderr. Cursor example:
+- **MCP** (`app/mcp/`) — stdio Model Context Protocol server (`python -m app.mcp`, official `mcp` 2.x `MCPServer`). Tools call Services directly: read `list_experiments`, `get_experiment` (games off by default), `list_decision_points`, `get_decision_stats`; write `start_collect` / `cancel_collect` (may spend API budget). Logs go to stderr. Cursor example:
 
 ```json
 {
@@ -134,7 +134,9 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   renders exactly one phase — a status sentence plus a single next step (`StageAction.vue`,
   or `StageVerdict.vue` for the verdict). On verdict, **Generate conclusion draft** calls
   `POST /api/v1/experiments/{id}/conclusion-draft` (template text from `core/research/conclusion_draft.py`;
-  no LLM); the user edits and confirms via `PATCH` `conclusion`. Do **not** reintroduce stacked strips or a games/players
+  no LLM); the user edits and confirms via `PATCH` `conclusion`. Draft payload includes
+  `blunders` with UI deep links to `/pipeline/decisions?experiment_id=&decision_id=`.
+  Do **not** reintroduce stacked strips or a games/players
   segmented control; the games list and player table are quiet sections under
   `ExperimentTimeline.vue`. A `collect_mode=benchmark` run also shows
   `ExperimentBenchmarkReport` between the phase and the timeline (this-run landlord WR,

@@ -313,12 +313,21 @@ export interface UpdateExperimentRequest {
   tags?: string[]
 }
 
+export interface ConclusionDraftBlunder {
+  id: string
+  game_id: string
+  round_number?: number | null
+  action_id: string
+  ev_loss?: number | null
+}
+
 export interface ConclusionDraft {
   text: string
   locale: string
   verdict_key: ExperimentVerdictKey
   can_conclude: boolean
   blunder_ids: string[]
+  blunders?: ConclusionDraftBlunder[]
 }
 
 export interface CloneExperimentRequest {

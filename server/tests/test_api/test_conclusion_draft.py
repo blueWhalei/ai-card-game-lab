@@ -83,6 +83,9 @@ async def test_draft_does_not_write_conclusion(
     draft = await experiment_service.draft_conclusion(created["id"], locale="zh-CN")
     assert "【草稿 · 待确认】" in draft["text"]
     assert draft["verdict_key"] == "no_data"
+    assert "blunders" in draft
+    assert isinstance(draft["blunders"], list)
+    assert draft["blunder_ids"] == [b["id"] for b in draft["blunders"]]
 
     again = await experiment_service.get_experiment(created["id"], include_games=False)
     assert again.get("conclusion") in ("", None)

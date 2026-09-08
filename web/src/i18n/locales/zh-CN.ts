@@ -597,6 +597,8 @@ export default {
       dialogHint: '可编辑；确认后写入实验笔记本的结论字段。统计 verdict 不会被改动。',
       write: '写入结论',
       overwriteConfirm: '将覆盖笔记本里现有的结论，确定吗？',
+      blundersHeading: '高 EV loss 着法',
+      openBlunder: '第 {round} 轮 · {action}（ev_loss {loss}）',
     },
     evidence: {
       sufficient: '{n} 组同牌对局支持这个判断。',

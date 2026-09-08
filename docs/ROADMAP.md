@@ -185,9 +185,11 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 - **MCP server** — **6a 已完成 2026-09-08**：stdio `python -m app.mcp`（官方 `mcp` 2.x
   `MCPServer`）；只读工具 `list_experiments` / `get_experiment` / `list_decision_points` /
-  `get_decision_stats`，直接调 Service。写操作（collect 等）与 HTTP MCP 仍待。
+  `get_decision_stats`，直接调 Service。**写工具 Wave 3a**：`start_collect` /
+  `cancel_collect`（对齐 HTTP collect）。HTTP MCP 仍待。
 - **研究助手草稿** — **6b 已完成 2026-09-08**：模板拼装（不调 LLM）`POST .../conclusion-draft`；
   verdict 阶段预览确认后 `PATCH conclusion`。**只做草稿**，统计 verdict 不变。
+  Wave 3a：草稿坏手深链到决策页。
 - **Trace 导出兼容 OpenTelemetry / OpenInference**：自研 traces/spans 保留，加导出器接
   Langfuse / Phoenix / Arize。
 - **不引入 LangGraph / CrewAI 等多智能体框架**：回合制引擎本身就是编排器，Policy 循环
@@ -331,8 +333,8 @@ core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle p
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）
-app/mcp/       stdio MCP（6a ✅ 只读；写操作仍待）
-core/research/ conclusion_draft 模板草稿（6b ✅）
+app/mcp/       stdio MCP（6a ✅ 只读；Wave 3a ✅ start_collect / cancel_collect；HTTP MCP 仍待）
+core/research/ conclusion_draft 模板草稿（6b ✅；坏手深链 Wave 3a ✅）
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```
 

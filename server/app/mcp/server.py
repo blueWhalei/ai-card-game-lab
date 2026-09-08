@@ -1,4 +1,4 @@
-"""Build the CardLab stdio MCP server (read-only tools)."""
+"""Build the CardLab stdio MCP server (read tools + collect write)."""
 
 from __future__ import annotations
 
@@ -39,12 +39,15 @@ def build_mcp_server(
     experiment_service: ExperimentService,
     decision_service: DecisionService,
 ) -> MCPServer[Any]:
-    """Register the four read-only tools against injected services."""
+    """Register read tools plus start/cancel collect against injected services."""
     mcp = MCPServer(
         name="cardlab",
         instructions=(
-            "CardLab local research tools: list/read experiments and decision points. "
-            "Read-only; use the HTTP API or UI for collect/train."
+            "CardLab local research tools: list/read experiments and decision points; "
+            "start_collect / cancel_collect for an experiment. "
+            "start_collect may spend LLM API budget and create games; "
+            "cancel_collect stops in-flight collect games. Prefer get_experiment "
+            "before collecting."
         ),
     )
 
@@ -95,5 +98,26 @@ def build_mcp_server(
             decision_service,
             experiment_id=experiment_id,
         )
+
+    @mcp.tool(
+        name="start_collect",
+        description=(
+            "Start collecting games for an experiment (count 1–50). "
+            "May spend API budget; check get_experiment / providers first."
+        ),
+    )
+    async def start_collect(experiment_id: str, count: int = 1) -> dict[str, Any]:
+        return await tool_impl.start_collect(
+            experiment_service,
+            experiment_id,
+            count=count,
+        )
+
+    @mcp.tool(
+        name="cancel_collect",
+        description="Cancel in-flight collect games for an experiment",
+    )
+    async def cancel_collect(experiment_id: str) -> dict[str, Any]:
+        return await tool_impl.cancel_collect(experiment_service, experiment_id)
 
     return mcp

@@ -328,6 +328,17 @@ class ExperimentService:
             "verdict_key": draft.verdict_key,
             "can_conclude": draft.can_conclude,
             "blunder_ids": draft.blunder_ids,
+            "blunders": [
+                {
+                    "id": str(row.get("id") or ""),
+                    "game_id": str(row.get("game_id") or ""),
+                    "round_number": row.get("round_number"),
+                    "action_id": str(row.get("action_id") or ""),
+                    "ev_loss": row.get("ev_loss"),
+                }
+                for row in blunders
+                if str(row.get("id") or "")
+            ],
         }
 
     async def _top_blunders(

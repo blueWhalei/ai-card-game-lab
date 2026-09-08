@@ -612,6 +612,8 @@ const en: typeof zhCN = {
         'Editable. Confirming writes the notebook conclusion field. The statistical verdict is unchanged.',
       write: 'Write conclusion',
       overwriteConfirm: 'This will overwrite the existing notebook conclusion. Continue?',
+      blundersHeading: 'High EV-loss moves',
+      openBlunder: 'Round {round} · {action} (ev_loss {loss})',
     },
     evidence: {
       sufficient: '{n} same-deal pairs support this.',

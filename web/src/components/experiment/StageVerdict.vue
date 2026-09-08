@@ -1,7 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import type { ExperimentDelta, ExperimentVerdictKey } from '@/api/experimentApi'
+import { useRouter } from 'vue-router'
+import type {
+  ConclusionDraftBlunder,
+  ExperimentDelta,
+  ExperimentVerdictKey,
+} from '@/api/experimentApi'
 import { experimentApi } from '@/api/experimentApi'
 import { formatDeltaPp, formatWinRateCi } from '@/utils/experimentWorkbench'
 import { verdictHeadlineOf } from '@/utils/experimentStage'
@@ -33,6 +38,7 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { locale } = useLocale()
+const router = useRouter()
 
 const weak = computed(() => !props.delta.can_conclude)
 
@@ -70,6 +76,7 @@ const supportLine = computed(() => {
 const hasConclusion = computed(() => Boolean(props.existingConclusion?.trim()))
 const draftOpen = ref(false)
 const draftText = ref('')
+const draftBlunders = ref<ConclusionDraftBlunder[]>([])
 const draftLoading = ref(false)
 const draftSaving = ref(false)
 const draftError = ref('')
@@ -80,6 +87,7 @@ async function openDraft(): Promise<void> {
   try {
     const res = await experimentApi.conclusionDraft(props.experimentId, locale.value)
     draftText.value = res.data.text
+    draftBlunders.value = res.data.blunders ?? []
     draftOpen.value = true
   } catch (err) {
     draftError.value = getErrorMessage(err)
@@ -104,6 +112,30 @@ async function saveDraft(): Promise<void> {
   } finally {
     draftSaving.value = false
   }
+}
+
+function openBlunder(row: ConclusionDraftBlunder): void {
+  draftOpen.value = false
+  void router.push({
+    path: '/pipeline/decisions',
+    query: {
+      experiment_id: props.experimentId,
+      ...(row.game_id ? { game_id: row.game_id } : {}),
+      decision_id: row.id,
+    },
+  })
+}
+
+function blunderLabel(row: ConclusionDraftBlunder): string {
+  const loss =
+    row.ev_loss == null || Number.isNaN(Number(row.ev_loss))
+      ? '?'
+      : Number(row.ev_loss).toFixed(2)
+  return t('stage.draft.openBlunder', {
+    round: row.round_number ?? '?',
+    action: row.action_id || '?',
+    loss,
+  })
 }
 </script>
 
@@ -184,6 +216,22 @@ async function saveDraft(): Promise<void> {
     >
       <div class="space-y-ink-3">
         <UiTextarea v-model="draftText" :rows="14" class="font-mono text-caption" />
+        <div v-if="draftBlunders.length > 0" class="space-y-ink-2">
+          <p class="text-caption font-medium text-ink-text-secondary">
+            {{ t('stage.draft.blundersHeading') }}
+          </p>
+          <ul class="space-y-ink-1">
+            <li v-for="row in draftBlunders" :key="row.id">
+              <button
+                type="button"
+                class="text-left text-caption text-ink-primary hover:underline"
+                @click="openBlunder(row)"
+              >
+                {{ blunderLabel(row) }}
+              </button>
+            </li>
+          </ul>
+        </div>
         <p v-if="draftError" class="text-caption text-ink-danger">{{ draftError }}</p>
         <div class="flex flex-wrap justify-end gap-ink-2">
           <UiButton variant="ghost" :disabled="draftSaving" @click="draftOpen = false">

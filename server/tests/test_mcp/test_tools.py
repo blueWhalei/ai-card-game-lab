@@ -1,4 +1,4 @@
-"""Unit tests for CardLab MCP read-only tools."""
+"""Unit tests for CardLab MCP tools (read + collect write)."""
 
 from __future__ import annotations
 
@@ -148,7 +148,7 @@ class TestTools:
 
 
 class TestServerRegistration:
-    async def test_registers_four_tools(
+    async def test_registers_six_tools(
         self, services: tuple[ExperimentService, DecisionService]
     ) -> None:
         exp_svc, dec = services
@@ -156,8 +156,80 @@ class TestServerRegistration:
         tools = await server.list_tools()
         names = sorted(tool.name for tool in tools)
         assert names == [
+            "cancel_collect",
             "get_decision_stats",
             "get_experiment",
             "list_decision_points",
             "list_experiments",
+            "start_collect",
         ]
+
+
+class TestCollectTools:
+    async def test_start_collect_forwards_to_service(
+        self, services: tuple[ExperimentService, DecisionService]
+    ) -> None:
+        exp_svc, _dec = services
+        created = await exp_svc.create_experiment(
+            name="mcp-collect",
+            notes="",
+            game_type="doudizhu",
+            player_ids=["cfg_a", "cfg_b", "cfg_c"],
+            target_games=2,
+        )
+        exp_svc.collect = AsyncMock(return_value={"game_ids": ["g1"], "count": 1})  # type: ignore[method-assign]
+
+        result = await tool_impl.start_collect(exp_svc, created["id"], count=2)
+        assert result["ok"] is True
+        assert result["game_ids"] == ["g1"]
+        assert result["count"] == 1
+        exp_svc.collect.assert_awaited_once()
+        call = exp_svc.collect.await_args
+        assert call.args[0] == created["id"]
+        assert call.kwargs["count"] == 2
+        assert call.kwargs["db"] is not None
+
+    async def test_start_collect_clamps_count(
+        self, services: tuple[ExperimentService, DecisionService]
+    ) -> None:
+        exp_svc, _dec = services
+        created = await exp_svc.create_experiment(
+            name="mcp-clamp",
+            notes="",
+            game_type="doudizhu",
+            player_ids=["cfg_a", "cfg_b", "cfg_c"],
+            target_games=2,
+        )
+        exp_svc.collect = AsyncMock(return_value={"game_ids": [], "count": 0})  # type: ignore[method-assign]
+
+        await tool_impl.start_collect(exp_svc, created["id"], count=999)
+        assert exp_svc.collect.await_args.kwargs["count"] == 50
+
+    async def test_start_collect_missing_experiment_raises(
+        self, services: tuple[ExperimentService, DecisionService]
+    ) -> None:
+        exp_svc, _dec = services
+        from app.utils.exceptions import AppError
+
+        with pytest.raises(AppError):
+            await tool_impl.start_collect(exp_svc, "missing-exp", count=1)
+
+    async def test_cancel_collect_forwards(
+        self, services: tuple[ExperimentService, DecisionService]
+    ) -> None:
+        exp_svc, _dec = services
+        created = await exp_svc.create_experiment(
+            name="mcp-cancel",
+            notes="",
+            game_type="doudizhu",
+            player_ids=["cfg_a", "cfg_b", "cfg_c"],
+            target_games=2,
+        )
+        exp_svc.cancel_collect = AsyncMock(  # type: ignore[method-assign]
+            return_value={"cancelled_game_ids": ["g1"], "count": 1}
+        )
+
+        result = await tool_impl.cancel_collect(exp_svc, created["id"])
+        assert result["ok"] is True
+        assert result["cancelled_game_ids"] == ["g1"]
+        exp_svc.cancel_collect.assert_awaited_once_with(created["id"])
