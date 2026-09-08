@@ -96,6 +96,10 @@ const routeMinQuality = computed(() => {
   const q = route.query.min_quality
   return typeof q === 'string' && q ? parseFloat(q) : undefined
 })
+const routeMaxEvLoss = computed(() => {
+  const q = route.query.max_ev_loss
+  return typeof q === 'string' && q ? parseFloat(q) : undefined
+})
 const routePage = computed(() => {
   const raw = route.query.page
   const n = typeof raw === 'string' ? parseInt(raw, 10) : 1
@@ -140,6 +144,16 @@ const minQuality = computed(() => {
   }
   return routeMinQuality.value
 })
+const maxEvLossFilter = computed(() => {
+  if (props.embedded) {
+    const q = localFilters.value.max_ev_loss
+    if (!q) return undefined
+    const n = parseFloat(q)
+    return Number.isFinite(n) ? n : undefined
+  }
+  const n = routeMaxEvLoss.value
+  return n !== undefined && Number.isFinite(n) ? n : undefined
+})
 const page = computed(() => (props.embedded ? localPage.value : routePage.value))
 const pageSize = computed(() =>
   props.embedded ? localPageSize.value : routePageSize.value,
@@ -169,6 +183,7 @@ async function fetchDecisionPoints() {
       game_phase?: string
       min_quality?: number
       train_usable?: boolean
+      max_ev_loss?: number
       page: number
       page_size: number
     } = { page: page.value, page_size: pageSize.value }
@@ -181,6 +196,7 @@ async function fetchDecisionPoints() {
       params.min_quality = minQuality.value
     }
     if (trainUsableFilter.value !== undefined) params.train_usable = trainUsableFilter.value
+    if (maxEvLossFilter.value !== undefined) params.max_ev_loss = maxEvLossFilter.value
     const res = await decisionApi.list(params)
     decisionPoints.value = res.data.items
     listTotal.value = res.data.total
@@ -290,6 +306,7 @@ function exportScopeParams() {
     outcome: outcome.value,
     game_phase: gamePhase.value,
     min_quality: minQuality.value,
+    max_ev_loss: maxEvLossFilter.value,
     include_thinking: exportIncludeThinking.value,
   }
   if (trainUsableFilter.value === undefined) {
@@ -694,6 +711,9 @@ onMounted(async () => {
                         ? t('filter.trainable')
                         : reasonLabel(selectedPoint.train_usable_reason)
                     }}
+                  </UiBadge>
+                  <UiBadge v-if="selectedPoint.policy_kind" variant="muted">
+                    {{ t('decision.policyKind', { kind: selectedPoint.policy_kind }) }}
                   </UiBadge>
                   <UiBadge
                     :variant="

@@ -17,9 +17,24 @@ import structlog
 
 from app.core.engine.base import GameAction, GameEngine, GameState
 from app.core.eval.rollout import EvaluatorParams, EvLoss, RolloutEvaluator
-from app.core.policy.baselines import HeuristicPolicy
+from app.core.policy import ActionSelector, HeuristicPolicy, get_baseline_policy_registry
+from app.core.policy.baselines import BaselinePolicy
+from app.utils.exceptions import InvalidActionError
 
 logger = structlog.get_logger()
+
+
+def resolve_opponent(kind: str) -> ActionSelector:
+    """Map ``EvaluatorParams.opponent_kind`` to a baseline policy."""
+    try:
+        policy = get_baseline_policy_registry().create(kind)
+    except InvalidActionError:
+        logger.warning("unknown_opponent_kind", opponent_kind=kind)
+        return HeuristicPolicy()
+    if isinstance(policy, BaselinePolicy):
+        return policy
+    logger.warning("opponent_kind_not_baseline", opponent_kind=kind)
+    return HeuristicPolicy()
 
 
 class DecisionEvaluator:
@@ -32,7 +47,7 @@ class DecisionEvaluator:
 
     def __init__(self, params: EvaluatorParams | None = None) -> None:
         self._params = params or EvaluatorParams()
-        self._opponent = HeuristicPolicy()
+        self._opponent = resolve_opponent(self._params.opponent_kind)
         self._evaluators: dict[str, RolloutEvaluator] = {}
 
     @property

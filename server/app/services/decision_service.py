@@ -44,6 +44,7 @@ class DecisionService:
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
         parse_fallback: bool = False,
+        policy_kind: str = "llm",
     ) -> str:
         """Create a new decision point record with train_usable evaluated.
 
@@ -83,6 +84,7 @@ class DecisionService:
                 parse_fallback=parse_fallback,
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
+                policy_kind=policy_kind,
             )
 
         logger.info(
@@ -94,6 +96,7 @@ class DecisionService:
             train_usable=train_usable,
             train_usable_reason=reason,
             ev_loss=ev_loss,
+            policy_kind=policy_kind,
         )
 
         return decision_id

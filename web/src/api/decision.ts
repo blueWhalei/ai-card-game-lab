@@ -29,7 +29,8 @@ export interface DecisionPoint {
   train_usable_reason?: string
   /** Value given up versus the best evaluated move. null = never evaluated, not 0. */
   ev_loss?: number | null
-  evaluator_params?: Record<string, number | string> | null
+  evaluator_params?: Record<string, number | string | boolean | Record<string, number>> | null
+  policy_kind?: string
   parser_ok?: boolean | null
   win_probability?: {
     probability: number

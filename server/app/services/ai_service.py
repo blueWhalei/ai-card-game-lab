@@ -247,6 +247,7 @@ class AIService:
                 chosen=chosen,
                 prompt_messages=trace.messages,
                 game_id=game_id,
+                policy_kind=policy.kind,
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
@@ -320,6 +321,7 @@ class AIService:
         chosen: ActionChosen,
         prompt_messages: list[dict[str, str]],
         game_id: str | None = None,
+        policy_kind: str = "llm",
     ) -> None:
         """Record a decision point for SFT training data.
 
@@ -367,6 +369,7 @@ class AIService:
                 ev_loss=ev_loss,
                 evaluator_params=evaluator_params,
                 parse_fallback=chosen.parse_fallback,
+                policy_kind=policy_kind,
             )
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)
@@ -393,6 +396,9 @@ class AIService:
         params["action_values"] = {
             str(action_id): float(value) for action_id, value in result.values.items()
         }
+        params["candidates_evaluated"] = result.candidates_evaluated
+        params["legal_action_count"] = result.legal_action_count
+        params["truncated"] = result.truncated
         return result.loss, params
 
     def _extract_hand_cards(self, state: GameState, player_id: str) -> list[int]:

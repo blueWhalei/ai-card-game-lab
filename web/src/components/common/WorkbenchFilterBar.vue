@@ -19,6 +19,8 @@ export type WorkbenchLocalFilters = {
   game_phase?: string
   min_quality?: string
   train_usable?: string
+  /** Cap on ev_loss; unevaluated rows stay. Empty/unset = no filter. */
+  max_ev_loss?: string
   model?: string
   parser_ok?: string
 }
@@ -86,6 +88,7 @@ const trainUsable = computed(() => {
 const gamePhase = computed(() => localOrQuery('game_phase'))
 const minQuality = computed(() => localOrQuery('min_quality'))
 const parserOk = computed(() => localOrQuery('parser_ok'))
+const maxEvLoss = computed(() => localOrQuery('max_ev_loss'))
 
 const scopeLabel = computed(() => {
   if (gameId.value) return t('filter.thisGame', { id: gameId.value })
@@ -263,6 +266,20 @@ const minQualityOptions = computed((): SelectOption[] => [
   { label: '≥ 0.7', value: '0.7' },
 ])
 
+const maxEvLossOptions = computed((): SelectOption[] => [
+  { label: t('filter.maxEvLossAny'), value: ALL },
+  { label: '≤ 0.2', value: '0.2' },
+  { label: '≤ 0.5', value: '0.5' },
+  { label: '≤ 1.0', value: '1.0' },
+])
+
+const maxEvLossModel = computed({
+  get: () => maxEvLoss.value || ALL,
+  set: (v: string) => {
+    patchFilters({ max_ev_loss: v === ALL ? undefined : v })
+  },
+})
+
 type ActiveChip = { key: string; label: string; clear: () => void }
 
 const activeExtraChips = computed((): ActiveChip[] => {
@@ -295,6 +312,15 @@ const activeExtraChips = computed((): ActiveChip[] => {
         key: 'quality',
         label: `${t('filter.quality')} ≥ ${minQuality.value}`,
         clear: () => setMinQuality(ALL),
+      })
+    }
+    if (maxEvLoss.value) {
+      chips.push({
+        key: 'max_ev_loss',
+        label: `${t('filter.maxEvLoss')} ≤ ${maxEvLoss.value}`,
+        clear: () => {
+          maxEvLossModel.value = ALL
+        },
       })
     }
   } else if (model.value) {
@@ -392,6 +418,11 @@ onMounted(() => {
           v-model="trainUsableModel"
           :options="trainUsableOptions"
           :placeholder="t('filter.trainable')"
+        />
+        <UiSelect
+          v-model="maxEvLossModel"
+          :options="maxEvLossOptions"
+          :placeholder="t('filter.maxEvLoss')"
         />
       </template>
       <template v-else>

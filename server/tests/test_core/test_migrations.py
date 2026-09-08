@@ -31,6 +31,7 @@ async def test_a_fresh_database_is_stamped_at_the_current_version(tmp_path: Path
             "action_id",
             "prompt_messages",
             "parse_fallback",
+            "policy_kind",
         } <= decision_columns
 
 
@@ -54,3 +55,47 @@ async def test_a_newer_database_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(SchemaVersionError):
         await init_db(sqlite_path)
+
+
+async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
+    tmp_path: Path,
+) -> None:
+    """A pre-policy_kind database gains the column when migrate runs."""
+    sqlite_path = str(tmp_path / "legacy.db")
+    async with aiosqlite.connect(sqlite_path) as db:
+        await db.execute(
+            """
+            CREATE TABLE decision_points (
+                id TEXT PRIMARY KEY,
+                game_id TEXT NOT NULL,
+                round_number INTEGER NOT NULL,
+                player_id TEXT NOT NULL,
+                hand_cards TEXT NOT NULL,
+                opponent_hands TEXT,
+                last_action TEXT,
+                game_phase TEXT NOT NULL,
+                legal_actions TEXT NOT NULL,
+                chosen_action TEXT NOT NULL,
+                action_id TEXT NOT NULL DEFAULT '',
+                prompt_messages TEXT,
+                thinking TEXT,
+                outcome TEXT,
+                quality_score REAL DEFAULT 0.5,
+                train_usable INTEGER NOT NULL DEFAULT 1,
+                train_usable_reason TEXT NOT NULL DEFAULT '',
+                parse_fallback INTEGER NOT NULL DEFAULT 0,
+                ev_loss REAL,
+                evaluator_params TEXT,
+                created_at TEXT NOT NULL
+            )
+            """
+        )
+        await db.execute("PRAGMA user_version = 0")
+        await db.commit()
+
+    await init_db(sqlite_path)
+
+    async with connect_sqlite(sqlite_path) as db:
+        assert await get_schema_version(db) == SCHEMA_VERSION
+        assert SCHEMA_VERSION == 1
+        assert "policy_kind" in await _columns(db, "decision_points")

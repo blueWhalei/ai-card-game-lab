@@ -52,6 +52,7 @@ class DecisionRepository:
         parse_fallback: bool = False,
         ev_loss: float | None = None,
         evaluator_params: dict[str, Any] | None = None,
+        policy_kind: str = "llm",
     ) -> None:
         """Insert a new decision point record.
 
@@ -65,8 +66,8 @@ class DecisionRepository:
                 opponent_hands, last_action, game_phase, legal_actions,
                 chosen_action, action_id, prompt_messages, thinking,
                 train_usable, train_usable_reason, parse_fallback,
-                ev_loss, evaluator_params, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ev_loss, evaluator_params, policy_kind, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 decision_id,
@@ -87,6 +88,7 @@ class DecisionRepository:
                 1 if parse_fallback else 0,
                 ev_loss,
                 json.dumps(evaluator_params, ensure_ascii=False) if evaluator_params else None,
+                policy_kind or "llm",
                 created_at,
             ),
         )
@@ -467,6 +469,7 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "parser_ok": not row["parse_fallback"],
         "ev_loss": row["ev_loss"],
         "evaluator_params": _parse_json_object(row["evaluator_params"]),
+        "policy_kind": row["policy_kind"] if "policy_kind" in keys else "llm",
         "created_at": row["created_at"],
         "win_probability": _parse_json_object(
             row["win_probability_json"] if "win_probability_json" in keys else None

@@ -82,6 +82,11 @@ class TestScorePathPersistsBest:
         assert isinstance(params["action_values"], dict)
         assert params["best_action_id"] in params["action_values"]
         assert "determinizations" in params
+        assert isinstance(params["candidates_evaluated"], int)
+        assert params["candidates_evaluated"] > 0
+        assert isinstance(params["legal_action_count"], int)
+        assert params["legal_action_count"] >= params["candidates_evaluated"]
+        assert isinstance(params["truncated"], bool)
 
 
 class TestExportPreferences:

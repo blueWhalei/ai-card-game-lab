@@ -33,6 +33,7 @@ class DecisionPointResponse(BaseModel):
     # None means the move was never scored, which is not the same as 0.0.
     ev_loss: float | None = None
     evaluator_params: dict[str, Any] | None = None
+    policy_kind: str = "llm"
     created_at: str
     parser_ok: bool | None = None
     win_probability: dict[str, Any] | None = None

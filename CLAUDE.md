@@ -220,17 +220,19 @@ Decision export, trace list, `GET /api/v1/data/stats`, and `POST /api/v1/dataset
 
 Schema lives in `app/database.py`. Tables:
 
-`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`), `experiment_configs`.
+`experiments`, `games` (nullable `experiment_id`), `rounds`, `datasets`, `training_tasks` (nullable `experiment_id`), `prompt_templates`, `traces`, `spans`, `decision_points` (`train_usable`, `quality_score`, `ev_loss`, `policy_kind`), `experiment_configs`.
 
 Schema changes go through `app/migrations.py`: a numbered migration list tracked by
 `PRAGMA user_version`. `_SCHEMA_SQL` builds a new database; migrations change an existing
 one, so adding a column means editing both. An index over a migration-added column belongs
 in the migration — `_SCHEMA_SQL` also runs against pre-migration databases. A database
-newer than the running build raises `SchemaVersionError` instead of being read.
+newer than the running build raises `SchemaVersionError` instead of being read. Greenfield
+DBs already include historically added columns in `_SCHEMA_SQL`; the migration list was empty
+until the first real ALTER (`policy_kind` = migration 1 → `SCHEMA_VERSION = 1`).
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`) and `evaluator_params` (rollout knobs plus, when scored, `best_action_id` and `action_values` for DPO export); `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`. ChatML export writes SFT JSONL; `POST .../export-preferences` writes DPO pairs under `{data_dir}/datasets/preferences_*.jsonl` (skips rows missing `best_action_id`; default `min_ev_gap=0.05`; optional thinking only on the rejected side).
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`), `policy_kind` (e.g. `llm` / `heuristic`), and `evaluator_params` (rollout knobs plus, when scored, `best_action_id`, `action_values`, `candidates_evaluated`, `legal_action_count`, `truncated` for DPO export and honesty); `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`. ChatML export writes SFT JSONL; `POST .../export-preferences` writes DPO pairs under `{data_dir}/datasets/preferences_*.jsonl` (skips rows missing `best_action_id`; default `min_ev_gap=0.05`; optional thinking only on the rejected side).
 
 ## Decision points (SFT)
 

@@ -62,6 +62,25 @@ class TestPersistence:
         assert stored["ev_loss"] == pytest.approx(0.25)
         assert stored["evaluator_params"] == {"determinizations": 4}
 
+    async def test_policy_kind_round_trips(self, decision_service: DecisionService) -> None:
+        decision_id = await decision_service.create_decision_point(
+            game_id="game-1",
+            round_number=1,
+            player_id="p1",
+            hand_cards=[3],
+            opponent_hands=None,
+            last_action=None,
+            game_phase="playing",
+            legal_actions=[{"id": "PASS||", "action_type": "PASS", "cards": []}],
+            chosen_action={"action_type": "PASS", "cards": []},
+            action_id="PASS||",
+            prompt_messages=[{"role": "user", "content": "x"}],
+            policy_kind="heuristic",
+        )
+        stored = await decision_service.get_decision_point(decision_id)
+        assert stored is not None
+        assert stored["policy_kind"] == "heuristic"
+
     async def test_unscored_decision_stays_null(
         self, decision_service: DecisionService
     ) -> None:

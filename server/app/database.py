@@ -180,6 +180,7 @@ CREATE TABLE IF NOT EXISTS decision_points (
     parse_fallback  INTEGER NOT NULL DEFAULT 0,
     ev_loss         REAL,
     evaluator_params TEXT,
+    policy_kind     TEXT    NOT NULL DEFAULT 'llm',
     created_at      TEXT    NOT NULL
 );
 

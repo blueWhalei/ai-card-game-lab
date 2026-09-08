@@ -318,9 +318,9 @@ Policy.decide(observation: Observation,
 | 变化 | 承载 | 版本 |
 |------|------|------|
 | protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；后续再加 policy kind/budget、evaluator 参数 | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
-| 决策点新增 ~~`ev_loss`、`evaluator_params`~~ ✅（2026-09-07，迁移 3）；`policy_kind`、`tool_calls` 待做 | `decision_points` | `decision_schema_version` 1 → 2 已升 |
+| 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；`tool_calls` 仍待 | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
-| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号迁移列表 | 已落地，`SCHEMA_VERSION = 2` |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL`，列表从空起步 | 首条 ALTER = 迁移 1（`policy_kind`）→ `SCHEMA_VERSION = 1` |
 
 ### 9.5 分层与目录
 
