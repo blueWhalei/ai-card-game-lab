@@ -18,6 +18,7 @@ from app.core.ai.prompts.registry import (
     REASONING_TEMPLATE_VERSION,
     PromptTemplateRegistry,
 )
+from app.core.engine.prompt_defaults import SYSTEM_TEMPLATE
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -53,72 +54,22 @@ def is_reasoning_model(model_name: str | None) -> bool:
     return any(re.search(pattern, model_lower) for pattern in REASONING_MODEL_PATTERNS)
 
 
-# Built-in templates when a stored template is missing. Both defer the output
-# contract to {format_instructions} -- restating it here is how a template ends up
-# contradicting the protocol it is supposed to serve.
-SYSTEM_TEMPLATE = """\
-你是{game_type_cn} AI 玩家。你的玩家ID会在每轮提示中明确标注。
-
-## 核心规则
-{rules}
-
-{format_instructions}
-"""
-
-BIDDING_SYSTEM_TEMPLATE = """\
-你是斗地主 AI 玩家，正在进行叫地主阶段。
-
-## 叫地主规则
-- 可叫1/2/3分或选择不叫，叫分必须高于当前最高
-- 叫3分立即成为地主（获得3张底牌，共20张）
-- 三人都不叫则重新发牌
-
-## 手牌评估
-| 条件 | 叫分 |
-|------|------|
-| 有炸弹/王炸 或 ≥2张2 | 3分 |
-| 有1张2 + 牌型好 | 2分 |
-| 牌型一般但有大牌 | 1分 |
-| 牌散且无大牌 | 不叫 |
-
-{format_instructions}
-"""
+_MISSING_RULES = "（未配置 rules_ref，或规则文件不存在。）"
 
 
-def _load_rules(game_type: str, rules_ref: str | None = None) -> str:
-    """Load game rules from capability.rules_ref or docs fallback."""
-    candidates: list[Path] = []
+def _load_rules(rules_ref: str | None) -> str:
+    """Load game rules from capability.rules_ref only (no per-game hardcoding)."""
+    if not rules_ref:
+        return _MISSING_RULES
     repo_root = Path(__file__).parents[4]
-    if rules_ref:
-        ref_path = Path(rules_ref)
-        candidates.append(ref_path if ref_path.is_absolute() else repo_root / rules_ref)
-    # Default Dou Dizhu rules file when rules_ref is omitted
-    if game_type == "doudizhu":
-        candidates.append(repo_root / "docs" / "欢乐斗地主经典玩法规则.md")
-    for path in candidates:
-        if path.exists():
-            return path.read_text(encoding="utf-8")
-    return FALLBACK_RULES.get(game_type, "")
+    ref_path = Path(rules_ref)
+    path = ref_path if ref_path.is_absolute() else repo_root / rules_ref
+    if path.exists():
+        return path.read_text(encoding="utf-8")
+    return _MISSING_RULES
 
 
-FALLBACK_RULES: dict[str, str] = {
-    "doudizhu": """\
-斗地主是一种三人纸牌游戏，使用一副54张牌。
-- 一人为"地主"，另外两人为"农民"，农民合作对抗地主
-- 地主有20张牌（17张+3张底牌），农民各有17张牌
-- 地主先出牌，按顺序轮流出牌
-- 出牌必须比上家大（相同牌型且点数更高），或者选择"不出"
-- 炸弹可以压制任何非炸弹/火箭牌型，火箭（双王）最大
-- 谁先出完所有手牌谁赢
-- 牌力大小：3 < 4 < 5 < 6 < 7 < 8 < 9 < 10 < J < Q < K < A < 2 < 小王 < 大王\
-""",
-}
-
-GAME_TYPE_CN: dict[str, str] = {
-    "doudizhu": "斗地主",
-}
-
-# Cache loaded rules
+# Cache loaded rules by rules_ref (empty key = missing)
 _rules_cache: dict[str, str] = {}
 
 # Global registry instance (initialized with defaults)
@@ -167,10 +118,11 @@ class PromptBuilder:
 
     @staticmethod
     def _rules_for(engine: GameEngine) -> str:
-        game_type = engine.game_type
-        if game_type not in _rules_cache:
-            _rules_cache[game_type] = _load_rules(game_type, engine.capability.rules_ref)
-        return _rules_cache[game_type]
+        rules_ref = engine.capability.rules_ref or ""
+        cache_key = rules_ref or f"__missing__:{engine.game_type}"
+        if cache_key not in _rules_cache:
+            _rules_cache[cache_key] = _load_rules(engine.capability.rules_ref)
+        return _rules_cache[cache_key]
 
     async def system_message(
         self,
@@ -195,10 +147,19 @@ class PromptBuilder:
                 version=self.version_for(model_name),
             )
         except ValueError:
-            template_content = BIDDING_SYSTEM_TEMPLATE if phase == "bidding" else SYSTEM_TEMPLATE
+            template_content = engine.default_system_template(phase)
 
+        display = engine.capability.display_name or engine.game_type
         return template_content.format(
-            game_type_cn=GAME_TYPE_CN.get(engine.game_type, engine.game_type),
+            game_type_cn=display,
             rules=self._rules_for(engine),
             format_instructions=format_instructions,
         )
+
+
+__all__ = [
+    "SYSTEM_TEMPLATE",
+    "PromptBuilder",
+    "get_prompt_registry",
+    "is_reasoning_model",
+]

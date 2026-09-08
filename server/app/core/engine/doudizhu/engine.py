@@ -145,7 +145,15 @@ class DoudizhuEngine(GameEngine):
             rules_ref=_DOUDIZHU_RULES_REF,
             supports_hidden_state_sampling=True,
             tools=DOUDIZHU_TOOLS,
+            display_name="斗地主",
         )
+
+    def default_system_template(self, phase: str) -> str:
+        if phase == "bidding":
+            from app.core.engine.doudizhu.prompts import DOUDIZHU_BIDDING_SYSTEM_TEMPLATE
+
+            return DOUDIZHU_BIDDING_SYSTEM_TEMPLATE
+        return super().default_system_template(phase)
 
     def canonical_cards(self, cards: list[str]) -> list[str]:
         return sort_cards(cards)

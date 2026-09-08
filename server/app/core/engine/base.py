@@ -60,6 +60,8 @@ class EngineCapability:
     rules_ref: str | None = None
     supports_hidden_state_sampling: bool = False
     tools: tuple[ToolSpec, ...] = ()
+    # Prompt / UI display label (e.g. "斗地主"). Empty → fall back to game_type.
+    display_name: str = ""
 
     def to_public_dict(self, *, include_seeds: bool = False) -> dict[str, Any]:
         """JSON-safe view for ``GET /system/engines``. Seeds omitted unless requested."""
@@ -204,6 +206,17 @@ class GameEngine(ABC):
             max_players=self.max_players,
             prompt_keys={"playing": f"{self.game_type}_playing"},
         )
+
+    def default_system_template(self, phase: str) -> str:
+        """Built-in system template when the prompt registry has no row.
+
+        Format keys stay ``{game_type_cn}``, ``{rules}``, ``{format_instructions}``.
+        Game-specific bidding (or other phase) copy overrides in the concrete engine.
+        """
+        del phase  # generic skeleton is phase-agnostic
+        from app.core.engine.prompt_defaults import SYSTEM_TEMPLATE
+
+        return SYSTEM_TEMPLATE
 
     def canonical_cards(self, cards: list[str]) -> list[str]:
         """Canonical card ordering used to build stable action ids.

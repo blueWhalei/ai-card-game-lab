@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from app.core.ai.tools.hand_analyzer import HandAnalysis
 from app.core.ai.tools.serialize import (
     actions_as_dicts,
     explain_from_tools,
 )
 from app.core.ai.tools.win_probability import WinProbabilityResult
 from app.core.engine.base import GameAction
+from app.core.engine.doudizhu.hand_analyzer import HandAnalysis
 
 
 def test_explain_from_tools_compacts_dataclasses() -> None:

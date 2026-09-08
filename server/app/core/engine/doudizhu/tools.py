@@ -1,8 +1,8 @@
 """Doudizhu analysis tools declared through ``EngineCapability.tools``.
 
-The scoring logic still lives in ``core/ai/tools/``; this module is the
-engine-side declaration that lets a policy call it without knowing what a bomb
-is. Each handler returns a ``text`` line for prompt injection plus the
+The scoring logic lives in ``hand_analyzer`` / ``win_probability`` helpers; this
+module is the engine-side declaration that lets a policy call them without knowing
+what a bomb is. Each handler returns a ``text`` line for prompt injection plus the
 structured fields behind it.
 """
 
@@ -11,8 +11,8 @@ from __future__ import annotations
 from dataclasses import asdict
 from typing import Any
 
-from app.core.ai.tools.hand_analyzer import HandAnalyzerTool
 from app.core.ai.tools.win_probability import WinProbabilityTool
+from app.core.engine.doudizhu.hand_analyzer import HandAnalyzerTool
 from app.core.engine.observation import Observation
 from app.core.engine.tools import ToolSpec
 

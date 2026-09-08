@@ -66,8 +66,8 @@ Policy.decide(observation, legal_actions, budget) -> Decision
 每轮调用记录进 spans。"被动注入 vs 主动调用"是平台的第一份研究报告素材。
 
 工具**属于引擎**，由 `EngineCapability.tools` 声明（名称 + JSON Schema + 实现）；Policy 只看
-schema 并转发调用，不理解任何游戏语义（见 §9.1）。现有 `HandAnalyzerTool` 是斗地主专属实现，
-迁移到引擎侧。
+schema 并转发调用，不理解任何游戏语义（见 §9.1）。Dou Dizhu `HandAnalyzerTool` 已迁到
+`engine/doudizhu/hand_analyzer.py`（2026-09-08）；`core/ai/tools/` 不再持有牌面分析器。
 
 **2.1.4 搜索增强（test-time compute 作为变量）**
 

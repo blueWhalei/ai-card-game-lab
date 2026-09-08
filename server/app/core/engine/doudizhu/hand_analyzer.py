@@ -1,4 +1,4 @@
-"""Hand analyzer tool for evaluating hand strength."""
+"""Dou Dizhu hand-strength analyzer (engine-side; used by declared tools)."""
 
 from __future__ import annotations
 
