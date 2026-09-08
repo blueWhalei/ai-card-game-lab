@@ -41,16 +41,21 @@ poetry install
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 poetry run python -m app.mcp   # stdio MCP (Cursor); logs on stderr
 poetry run pytest
+poetry run pytest --cov=app --cov-report=term-missing
 poetry run pytest tests/test_api/test_system.py
 poetry run pytest -k "test_health"
 poetry run ruff check .
 poetry run ruff format .
+poetry run ruff format --check .
+poetry run mypy app/core
 poetry run mypy app/
 ```
 
 Training extras (PEFT LoRA): `poetry install --with training`.
 
-CI (`.github/workflows/ci.yml`): `poetry run pytest` + `poetry run ruff check .` (full tree; format/mypy are local-only for now).
+CI (`.github/workflows/ci.yml`): `ruff check` → `ruff format --check` → `mypy app/core`
+(`app.core.training.*` ignored) → `pytest --cov=app --cov-report=term-missing`
+(no `--cov-fail-under`). Frontend CI unchanged.
 
 ### Frontend (`web/`)
 
@@ -77,7 +82,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 ```
 
 - **API** — routes, validation, serialization. Never call Core or Repository.
-- **Service** — orchestration. Singletons do not hold DB connections; background work opens its own connection.
+- **Service** — orchestration. Singletons do not hold DB connections; background work opens its own connection. `ExperimentService` is a facade over `ExperimentCollectMixin` + `ExperimentDeltaMixin` (`experiment_collect.py` / `experiment_delta.py`); exceptions live in `experiment_errors.py`. Public API / DI still import `ExperimentService`.
 - **Repository** — SQLite via aiosqlite.
 - **Core** — framework-independent domain logic:
   - `engine/` — `GameEngine` ABC + `EngineCapability` + `GameEngineRegistry`. Engines are stateless; state is `GameState`. First engine: Dou Dizhu (`doudizhu`). Game-specific hand analyzers live under the engine package (e.g. `engine/doudizhu/hand_analyzer.py`), not `core/ai/tools/`. `EngineCapability.display_name` and `GameEngine.default_system_template(phase)` own prompt fallbacks; `PromptBuilder` does not hardcode a game id.
