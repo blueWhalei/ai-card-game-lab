@@ -299,6 +299,70 @@ class ExperimentService:
             await conn.close()
         return await self.get_experiment(experiment_id, include_games=False)
 
+    async def draft_conclusion(
+        self,
+        experiment_id: str,
+        *,
+        locale: str = "zh-CN",
+    ) -> dict[str, Any]:
+        """Build a conclusion draft from delta + high EV-loss moves (does not write)."""
+        from app.core.research.conclusion_draft import build_conclusion_draft
+        from app.core.stats.highlights import BLUNDER_EV_LOSS
+
+        detail = await self.get_experiment(experiment_id, include_games=False)
+        delta = detail.get("delta")
+        if delta is not None and not isinstance(delta, dict):
+            delta = None
+
+        blunders = await self._top_blunders(experiment_id, limit=3, min_loss=BLUNDER_EV_LOSS)
+        draft = build_conclusion_draft(
+            experiment=detail,
+            delta=delta,
+            blunders=blunders,
+            locale=locale,
+        )
+        return {
+            "text": draft.text,
+            "locale": draft.locale,
+            "verdict_key": draft.verdict_key,
+            "can_conclude": draft.can_conclude,
+            "blunder_ids": draft.blunder_ids,
+        }
+
+    async def _top_blunders(
+        self,
+        experiment_id: str,
+        *,
+        limit: int = 3,
+        min_loss: float,
+    ) -> list[dict[str, Any]]:
+        """Highest EV-loss decisions for this experiment (evaluated only)."""
+        conn = await self._conn()
+        try:
+            repo = DecisionRepository(conn)
+            items, _total = await repo.list_decision_points(
+                experiment_id=experiment_id,
+                limit=500,
+                offset=0,
+            )
+        finally:
+            await conn.close()
+
+        scored: list[dict[str, Any]] = []
+        for item in items:
+            raw = item.get("ev_loss")
+            if raw is None:
+                continue
+            try:
+                loss = float(raw)
+            except (TypeError, ValueError):
+                continue
+            if loss < min_loss:
+                continue
+            scored.append(item)
+        scored.sort(key=lambda row: float(row["ev_loss"]), reverse=True)
+        return scored[:limit]
+
     async def clone_experiment(
         self,
         experiment_id: str,

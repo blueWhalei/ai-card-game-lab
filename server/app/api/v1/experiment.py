@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 import aiosqlite
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header, Query
 
 from app.dependencies import get_db, get_experiment_service
 from app.schemas.common import ApiResponse
@@ -106,6 +106,24 @@ async def update_experiment(
     except ExperimentNotFoundError:
         raise
     return ApiResponse(data=experiment)
+
+
+@router.post("/{experiment_id}/conclusion-draft")
+async def conclusion_draft(
+    experiment_id: str,
+    locale: str | None = Query(default=None, description="zh-CN or en"),
+    accept_language: str | None = Header(default=None, alias="Accept-Language"),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    """Assemble a conclusion draft (does not persist). Confirm via PATCH conclusion."""
+    from app.core.research.conclusion_draft import normalize_draft_locale
+
+    resolved = normalize_draft_locale(locale or accept_language)
+    try:
+        draft = await service.draft_conclusion(experiment_id, locale=resolved)
+    except ExperimentNotFoundError:
+        raise
+    return ApiResponse(data=draft)
 
 
 @router.post("/{experiment_id}/clone", status_code=201)

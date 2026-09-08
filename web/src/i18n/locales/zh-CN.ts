@@ -590,6 +590,14 @@ export default {
       collectHere: '继续本实验',
       collectControl: '继续对照实验',
     },
+    draft: {
+      generate: '生成结论草稿',
+      regenerate: '重新生成草稿',
+      dialogTitle: '结论草稿',
+      dialogHint: '可编辑；确认后写入实验笔记本的结论字段。统计 verdict 不会被改动。',
+      write: '写入结论',
+      overwriteConfirm: '将覆盖笔记本里现有的结论，确定吗？',
+    },
     evidence: {
       sufficient: '{n} 组同牌对局支持这个判断。',
       peerPending: '等对照对局跑完再看这个数字。',

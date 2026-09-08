@@ -851,6 +851,7 @@ onUnmounted(() => {
         @action="onStageAction"
         @compare="goCompareWithSuggested"
         @open-experiment="openExperiment"
+        @conclusion-saved="load"
       />
 
       <ExperimentBenchmarkReport

@@ -1,14 +1,21 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { ExperimentDelta, ExperimentVerdictKey } from '@/api/experimentApi'
+import { experimentApi } from '@/api/experimentApi'
 import { formatDeltaPp, formatWinRateCi } from '@/utils/experimentWorkbench'
 import { verdictHeadlineOf } from '@/utils/experimentStage'
+import { useLocale } from '@/composables/useLocale'
+import { getErrorMessage } from '@/utils/error'
 import ExperimentScenarioBars from '@/components/experiment/ExperimentScenarioBars.vue'
 import MetricHint from '@/components/common/MetricHint.vue'
 import UiButton from '@/components/ui/Button.vue'
+import UiDialog from '@/components/ui/Dialog.vue'
+import UiTextarea from '@/components/ui/Textarea.vue'
 
 const props = defineProps<{
+  experimentId: string
+  existingConclusion?: string
   delta: ExperimentDelta
   verdictKey: ExperimentVerdictKey
   /** Extra decisive games that would lift the pair out of low power. */
@@ -21,9 +28,11 @@ const emit = defineEmits<{
   action: []
   compare: []
   openPeer: []
+  conclusionSaved: []
 }>()
 
 const { t } = useI18n()
+const { locale } = useLocale()
 
 const weak = computed(() => !props.delta.can_conclude)
 
@@ -57,6 +66,45 @@ const supportLine = computed(() => {
   ]
   return parts.join(' · ')
 })
+
+const hasConclusion = computed(() => Boolean(props.existingConclusion?.trim()))
+const draftOpen = ref(false)
+const draftText = ref('')
+const draftLoading = ref(false)
+const draftSaving = ref(false)
+const draftError = ref('')
+
+async function openDraft(): Promise<void> {
+  draftError.value = ''
+  draftLoading.value = true
+  try {
+    const res = await experimentApi.conclusionDraft(props.experimentId, locale.value)
+    draftText.value = res.data.text
+    draftOpen.value = true
+  } catch (err) {
+    draftError.value = getErrorMessage(err)
+  } finally {
+    draftLoading.value = false
+  }
+}
+
+async function saveDraft(): Promise<void> {
+  if (hasConclusion.value) {
+    const ok = window.confirm(t('stage.draft.overwriteConfirm'))
+    if (!ok) return
+  }
+  draftSaving.value = true
+  draftError.value = ''
+  try {
+    await experimentApi.update(props.experimentId, { conclusion: draftText.value })
+    draftOpen.value = false
+    emit('conclusionSaved')
+  } catch (err) {
+    draftError.value = getErrorMessage(err)
+  } finally {
+    draftSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -108,10 +156,44 @@ const supportLine = computed(() => {
       <UiButton variant="secondary" @click="emit('compare')">
         {{ t('experiment.compareFull') }}
       </UiButton>
+      <UiButton
+        variant="ghost"
+        :loading="draftLoading"
+        @click="openDraft"
+      >
+        {{
+          hasConclusion ? t('stage.draft.regenerate') : t('stage.draft.generate')
+        }}
+      </UiButton>
     </div>
+
+    <p v-if="draftError && !draftOpen" class="mt-ink-2 text-caption text-ink-danger">
+      {{ draftError }}
+    </p>
 
     <div class="mt-ink-6 max-w-xl" :class="{ 'opacity-60': weak }">
       <ExperimentScenarioBars :diffs="delta.scenario_diffs" :weak="weak" />
     </div>
+
+    <UiDialog
+      :open="draftOpen"
+      size="lg"
+      :title="t('stage.draft.dialogTitle')"
+      :description="t('stage.draft.dialogHint')"
+      @update:open="draftOpen = $event"
+    >
+      <div class="space-y-ink-3">
+        <UiTextarea v-model="draftText" :rows="14" class="font-mono text-caption" />
+        <p v-if="draftError" class="text-caption text-ink-danger">{{ draftError }}</p>
+        <div class="flex flex-wrap justify-end gap-ink-2">
+          <UiButton variant="ghost" :disabled="draftSaving" @click="draftOpen = false">
+            {{ t('common.cancel') }}
+          </UiButton>
+          <UiButton :loading="draftSaving" @click="saveDraft">
+            {{ t('stage.draft.write') }}
+          </UiButton>
+        </div>
+      </div>
+    </UiDialog>
   </section>
 </template>

@@ -41,6 +41,7 @@ const emit = defineEmits<{
   action: [action: ExperimentStageAction]
   compare: []
   openExperiment: [id: string]
+  conclusionSaved: []
   'update:collectCount': [value: number]
 }>()
 
@@ -252,6 +253,8 @@ function onCollectCount(value: number | null): void {
 
   <StageVerdict
     v-else-if="experiment.delta"
+    :experiment-id="experiment.id"
+    :existing-conclusion="experiment.conclusion"
     :delta="experiment.delta"
     :verdict-key="verdictKeyOf(experiment)"
     :games-needed="gamesNeededForPower(experiment)"
@@ -259,5 +262,6 @@ function onCollectCount(value: number | null): void {
     @action="verdictAct.action && emit('action', verdictAct.action)"
     @compare="emit('compare')"
     @open-peer="emit('openExperiment', experiment.delta.peer_id)"
+    @conclusion-saved="emit('conclusionSaved')"
   />
 </template>

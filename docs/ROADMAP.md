@@ -186,8 +186,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - **MCP server** — **6a 已完成 2026-09-08**：stdio `python -m app.mcp`（官方 `mcp` 2.x
   `MCPServer`）；只读工具 `list_experiments` / `get_experiment` / `list_decision_points` /
   `get_decision_stats`，直接调 Service。写操作（collect 等）与 HTTP MCP 仍待。
-- **研究助手草稿**：实验结束基于 delta + scenario_scores + 坏决策点生成 `conclusion` 草稿，
-  用户确认后写入。**只做草稿**，verdict 仍由统计代码决定。（Step 6b）
+- **研究助手草稿** — **6b 已完成 2026-09-08**：模板拼装（不调 LLM）`POST .../conclusion-draft`；
+  verdict 阶段预览确认后 `PATCH conclusion`。**只做草稿**，统计 verdict 不变。
 - **Trace 导出兼容 OpenTelemetry / OpenInference**：自研 traces/spans 保留，加导出器接
   Langfuse / Phoenix / Arize。
 - **不引入 LangGraph / CrewAI 等多智能体框架**：回合制引擎本身就是编排器，Policy 循环
@@ -243,7 +243,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
 | 5 | RL env 接口 + 偏好数据导出 —— **已完成 2026-09-08**：5a duck-typed AEC `CardLabAECEnv`；5b EV 偏好 JSONL（`export-preferences`；蒸馏对仍待） | 训练升级，不自研训练器 |
-| 6 | MCP server + 研究助手草稿 —— **6a 已完成 2026-09-08**：stdio 只读 MCP；**6b 研究助手仍待** | 平台可被 agent 使用 |
+| 6 | MCP server + 研究助手草稿 —— **已完成 2026-09-08**：6a stdio 只读 MCP；6b 结论草稿（模板+确认写入） | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
 
 其中 1 与 2 是"技术护城河"级别：一个把选手从 prompt 变成可组合的智能体，
@@ -331,7 +331,8 @@ core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle p
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output 能力探测仍待
-app/mcp/       stdio MCP（6a ✅ 只读；写操作 / 6b 草稿仍待）
+app/mcp/       stdio MCP（6a ✅ 只读；写操作仍待）
+core/research/ conclusion_draft 模板草稿（6b ✅）
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```
 

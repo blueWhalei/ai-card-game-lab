@@ -312,6 +312,14 @@ export interface UpdateExperimentRequest {
   tags?: string[]
 }
 
+export interface ConclusionDraft {
+  text: string
+  locale: string
+  verdict_key: ExperimentVerdictKey
+  can_conclude: boolean
+  blunder_ids: string[]
+}
+
 export interface CloneExperimentRequest {
   name?: string
   copy_deal_seeds?: boolean
@@ -440,6 +448,13 @@ export const experimentApi = {
 
   update: (id: string, data: UpdateExperimentRequest) =>
     apiClient.patch<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}`, data),
+
+  conclusionDraft: (id: string, locale?: string) =>
+    apiClient.post<never, ApiResponse<ConclusionDraft>>(
+      `/api/v1/experiments/${id}/conclusion-draft`,
+      undefined,
+      { params: locale ? { locale } : undefined },
+    ),
 
   clone: (id: string, data?: CloneExperimentRequest) =>
     apiClient.post<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}/clone`, data ?? {}),

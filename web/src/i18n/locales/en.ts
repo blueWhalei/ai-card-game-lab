@@ -604,6 +604,15 @@ const en: typeof zhCN = {
       collectHere: 'Continue this experiment',
       collectControl: 'Continue control experiment',
     },
+    draft: {
+      generate: 'Generate conclusion draft',
+      regenerate: 'Regenerate draft',
+      dialogTitle: 'Conclusion draft',
+      dialogHint:
+        'Editable. Confirming writes the notebook conclusion field. The statistical verdict is unchanged.',
+      write: 'Write conclusion',
+      overwriteConfirm: 'This will overwrite the existing notebook conclusion. Continue?',
+    },
     evidence: {
       sufficient: '{n} same-deal pairs support this.',
       peerPending: 'Wait for the control to finish before reading this number.',

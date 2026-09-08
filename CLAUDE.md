@@ -132,7 +132,9 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 - Experiment detail is a **five-phase workbench**: `resolveStageId()` (`utils/experimentStage.ts`) picks
   one of `empty` / `collecting` / `harvest` / `control` / `verdict`, and `ExperimentStage.vue`
   renders exactly one phase — a status sentence plus a single next step (`StageAction.vue`,
-  or `StageVerdict.vue` for the verdict). Do **not** reintroduce stacked strips or a games/players
+  or `StageVerdict.vue` for the verdict). On verdict, **Generate conclusion draft** calls
+  `POST /api/v1/experiments/{id}/conclusion-draft` (template text from `core/research/conclusion_draft.py`;
+  no LLM); the user edits and confirms via `PATCH` `conclusion`. Do **not** reintroduce stacked strips or a games/players
   segmented control; the games list and player table are quiet sections under
   `ExperimentTimeline.vue`. A `collect_mode=benchmark` run also shows
   `ExperimentBenchmarkReport` between the phase and the timeline (this-run landlord WR,
@@ -188,6 +190,7 @@ Main HTTP:
 GET/POST /api/v1/experiments
 PATCH    /api/v1/experiments/{id}
 POST     /api/v1/experiments/{id}/clone
+POST     /api/v1/experiments/{id}/conclusion-draft
 GET      /api/v1/experiments/compare?ids=a,b
 GET      /api/v1/experiments/{id}
 GET      /api/v1/experiments/{id}/export
