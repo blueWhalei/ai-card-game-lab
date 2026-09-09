@@ -153,6 +153,7 @@ class SystemService:
 
     def get_config(self) -> dict[str, object]:
         """Return non-sensitive app configuration."""
+        effort = self._settings.thinking_budget_reasoning_effort.strip()
         return {
             "app_name": self._settings.app_name,
             "version": "0.1.0",
@@ -161,6 +162,8 @@ class SystemService:
             "sqlite_path": self._settings.sqlite_path,
             "models_dir": self._settings.models_dir,
             "max_concurrent_games": self._settings.max_concurrent_games,
+            "thinking_budget_reasoning_effort": effort or None,
+            "thinking_budget_max_tokens": self._settings.thinking_budget_max_tokens,
             "training_deps_available": _cached_training_deps_available(),
             "default_base_models": [
                 "Qwen/Qwen2.5-0.5B",

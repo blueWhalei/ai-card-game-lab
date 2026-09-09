@@ -40,6 +40,8 @@ cd server
 poetry install
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 poetry run python -m app.mcp   # stdio MCP (Cursor); logs on stderr
+# HTTP MCP: /mcp/ on API when MCP_HTTP_ENABLED=true (default)
+# or: poetry run python -m app.mcp --transport streamable-http --port 8001
 poetry run pytest
 poetry run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 poetry run pytest tests/test_api/test_system.py
@@ -98,7 +100,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
   - `events/` — in-process `EventBus` + game lifecycle events.
   - `env/` — duck-typed PettingZoo-style **AEC** wrapper (`CardLabAECEnv`): `reset` / `agent_iter` / `last` / `step(index)`; non-learner seats use an injected baseline `ActionSelector` (default heuristic). No hard `pettingzoo` dependency. Reward from `engine.terminal_rewards()`.
 - **WebSocket** (`app/websocket/`) — `ConnectionManager` broadcasts per-game events; `handlers.py` is the WS endpoint.
-- **MCP** (`app/mcp/`) — stdio Model Context Protocol server (`python -m app.mcp`, official `mcp` 2.x `MCPServer`). Tools call Services directly: read `list_experiments`, `get_experiment` (games off by default), `list_decision_points`, `get_decision_stats`; write `start_collect` / `cancel_collect` (may spend API budget). Logs go to stderr. Cursor example:
+- **MCP** (`app/mcp/`) — Model Context Protocol server (official `mcp` 2.x `MCPServer`). Tools call Services directly: read `list_experiments`, `get_experiment` (games off by default), `list_decision_points`, `get_decision_stats`; write `start_collect` / `cancel_collect` (may spend API budget). **stdio:** `python -m app.mcp` (logs on stderr). **HTTP:** Streamable HTTP mounted on the API at `/mcp/` when `MCP_HTTP_ENABLED=true` (default), or standalone `python -m app.mcp --transport streamable-http --port 8001`. Cursor stdio example:
 
 ```json
 {
@@ -121,7 +123,7 @@ API (app/api/) → Service (app/services/) → Repository (app/repositories/) �
 
 ## Frontend
 
-- Vue 3 `<script setup lang="ts">`, Pinia, Vue Router, vue-i18n (`zh-CN` + `en`). New user-facing copy goes through i18n.
+- Vue 3 `<script setup lang="ts">`, Pinia, Vue Router, vue-i18n (`zh-CN` + `en`). New user-facing copy goes through i18n. Locale messages live under `src/i18n/locales/{zh-CN,en}/` (`common` / `guide` / `experiment` / `game` / `analyze` / `settings`); thin `locales/zh-CN.ts` / `en.ts` re-export the merge.
 - `src/api/` — typed Axios client (`client.ts` normalizes errors). Domain modules: `experimentApi`, `experimentConfigApi`, `gameApi`, `dataApi`, `decision`, `traces`, `trainingApi`, `prompts`, `systemApi`, `archive`.
 - `src/stores/` — `useGameStore`, `useDataStore`, `useTrainingStore`.
 - `src/composables/` — `useWebSocket`, `useGameWebSocket` (observer), `usePagination`, `useTweenNumber`, `useFieldWidth`, `useTheme`, `useLocale`.

@@ -113,7 +113,22 @@ onMounted(fetchAll)
             {{ config.max_concurrent_games ?? t('common.dash') }}
           </div>
         </div>
+        <div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.thinkingEffort') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">
+            {{ config.thinking_budget_reasoning_effort || t('common.dash') }}
+          </div>
+        </div>
+        <div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.thinkingMaxTokens') }}</div>
+          <div class="mt-ink-1 text-body font-medium tabular-nums text-ink-text">
+            {{ config.thinking_budget_max_tokens ?? t('common.dash') }}
+          </div>
+        </div>
       </div>
+      <p class="mt-ink-3 max-w-2xl text-caption text-ink-text-muted">
+        {{ t('settings.thinkingBudgetHint', { env: '.env' }) }}
+      </p>
       <div
         v-if="startup && startup.checks?.some((c) => !c.ok)"
         class="mt-ink-4 space-y-ink-2 border-t border-ink-border pt-ink-3"

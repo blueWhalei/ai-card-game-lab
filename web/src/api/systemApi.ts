@@ -19,6 +19,9 @@ export type SystemConfig = {
   sqlite_path: string
   models_dir: string
   max_concurrent_games?: number
+  /** Default snapshotted into new experiments' protocol.solver.thinking_budget. */
+  thinking_budget_reasoning_effort?: string | null
+  thinking_budget_max_tokens?: number | null
   training_deps_available?: boolean
   default_base_models?: string[]
 }

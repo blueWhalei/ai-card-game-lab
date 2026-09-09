@@ -188,7 +188,9 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - **MCP server** — **6a 已完成 2026-09-08**：stdio `python -m app.mcp`（官方 `mcp` 2.x
   `MCPServer`）；只读工具 `list_experiments` / `get_experiment` / `list_decision_points` /
   `get_decision_stats`，直接调 Service。**写工具 Wave 3a**：`start_collect` /
-  `cancel_collect`（对齐 HTTP collect）。HTTP MCP 仍待。
+  `cancel_collect`（对齐 HTTP collect）。**HTTP MCP ✅ 2026-09-09**：API 进程挂载
+  Streamable HTTP 于 `/mcp/`（`MCP_HTTP_ENABLED`，默认真）；亦可
+  `python -m app.mcp --transport streamable-http --port 8001`。
 - **研究助手草稿** — **6b 已完成 2026-09-08**：模板拼装（不调 LLM）`POST .../conclusion-draft`；
   verdict 阶段预览确认后 `PATCH conclusion`。**只做草稿**，统计 verdict 不变。
   Wave 3a：草稿坏手深链到决策页。
@@ -201,7 +203,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 1. 实验模板 / 一键复现：`examples/` 放 3 个可导入 pack（基线对比、prompt A/B、微调前后对照）—— **已完成 2026-09-08**（`examples/*.json`；导入重建 protocol，Prompt A/B 需人工挂模板）
 2. Prompt 作为实验变量：protocol 冻结 prompt 版本哈希，支持"同模型不同 prompt"对照 —— **已完成 2026-09-08**（`solver.prompts` 正文+hash；采集优先用冻结体；创建可选 `prompt_version`）
-3. 决策点人工标注（好 / 坏 / 存疑）写回 `decision_points`，作为 SFT 过滤与偏好数据来源
+3. ~~决策点人工标注（好 / 坏 / 存疑）写回 `decision_points`~~ ✅ 2026-09-09（见 §4）
 4. 人类席位（见 `HumanPolicy`）
 5. 锦标赛 / 天梯：多选手两两对打，Elo / Bradley-Terry 排名
 6. CLI：`cardlab run --experiment pack.json`、`cardlab export`（`e2e_pipeline.py` 是雏形）
@@ -217,7 +219,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
   ✅ 2026-09-09（实验 harvest/empty/verdict 阻塞替换 CTA；训练页 block 替换创建按钮，warn 才用 banner）
 - ~~拆分 `ExperimentDetailView.vue`（`useExperimentDetail()` composable + 阶段容器）~~
   ✅ 2026-09-09（逻辑进 `composables/useExperimentDetail.ts`；视图只留模板组装）
-- i18n 按页面拆目录 `locales/zh-CN/{experiment,game,...}.ts`
+- i18n 按页面拆目录 `locales/zh-CN/{experiment,game,...}.ts` —— **已完成 2026-09-09**
+  （`common` / `guide` / `experiment` / `game` / `analyze` / `settings`；入口仍为 `locales/zh-CN.ts`）
 - 可访问性：`CardDisplay` / 表格 aria、键盘导航、`prefers-reduced-motion`
 
 ## 5. 工程质量项
@@ -335,7 +338,7 @@ Policy.decide(observation: Observation,
 | protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；~~`scorer.evaluator` EV 旋钮~~ ✅ Wave 4d | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
 | 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；~~`tool_calls`~~ ✅ Wave 5（迁移 3，摘要形） | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
-| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind`；迁移 3 = 决策 `tool_calls` → **`SCHEMA_VERSION = 3`** |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind`；迁移 3 = 决策 `tool_calls`；迁移 4 = 决策 `annotation` → **`SCHEMA_VERSION = 4`** |
 
 ### 9.5 分层与目录
 
@@ -346,7 +349,7 @@ core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle p
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
 core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）
-app/mcp/       stdio MCP（6a ✅ 读；Wave 3a ✅ start_collect / cancel_collect；HTTP MCP 仍待）
+app/mcp/       stdio MCP（6a ✅ 读；Wave 3a ✅ start_collect / cancel_collect；HTTP ✅ `/mcp/` 挂载）
 core/research/ conclusion_draft 模板草稿（6b ✅；坏手深链 Wave 3a ✅）
 services/      事件流消费（WS / span / 决策点）；Task = protocol schema，不建新实体
 ```

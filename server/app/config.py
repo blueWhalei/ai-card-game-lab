@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     thinking_budget_reasoning_effort: str = ""
     thinking_budget_max_tokens: int | None = None
 
+    # Mount Streamable HTTP MCP at /mcp on the API process (same tools as stdio).
+    mcp_http_enabled: bool = True
+    # DNS-rebinding Host check (disable in ASGI unit tests with fake Host headers).
+    mcp_http_enforce_host: bool = True
+
     # LLM VCR: off | record | replay. Empty vcr_dir → {data_dir}/vcr.
     vcr_mode: str = "off"
     vcr_dir: str = ""
