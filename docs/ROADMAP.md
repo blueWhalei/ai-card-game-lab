@@ -225,8 +225,9 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
   ✅ 2026-09-08（`app/core`）；✅ 2026-09-09（扩到 `app/services`；`app.core.training.*` ignore）
 - ~~pytest-cov 覆盖率报告~~
   ✅ 2026-09-08（报告）；✅ 2026-09-09（`--cov-fail-under=80`）
-- 前端组件测试：把 `CLAUDE.md` 中的产品规则（"不出现 `14/10`"、"Δ 不上色"）变成对
-  `ExperimentStage` / `StageVerdict` 的可执行断言
+- ~~前端组件测试：把 `CLAUDE.md` 中的产品规则（"不出现 `14/10`"、"Δ 不上色"）变成对
+  `ExperimentStage` / `StageVerdict` 的可执行断言~~
+  ✅ 2026-09-09（`StageAction.spec.ts` 进度封顶；`StageVerdict.spec.ts` Δ 不用 success/danger）
 - Playwright 冒烟：启动 → load demo → 详情 → 看到 verdict
 - ~~数据库迁移：`PRAGMA user_version` + 编号迁移列表，替代 try/except `ALTER TABLE`~~
   ✅ 已完成（`app/migrations.py`）
