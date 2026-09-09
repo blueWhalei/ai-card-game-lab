@@ -13,6 +13,8 @@
     "lint:ci": "oxlint . && eslint . --cache",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "lint:oxlint": "oxlint . --fix",
     "lint:eslint": "eslint . --fix --cache",
     "format": "prettier --write --experimental-cli src/"
@@ -36,6 +38,7 @@
     "vue-router": "^5.0.3"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@tsconfig/node24": "^24.0.4",
     "@types/node": "^24.12.0",
     "@vitejs/plugin-vue": "^6.0.4",

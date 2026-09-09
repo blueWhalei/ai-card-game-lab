@@ -73,6 +73,8 @@ npm test
 ```
 
 CI: `npm run lint:ci` → `npm test` → `npm run build` (build already runs `type-check`).
+E2E smoke (separate CI job): `npm run test:e2e` — demo → experiment verdict
+(starts backend + Vite via Playwright `webServer`).
 ## Architecture
 
 Strict one-way backend dependency:

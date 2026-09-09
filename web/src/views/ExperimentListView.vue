@@ -270,6 +270,14 @@ onMounted(() => {
 <template>
   <div class="page-container space-y-ink-6">
     <div class="flex flex-wrap items-center justify-end gap-ink-2">
+      <UiButton
+        variant="secondary"
+        data-testid="load-demo-experiment"
+        :loading="seedingDemo"
+        @click="loadDemo"
+      >
+        {{ t('experiment.loadDemo') }}
+      </UiButton>
       <UiDropdownMenu :items="moreMenuItems" @select="onMoreSelect">
         <UiButton variant="ghost" size="icon" :aria-label="t('common.more')" :loading="importing">
           <Icon icon="lucide:ellipsis" class="h-4 w-4" />
@@ -307,7 +315,12 @@ onMounted(() => {
           <UiButton variant="secondary" :loading="importing" @click="importPack">
             {{ t('experiment.importPack') }}
           </UiButton>
-          <UiButton variant="secondary" :loading="seedingDemo" @click="loadDemo">
+          <UiButton
+            variant="secondary"
+            data-testid="load-demo-experiment"
+            :loading="seedingDemo"
+            @click="loadDemo"
+          >
             {{ t('experiment.loadDemo') }}
           </UiButton>
         </div>

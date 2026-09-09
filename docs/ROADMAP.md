@@ -31,7 +31,7 @@
 `ExperimentDetailView` 已拆为 `useExperimentDetail` + 薄视图；`experiment_service` 已拆 mixin。
 工程配置：CI 已跑 `ruff check` / `ruff format --check` /
 `mypy app/core app/services` / `pytest --cov`（`--cov-fail-under=80`）；
-前端已有 Stage 产品规则组件测；无 Playwright E2E。
+前端已有 Stage 产品规则组件测；Playwright 冒烟（demo → verdict）已接 CI。
 
 ## 2. 四个深化方向
 
@@ -230,7 +230,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - ~~前端组件测试：把 `CLAUDE.md` 中的产品规则（"不出现 `14/10`"、"Δ 不上色"）变成对
   `ExperimentStage` / `StageVerdict` 的可执行断言~~
   ✅ 2026-09-09（`StageAction.spec.ts` 进度封顶；`StageVerdict.spec.ts` Δ 不用 success/danger）
-- Playwright 冒烟：启动 → load demo → 详情 → 看到 verdict
+- ~~Playwright 冒烟：启动 → load demo → 详情 → 看到 verdict~~
+  ✅ 2026-09-09（`web/e2e/demo-verdict.spec.ts`；CI `e2e` job 起后端+Vite）
 - ~~数据库迁移：`PRAGMA user_version` + 编号迁移列表，替代 try/except `ALTER TABLE`~~
   ✅ 已完成（`app/migrations.py`）
 - 统一换行符：`git add --renormalize .`

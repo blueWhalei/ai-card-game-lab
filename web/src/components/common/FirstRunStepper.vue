@@ -45,7 +45,13 @@ function runAction(id: FirstRunStepId): void {
         <h2 class="text-title font-semibold text-ink-text">{{ t('firstRun.title') }}</h2>
         <p class="mt-ink-1 text-body text-ink-text-secondary">{{ t('firstRun.subtitle') }}</p>
       </div>
-      <UiButton size="sm" variant="ghost" :loading="demoLoading" @click="emit('demo')">
+      <UiButton
+        size="sm"
+        variant="ghost"
+        data-testid="load-demo-experiment"
+        :loading="demoLoading"
+        @click="emit('demo')"
+      >
         {{ t('experiment.loadDemo') }}
       </UiButton>
     </div>
