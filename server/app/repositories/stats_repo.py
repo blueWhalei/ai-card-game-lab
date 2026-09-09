@@ -50,11 +50,11 @@ class StatsRepository:
 
     async def total_games(self) -> int:
         where, params = self._games_clause()
-        return await self._scalar(f"SELECT COUNT(*) FROM games{where}", params)
+        return int(await self._scalar(f"SELECT COUNT(*) FROM games{where}", params))
 
     async def total_rounds(self) -> int:
         frm, params = self._rounds_scope()
-        return await self._scalar(f"SELECT COUNT(*) {frm}", params)
+        return int(await self._scalar(f"SELECT COUNT(*) {frm}", params))
 
     async def avg_response_time_ms(self) -> float | int:
         col = "r.response_time_ms" if self._experiment_id else "response_time_ms"
@@ -81,17 +81,17 @@ class StatsRepository:
     async def total_tokens(self) -> int:
         col = "r.total_tokens" if self._experiment_id else "total_tokens"
         frm, params = self._rounds_scope(f"{col} IS NOT NULL")
-        return await self._scalar(f"SELECT SUM({col}) {frm}", params)
+        return int(await self._scalar(f"SELECT SUM({col}) {frm}", params))
 
     async def total_prompt_tokens(self) -> int:
         col = "r.prompt_tokens" if self._experiment_id else "prompt_tokens"
         frm, params = self._rounds_scope(f"{col} IS NOT NULL")
-        return await self._scalar(f"SELECT SUM({col}) {frm}", params)
+        return int(await self._scalar(f"SELECT SUM({col}) {frm}", params))
 
     async def total_completion_tokens(self) -> int:
         col = "r.completion_tokens" if self._experiment_id else "completion_tokens"
         frm, params = self._rounds_scope(f"{col} IS NOT NULL")
-        return await self._scalar(f"SELECT SUM({col}) {frm}", params)
+        return int(await self._scalar(f"SELECT SUM({col}) {frm}", params))
 
     async def tokens_by_model(self) -> dict[str, int]:
         name_col = "r.model_name" if self._experiment_id else "model_name"
@@ -109,7 +109,7 @@ class StatsRepository:
 
     async def games_with_winner(self) -> int:
         where, params = self._games_clause("winner_id IS NOT NULL")
-        return await self._scalar(f"SELECT COUNT(*) FROM games{where}", params)
+        return int(await self._scalar(f"SELECT COUNT(*) FROM games{where}", params))
 
     async def wins_by_role(self) -> dict[str, int]:
         where, params = self._games_clause("winner_role IS NOT NULL")
@@ -170,7 +170,7 @@ class StatsRepository:
             f"SELECT {col} {frm} ORDER BY {col}",
             params,
         )
-        rows = await cursor.fetchall()
+        rows = list(await cursor.fetchall())
         if not rows:
             return 0.0, 0.0
         n = len(rows)
@@ -188,7 +188,14 @@ class StatsRepository:
         )
         return {row[0]: round(row[1], 1) for row in await cursor.fetchall()}
 
-    async def _scalar(self, sql: str, params: list[Any] | None = None) -> Any:
+    async def _scalar(self, sql: str, params: list[Any] | None = None) -> int | float:
         cursor = await self._db.execute(sql, params or [])
         row = await cursor.fetchone()
-        return row[0] if row else 0
+        value = row[0] if row else 0
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        return float(value)

@@ -227,7 +227,7 @@ class DecisionRepository:
     async def count_total(self, experiment_id: str | None = None) -> int:
         """Count total decision points, optionally scoped to an experiment."""
         where, params = self._experiment_where(experiment_id)
-        return await self._scalar(f"SELECT COUNT(*) FROM decision_points{where}", params)
+        return int(await self._scalar(f"SELECT COUNT(*) FROM decision_points{where}", params))
 
     async def count_usability(self, experiment_id: str | None = None) -> dict[str, int]:
         where, params = self._experiment_where(experiment_id)
@@ -418,10 +418,17 @@ class DecisionRepository:
             return "", []
         return " WHERE " + " AND ".join(clauses), params
 
-    async def _scalar(self, sql: str, params: list[Any] | None = None) -> Any:
+    async def _scalar(self, sql: str, params: list[Any] | None = None) -> int | float:
         cursor = await self._db.execute(sql, params or [])
         row = await cursor.fetchone()
-        return row[0] if row else 0
+        value = row[0] if row else 0
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        return float(value)
 
 
 def _parse_json_object(raw: Any) -> dict[str, Any] | None:

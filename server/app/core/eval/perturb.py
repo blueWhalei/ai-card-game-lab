@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import copy
 import random
+from collections.abc import Sequence
 from typing import Literal
 
 from app.core.eval.puzzle import Puzzle
@@ -23,7 +24,7 @@ _KNOWN_KINDS: frozenset[str] = frozenset(DEFAULT_PERTURB_KINDS)
 
 
 def ensure_perturb_kinds(
-    kinds: list[str] | tuple[str, ...] | None,
+    kinds: Sequence[str] | None,
 ) -> list[PerturbKind]:
     """Return validated kinds; ``None`` → defaults. Raises ``ValueError`` if unknown."""
     resolved: list[str] = list(kinds) if kinds is not None else list(DEFAULT_PERTURB_KINDS)

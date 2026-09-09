@@ -68,7 +68,8 @@ class TrainingTaskRepository:
             f"SELECT COUNT(*) FROM training_tasks {where}",
             params,
         )
-        total = (await count_cur.fetchone())[0]
+        count_row = await count_cur.fetchone()
+        total = int(count_row[0]) if count_row is not None else 0
 
         offset = (page - 1) * page_size
         params.extend([page_size, offset])

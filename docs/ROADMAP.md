@@ -29,9 +29,9 @@
 
 代码热点：`ExperimentDetailView.vue`（~999 行）、i18n 单文件各 ~1300 行。
 `experiment_service` 已拆为 facade + `experiment_collect` / `experiment_delta` mixin。
-工程配置：CI 已跑 `ruff check` / `ruff format --check` / `mypy app/core` /
-`pytest --cov`（无 fail-under）；`app/services` mypy 与 cov 门槛仍待收紧；前端 spec
-基本是 utils 级，无组件测试与 E2E。
+工程配置：CI 已跑 `ruff check` / `ruff format --check` /
+`mypy app/core app/services` / `pytest --cov`（`--cov-fail-under=80`）；
+前端 spec 基本是 utils 级，无组件测试与 E2E。
 
 ## 2. 四个深化方向
 
@@ -222,9 +222,9 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - ~~拆 `experiment_service.py`：继续拆出 `experiment_collect`、`experiment_delta`，本体只留 CRUD + 组装~~
   ✅ 2026-09-08（`ExperimentCollectMixin` / `ExperimentDeltaMixin` + `experiment_errors`）
 - ~~mypy strict、`ruff format --check` 进 CI（可先对 `app/core`、`app/services` 生效）~~
-  ✅ 2026-09-08（CI：`ruff check` → `ruff format --check` → `mypy app/core`；`app.core.training.*` ignore；`app/services` 下一批）
+  ✅ 2026-09-08（`app/core`）；✅ 2026-09-09（扩到 `app/services`；`app.core.training.*` ignore）
 - ~~pytest-cov 覆盖率报告~~
-  ✅ 2026-09-08（CI：`pytest --cov=app --cov-report=term-missing`，**无** `--cov-fail-under`）
+  ✅ 2026-09-08（报告）；✅ 2026-09-09（`--cov-fail-under=80`）
 - 前端组件测试：把 `CLAUDE.md` 中的产品规则（"不出现 `14/10`"、"Δ 不上色"）变成对
   `ExperimentStage` / `StageVerdict` 的可执行断言
 - Playwright 冒烟：启动 → load demo → 详情 → 看到 verdict
@@ -233,8 +233,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 - 统一换行符：`git add --renormalize .`
 - 安全：仅监听 localhost；任何 API 不回显 `.env` 中的 key（Settings 只返回 `configured: true`）
 - 大批未提交改动按功能拆成多个 conventional commits
-- mypy 闸扩到 `app/services`（下一批）
-- cov `--cov-fail-under` 门槛（下一批，先有报告）
+- ~~mypy 闸扩到 `app/services`（下一批）~~ ✅ 2026-09-09
+- ~~cov `--cov-fail-under` 门槛（下一批，先有报告）~~ ✅ 2026-09-09（80）
 
 ## 6. 开源基础设施（最低优先级）
 

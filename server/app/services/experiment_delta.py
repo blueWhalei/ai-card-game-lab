@@ -9,6 +9,7 @@ import aiosqlite
 import structlog
 
 from app.core.eval.scorer import (
+    ScorerRegistry,
     apply_scorer_results,
     score_bundle_from_aggregates,
 )
@@ -50,7 +51,17 @@ def _control_experiment_ready(summary: dict[str, Any]) -> bool:
 
 
 class ExperimentDeltaMixin:
-    """Metrics, validation, delta, and compare assembly."""
+    """Metrics, validation, delta, and compare assembly.
+
+    Host methods are provided by ``ExperimentService``; stubs below exist only
+    so mypy can type-check the mixin in isolation.
+    """
+
+    async def _conn(self) -> aiosqlite.Connection:
+        raise NotImplementedError
+
+    def _registry_for(self, protocol: dict[str, Any] | None, game_type: str) -> ScorerRegistry:
+        raise NotImplementedError
 
     async def compare_experiments(self, experiment_ids: list[str]) -> dict[str, Any]:
         """Side-by-side metrics for 2–5 experiments, including Wilson CIs."""
@@ -549,10 +560,10 @@ class ExperimentDeltaMixin:
             paired_landlord_wins = 0
             paired_decisive = 0
             for seed in common:
-                game = by_seed.get(seed)
-                if game is None:
+                seed_game = by_seed.get(seed)
+                if seed_game is None:
                     continue
-                winner = game.get("winner_id")
+                winner = seed_game.get("winner_id")
                 if not winner:
                     continue
                 paired_n += 1
@@ -564,7 +575,7 @@ class ExperimentDeltaMixin:
                     seat_wins[seat] += 1
                 except ValueError:
                     pass
-                role = str(game.get("winner_role") or "")
+                role = str(seed_game.get("winner_role") or "")
                 if role in ("landlord", "peasant"):
                     paired_decisive += 1
                     if role == "landlord":
@@ -632,13 +643,13 @@ class ExperimentDeltaMixin:
             landlord_wins = 0
             decisive = 0
             for seed in common:
-                game = by_seed.get(seed)
-                if game is None:
+                seed_game = by_seed.get(seed)
+                if seed_game is None:
                     continue
-                winner = game.get("winner_id")
+                winner = seed_game.get("winner_id")
                 if not winner:
                     continue
-                role = str(game.get("winner_role") or "")
+                role = str(seed_game.get("winner_role") or "")
                 if role in ("landlord", "peasant"):
                     decisive += 1
                     if role == "landlord":

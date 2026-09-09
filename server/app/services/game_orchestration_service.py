@@ -6,12 +6,13 @@ import asyncio
 import contextlib
 import time
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import structlog
 
 from app.core.ai.stream_chunk import StreamChunk
 from app.core.ai.tools.serialize import actions_as_dicts, explain_from_tools
+from app.core.engine.base import GameState
 from app.core.events import EventBus, GameEndedEvent
 from app.database import bind_game_connection, connect_sqlite
 from app.repositories.game_repo import GameRepository
@@ -21,7 +22,6 @@ from app.websocket.manager import ws_manager
 
 if TYPE_CHECKING:
     from app.core.collector.jsonl_writer import JsonlWriter
-    from app.core.engine.base import GameState
     from app.core.engine.registry import GameEngineRegistry
     from app.services.ai_service import AIService
     from app.services.decision_service import DecisionService
@@ -361,7 +361,7 @@ class GameOrchestrationService:
             model_cfg,
         )
 
-        return new_state
+        return cast("GameState", new_state)
 
     async def _broadcast_round_events(
         self,
@@ -563,6 +563,8 @@ class GameOrchestrationService:
         now_iso: str,
     ) -> None:
         """Create spans for tool call results."""
+        if self._trace_service is None:
+            return
         if "hand_analysis" in tool_results:
             await self._trace_service.create_span(
                 trace_id=trace_id,

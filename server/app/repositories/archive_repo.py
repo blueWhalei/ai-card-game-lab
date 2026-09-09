@@ -18,20 +18,20 @@ class ArchiveRepository:
         self._db = db
 
     async def count_games(self) -> int:
-        return await self._scalar("SELECT COUNT(*) FROM games")
+        return int(await self._scalar("SELECT COUNT(*) FROM games"))
 
     async def count_rounds(self) -> int:
-        return await self._scalar("SELECT COUNT(*) FROM rounds")
+        return int(await self._scalar("SELECT COUNT(*) FROM rounds"))
 
     async def count_traces(self) -> int:
-        return await self._scalar("SELECT COUNT(*) FROM traces")
+        return int(await self._scalar("SELECT COUNT(*) FROM traces"))
 
     async def count_decisions(self) -> int:
-        return await self._scalar("SELECT COUNT(*) FROM decision_points")
+        return int(await self._scalar("SELECT COUNT(*) FROM decision_points"))
 
     async def count_old_games(self, days: int) -> int:
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-        return await self._scalar("SELECT COUNT(*) FROM games WHERE created_at < ?", [cutoff])
+        return int(await self._scalar("SELECT COUNT(*) FROM games WHERE created_at < ?", [cutoff]))
 
     async def fetch_old_games(
         self,
@@ -84,25 +84,31 @@ class ArchiveRepository:
         if not game_ids:
             return 0
         placeholders = ",".join("?" * len(game_ids))
-        return await self._scalar(
-            f"SELECT COUNT(*) FROM rounds WHERE game_id IN ({placeholders})", game_ids
+        return int(
+            await self._scalar(
+                f"SELECT COUNT(*) FROM rounds WHERE game_id IN ({placeholders})", game_ids
+            )
         )
 
     async def count_traces_for_games(self, game_ids: list[str]) -> int:
         if not game_ids:
             return 0
         placeholders = ",".join("?" * len(game_ids))
-        return await self._scalar(
-            f"SELECT COUNT(*) FROM traces WHERE game_id IN ({placeholders})", game_ids
+        return int(
+            await self._scalar(
+                f"SELECT COUNT(*) FROM traces WHERE game_id IN ({placeholders})", game_ids
+            )
         )
 
     async def count_decisions_for_games(self, game_ids: list[str]) -> int:
         if not game_ids:
             return 0
         placeholders = ",".join("?" * len(game_ids))
-        return await self._scalar(
-            f"SELECT COUNT(*) FROM decision_points WHERE game_id IN ({placeholders})",
-            game_ids,
+        return int(
+            await self._scalar(
+                f"SELECT COUNT(*) FROM decision_points WHERE game_id IN ({placeholders})",
+                game_ids,
+            )
         )
 
     async def delete_by_game_ids(self, game_ids: list[str]) -> None:
@@ -124,7 +130,14 @@ class ArchiveRepository:
         await self._db.execute(f"DELETE FROM games WHERE id IN ({placeholders})", game_ids)
         await self._db.commit()
 
-    async def _scalar(self, sql: str, params: list[Any] | None = None) -> Any:
+    async def _scalar(self, sql: str, params: list[Any] | None = None) -> int | float:
         cursor = await self._db.execute(sql, params or [])
         row = await cursor.fetchone()
-        return row[0] if row else 0
+        value = row[0] if row else 0
+        if value is None:
+            return 0
+        if isinstance(value, bool):
+            return int(value)
+        if isinstance(value, int):
+            return value
+        return float(value)

@@ -28,10 +28,10 @@ jobs:
         run: poetry run ruff check .
       - name: Ruff format
         run: poetry run ruff format --check .
-      - name: Mypy (app/core)
-        run: poetry run mypy app/core
+      - name: Mypy (app/core + app/services)
+        run: poetry run mypy app/core app/services
       - name: Test
-        run: poetry run pytest --cov=app --cov-report=term-missing
+        run: poetry run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 
   frontend:
     runs-on: ubuntu-latest

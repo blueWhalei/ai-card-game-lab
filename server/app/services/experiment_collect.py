@@ -22,6 +22,7 @@ from app.services.experiment_protocol import (
     set_protocol_pair_deals,
     validate_protocol,
 )
+from app.services.game_service import GameService
 from app.utils.exceptions import ProviderNotConfiguredError
 from app.utils.providers import unconfigured_providers_from_players
 
@@ -31,7 +32,24 @@ ACTIVE_GAME_STATUSES = frozenset({"created", "running", "paused", "pending"})
 
 
 class ExperimentCollectMixin:
-    """Start and stop experiment game collection."""
+    """Start and stop experiment game collection.
+
+    Host attrs/methods are provided by ``ExperimentService``; stubs below exist
+    only so mypy can type-check the mixin in isolation.
+    """
+
+    _game_service: GameService
+
+    async def _conn(self) -> aiosqlite.Connection:
+        raise NotImplementedError
+
+    async def get_experiment(
+        self,
+        experiment_id: str,
+        *,
+        include_games: bool = True,
+    ) -> dict[str, Any]:
+        raise NotImplementedError
 
     async def collect(
         self,

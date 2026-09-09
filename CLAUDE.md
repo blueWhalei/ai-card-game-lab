@@ -41,21 +41,22 @@ poetry install
 poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 poetry run python -m app.mcp   # stdio MCP (Cursor); logs on stderr
 poetry run pytest
-poetry run pytest --cov=app --cov-report=term-missing
+poetry run pytest --cov=app --cov-report=term-missing --cov-fail-under=80
 poetry run pytest tests/test_api/test_system.py
 poetry run pytest -k "test_health"
 poetry run ruff check .
 poetry run ruff format .
 poetry run ruff format --check .
 poetry run mypy app/core
+poetry run mypy app/core app/services
 poetry run mypy app/
 ```
 
 Training extras (PEFT LoRA): `poetry install --with training`.
 
-CI (`.github/workflows/ci.yml`): `ruff check` → `ruff format --check` → `mypy app/core`
-(`app.core.training.*` ignored) → `pytest --cov=app --cov-report=term-missing`
-(no `--cov-fail-under`). Frontend CI unchanged.
+CI (`.github/workflows/ci.yml`): `ruff check` → `ruff format --check` → `mypy app/core app/services`
+(`app.core.training.*` ignored) → `pytest --cov=app --cov-report=term-missing --cov-fail-under=80`.
+Frontend CI unchanged.
 
 ### Frontend (`web/`)
 

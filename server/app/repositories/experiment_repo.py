@@ -351,7 +351,7 @@ class ExperimentRepository:
             """,
             (experiment_id,),
         )
-        pct_rows = await pct_cursor.fetchall()
+        pct_rows = list(await pct_cursor.fetchall())
         p50_ms, p95_ms = 0.0, 0.0
         if pct_rows:
             n = len(pct_rows)
