@@ -76,6 +76,7 @@ ai-card-game-lab/
 │   │   │   ├── experiment_config_repo.py       # 选手配置数据访问 (SQLite)
 │   │   │   ├── experiment_config_stats_repo.py # 选手配置战绩统计 (SQLite)
 │   │   │   ├── decision_repo.py       # 决策点
+│   │   │   ├── experiment_memory_repo.py  # 实验级跨局记忆笔记
 │   │   │   ├── trace_repo.py          # 追踪
 │   │   │   ├── archive_repo.py        # 归档
 │   │   │   └── stats_repo.py          # 聚合统计
@@ -101,6 +102,7 @@ ai-card-game-lab/
 │   │   │   │   ├── stream_chunk.py     # StreamChunk (流式输出块, 含可选 usage)
 │   │   │   │   ├── prompt.py          # PromptBuilder 提示词构建
 │   │   │   │   ├── provider_config.py  # LLMProviderConfig 配置驱动
+│   │   │   │   ├── vcr.py             # 可选 LLM 录制/回放
 │   │   │   │   ├── providers/         # LLM 供应商实现
 │   │   │   │   │   ├── __init__.py
 │   │   │   │   │   ├── openai_client.py  # Chat Completions 客户端（OpenAI、DashScope、DeepSeek 等）
@@ -109,8 +111,17 @@ ai-card-game-lab/
 │   │   │   │   │   └── action_id_parser.py  # ActionId 结构化解析
 │   │   │   │   ├── prompts/            # 提示词模板
 │   │   │   │   │   └── registry.py      # 模板注册中心
-│   │   │   │   ├── tools/              # AI 工具
-│   │   │   │   └── memory/             # AI 记忆模块
+│   │   │   │   └── tools/              # 游戏无关 AI 工具（如胜率估计）
+│   │   │   │
+│   │   │   ├── policy/                 # 决策策略（事件流 → ActionChosen）
+│   │   │   │   ├── base.py            # Policy / Budget / PolicyContext
+│   │   │   │   ├── llm.py             # LLMPolicy 单次问答
+│   │   │   │   ├── tool_loop.py       # ToolLoopPolicy ReAct
+│   │   │   │   ├── search.py          # SearchAugmentedPolicy
+│   │   │   │   ├── baselines.py       # heuristic / random / first
+│   │   │   │   ├── memory_notes.py    # 局末规则摘要（注入 prompt）
+│   │   │   │   ├── kinds.py           # policy_kind 常量
+│   │   │   │   └── registry.py
 │   │   │   │
 │   │   │   ├── collector/              # 数据采集
 │   │   │   │   ├── __init__.py
@@ -128,7 +139,8 @@ ai-card-game-lab/
 │   │   │   ├── training/              # 训练模块
 │   │   │   │   ├── __init__.py
 │   │   │   │   ├── sft.py             # PEFT LoRA SFT（可选 QLoRA；缺依赖则拒绝）
-│   │   │   │   ├── exporter.py        # JSONL → ChatML SFT 格式导出
+│   │   │   │   ├── preference.py      # DPO 偏好对 builder（API 导出）
+│   │   │   │   ├── distill.py         # 师生蒸馏对 builder（API 导出）
 │   │   │   │   ├── deploy.py          # merge / GGUF / Ollama 辅助
 │   │   │   │   └── cpu_smoke.py       # 无 GPU 时限制步数与样本上限
 │   │   │   │

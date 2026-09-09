@@ -45,19 +45,21 @@ export default {
         ],
       },
       pipeline: {
-        caption: 'Four tools under Analyze',
+        caption: 'Five tools under Analyze',
         hub: 'Sidebar Analyze, or the experiment ⋯ menu',
         nodes: [
           { label: 'Data', icon: 'lucide:database' },
           { label: 'Decisions', icon: 'lucide:crosshair' },
           { label: 'Training', icon: 'lucide:brain' },
           { label: 'Traces', icon: 'lucide:activity' },
+          { label: 'Puzzles', icon: 'lucide:puzzle' },
         ],
         items: [
           'Scale, quality, per-model performance',
-          'Filter trainable samples and register a dataset',
+          'Filter trainable samples, annotate, register a dataset',
           'Create a fine-tune, or register as a player',
           'Each model call and response time',
+          'Extract high-spread spots; score baselines and probe perturbations offline',
         ],
       },
     },
@@ -89,8 +91,9 @@ export default {
       },
       playerConfigs: {
         title: 'Player configs',
-        body: 'Model and sampling. Pick them when you create an experiment (engine seat count applies).',
+        body: 'Decision procedure, model, and sampling. Pick them when you create an experiment (engine seat count applies).',
         bullets: [
+          'Policy kind: LLM (single-shot), tool loop (ReAct tools), search-augmented (candidates + rollout), or heuristic / random / first-action baselines (zero API).',
           'Prompts are edited on the Prompts page, not here.',
           'A finished training run can be registered as a new player for a control experiment.',
         ],
@@ -105,7 +108,7 @@ export default {
       },
       pipeline: {
         title: 'Analyze',
-        body: 'Analyze is four tools under one sidebar item. Linked from an experiment, the bar at the top returns you to detail.',
+        body: 'Analyze is five tools under one sidebar item (data / decisions / training / traces / puzzles). Linked from an experiment, the bar at the top returns you to detail. On Decisions you can filter trainable rows and label good / bad / doubt.',
       },
       compare: {
         title: 'Compare experiments',
@@ -135,7 +138,9 @@ export default {
       tune: {
         title: 'Settings and prompts',
         bullets: [
-          'Settings: runtime, paths, and API key readiness (configured in .env).',
+          'Settings: read-only runtime, paths, default thinking budget, EV opponent / self-play proxy, memory scope, and API key readiness (all configured in project-root .env).',
+          'Restart after editing .env; thinking budget, EV opponent, and memory only affect newly created experiments (in-flight protocols stay frozen).',
+          'DPO preference export and teacher/student distill pairs are API-only (no UI); SFT still uses Decisions “register as training dataset”.',
           'Prompts: open from Settings to manage in-game templates; version and A/B test.',
         ],
       },
@@ -143,6 +148,7 @@ export default {
         title: 'Environment',
         bullets: [
           'Copy .env.example → .env; set at least one cloud API key or local Ollama.',
+          'Optional: THINKING_BUDGET_*, EV_LOSS_OPPONENT_KIND, EV_LOSS_SELF_PROXY, MEMORY_SCOPE (none | per_experiment); Settings shows the current values.',
           'Keys are checked before the experiment starts; missing keys are rejected.',
           'Training needs cd server && poetry install --with training.',
           'Push to Ollama requires LLAMA_CPP_DIR in .env.',

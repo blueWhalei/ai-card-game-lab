@@ -125,9 +125,30 @@ onMounted(fetchAll)
             {{ config.thinking_budget_max_tokens ?? t('common.dash') }}
           </div>
         </div>
+        <div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.evOpponentKind') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">
+            {{ config.ev_loss_opponent_kind || t('common.dash') }}
+          </div>
+        </div>
+        <div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.evSelfProxy') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">
+            {{ config.ev_loss_self_proxy || t('common.dash') }}
+          </div>
+        </div>
+        <div>
+          <div class="text-caption text-ink-text-muted">{{ t('settings.memoryScope') }}</div>
+          <div class="mt-ink-1 text-body font-medium text-ink-text">
+            {{ config.memory_scope || t('common.dash') }}
+          </div>
+        </div>
       </div>
       <p class="mt-ink-3 max-w-2xl text-caption text-ink-text-muted">
         {{ t('settings.thinkingBudgetHint', { env: '.env' }) }}
+      </p>
+      <p class="mt-ink-1 max-w-2xl text-caption text-ink-text-muted">
+        {{ t('settings.evalMemoryHint', { env: '.env' }) }}
       </p>
       <div
         v-if="startup && startup.checks?.some((c) => !c.ok)"

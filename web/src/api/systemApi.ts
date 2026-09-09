@@ -22,6 +22,11 @@ export type SystemConfig = {
   /** Default snapshotted into new experiments' protocol.solver.thinking_budget. */
   thinking_budget_reasoning_effort?: string | null
   thinking_budget_max_tokens?: number | null
+  /** Frozen into protocol.scorer.evaluator at experiment create. */
+  ev_loss_opponent_kind?: string | null
+  ev_loss_self_proxy?: string | null
+  /** Frozen into protocol.solver.memory at experiment create (`none` | `per_experiment`). */
+  memory_scope?: string | null
   training_deps_available?: boolean
   default_base_models?: string[]
 }

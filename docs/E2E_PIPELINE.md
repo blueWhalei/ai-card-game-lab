@@ -77,6 +77,8 @@ poetry run python scripts/e2e_pipeline.py all --count 1
 
 「仅导出文件 / 导出 ChatML」只写磁盘 JSONL，**不会**自动出现在训练页。
 
+SFT 走 UI「登记为训练数据集」或脚本 `export`（ChatML）。DPO 偏好对与师生蒸馏对仅有 HTTP API（`POST /api/v1/decision-points/export-preferences`、`export-distill-preferences`），无前端按钮；脚本 `export` 不覆盖这两条路径。
+
 ## 人工观战（可选）
 
 1. `scripts/start-frontend.bat` 或 `./scripts/start-frontend.sh` → http://localhost:5173  

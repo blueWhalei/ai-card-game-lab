@@ -822,6 +822,9 @@ GET    /api/v1/decision-points              # 决策点列表（PaginatedData；
 GET    /api/v1/decision-points/{id}         # 决策点详情
 GET    /api/v1/decision-points/stats        # 统计数据（?experiment_id=）
 POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登记数据集）
+POST   /api/v1/decision-points/export-preferences       # DPO JSONL（模型 vs EV-best）；无 UI
+POST   /api/v1/decision-points/export-distill-preferences  # 师生蒸馏对 JSONL；无 UI
+PATCH  /api/v1/decision-points/{id}         # 设置/清除人工标注 annotation
 ```
 
 #### GET /api/v1/decision-points — 决策点列表
@@ -837,6 +840,7 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
 &outcome=win
 &train_usable=true
 &max_ev_loss=0.3
+&annotation=good
 &page=1
 &page_size=10
 ```
@@ -943,6 +947,25 @@ POST   /api/v1/decision-points/export       # 导出 ChatML 到磁盘（不登�
   }
 }
 ```
+
+#### PATCH /api/v1/decision-points/{id} — 人工标注
+
+**Request**:
+```json
+{ "annotation": "good" }
+```
+
+`annotation` 取 `good` / `bad` / `doubt`，或 `null` 清除。Decision 工作台 UI 可筛可写。
+
+#### POST /api/v1/decision-points/export-preferences — DPO 偏好（无 UI）
+
+按决策点过滤器导出 JSONL：`chosen` = rollout `best_action_id`，`rejected` = 模型 `action_id`。
+缺少 `best_action_id` 的行跳过；默认 `min_ev_gap=0.05`。思考文本默认只出现在 rejected 侧（可选）。
+
+#### POST /api/v1/decision-points/export-distill-preferences — 师生蒸馏对（无 UI）
+
+请求体指定 `teacher_experiment_id` 与 `student_experiment_id`；按 `deal_seed` + round + seat 对齐，
+prompt 取学生侧；缺配对或缺 gold 的行跳过。输出写入 `{data_dir}/datasets/preferences_*.jsonl` 一类路径。
 
 **ChatML 输出格式**:
 ```json

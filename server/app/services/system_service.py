@@ -164,6 +164,11 @@ class SystemService:
             "max_concurrent_games": self._settings.max_concurrent_games,
             "thinking_budget_reasoning_effort": effort or None,
             "thinking_budget_max_tokens": self._settings.thinking_budget_max_tokens,
+            "ev_loss_opponent_kind": (
+                self._settings.ev_loss_opponent_kind.strip() or "heuristic"
+            ),
+            "ev_loss_self_proxy": (self._settings.ev_loss_self_proxy.strip() or "heuristic"),
+            "memory_scope": (self._settings.memory_scope.strip() or "none"),
             "training_deps_available": _cached_training_deps_available(),
             "default_base_models": [
                 "Qwen/Qwen2.5-0.5B",

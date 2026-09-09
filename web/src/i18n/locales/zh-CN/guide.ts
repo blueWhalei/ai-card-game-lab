@@ -44,19 +44,21 @@ export default {
         ],
       },
       pipeline: {
-        caption: '分析页的四个工具',
+        caption: '分析页的五个工具',
         hub: '侧栏「分析」或实验详情的更多菜单',
         nodes: [
           { label: '数据', icon: 'lucide:database' },
           { label: '决策点', icon: 'lucide:crosshair' },
           { label: '训练', icon: 'lucide:brain' },
           { label: '追踪', icon: 'lucide:activity' },
+          { label: '题库', icon: 'lucide:puzzle' },
         ],
         items: [
           '规模、质量与各模型表现',
-          '筛选可训练样本，登记为数据集',
+          '筛选可训练样本、人工标注，登记为数据集',
           '创建微调任务，或登记为选手',
           '每次模型调用与响应时间',
+          '从高分歧局面抽题，离线跑基线与扰动探针',
         ],
       },
     },
@@ -88,8 +90,9 @@ export default {
       },
       playerConfigs: {
         title: '选手配置',
-        body: '定义模型与采样参数。新建实验时按游戏人数选取。',
+        body: '定义决策方式、模型与采样参数。新建实验时按游戏人数选取。',
         bullets: [
+          '决策方式：大模型（单次问答）、工具循环（主动调工具）、搜索增强（候选 + rollout）、或启发式 / 随机 / 首位动作基线（零 API）。',
           '提示词在「提示词」页管理，不在这里改。',
           '训练完成的模型可登记为新选手，用来做对照。',
         ],
@@ -104,7 +107,7 @@ export default {
       },
       pipeline: {
         title: '分析',
-        body: '侧栏「分析」下面四个工具。从实验进来时，顶上的条可以回到详情。',
+        body: '侧栏「分析」下面五个工具（数据 / 决策点 / 训练 / 追踪 / 题库）。从实验进来时，顶上的条可以回到详情。决策点页可筛可训练样本，并对单条做「好 / 坏 / 存疑」标注。',
       },
       compare: {
         title: '实验对比',
@@ -132,7 +135,9 @@ export default {
       tune: {
         title: '设置与提示词',
         bullets: [
-          '设置：查看运行环境、路径与 API 密钥是否就绪（在项目根目录 .env 中配置）。',
+          '设置：只读查看运行环境、路径、推理预算默认、EV 评估对手 / 自博弈代理、跨局记忆范围，以及 API 密钥是否就绪（均在项目根目录 .env 配置）。',
+          '改 .env 后需重启；thinking budget、EV 对手、memory 只影响之后新建的实验（在飞实验的 protocol 已冻结）。',
+          'DPO 偏好导出与师生蒸馏对仅有 API（无 UI）；SFT 仍走决策点「登记为训练数据集」。',
           '提示词：从设置页进入，管理对局用模板，支持版本管理与 A/B 对比。',
         ],
       },
@@ -140,6 +145,7 @@ export default {
         title: '环境与依赖',
         bullets: [
           '复制 .env.example 为 .env，至少配置一个云厂商 API 密钥或本机 Ollama。',
+          '可选：THINKING_BUDGET_*、EV_LOSS_OPPONENT_KIND、EV_LOSS_SELF_PROXY、MEMORY_SCOPE（none | per_experiment）；设置页可读到当前值。',
           '开始实验前会校验密钥；未配置将被拒绝。',
           '训练功能需执行：cd server && poetry install --with training',
           '推送到 Ollama 需在 .env 中配置 LLAMA_CPP_DIR。',

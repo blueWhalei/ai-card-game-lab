@@ -14,6 +14,11 @@ export default {
     thinkingMaxTokens: 'Default reasoning token cap',
     thinkingBudgetHint:
       'Snapshotted into protocol.solver.thinking_budget when an experiment is created (in-flight runs stay frozen). Set THINKING_BUDGET_REASONING_EFFORT / THINKING_BUDGET_MAX_TOKENS in {env}.',
+    evOpponentKind: 'EV opponent',
+    evSelfProxy: 'Self-play proxy',
+    memoryScope: 'Cross-game memory',
+    evalMemoryHint:
+      'Snapshotted into protocol.scorer.evaluator (opponent / proxy) and protocol.solver.memory when an experiment is created (in-flight runs stay frozen). Set EV_LOSS_OPPONENT_KIND / EV_LOSS_SELF_PROXY / MEMORY_SCOPE in {env}.',
     startup: 'Startup check',
     providers: 'Providers',
     configuredN: '{ready} / {total} configured',

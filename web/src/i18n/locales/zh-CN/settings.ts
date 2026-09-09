@@ -14,6 +14,11 @@ export default {
     thinkingMaxTokens: '推理 token 上限默认',
     thinkingBudgetHint:
       '新建实验时写入 protocol.solver.thinking_budget（在飞实验不受改动影响）。在 {env} 设置 THINKING_BUDGET_REASONING_EFFORT / THINKING_BUDGET_MAX_TOKENS。',
+    evOpponentKind: 'EV 评估对手',
+    evSelfProxy: '自博弈代理',
+    memoryScope: '跨局记忆',
+    evalMemoryHint:
+      '新建实验时写入 protocol.scorer.evaluator（对手 / 代理）与 protocol.solver.memory（在飞实验不受改动影响）。在 {env} 设置 EV_LOSS_OPPONENT_KIND / EV_LOSS_SELF_PROXY / MEMORY_SCOPE。',
     startup: '启动检查',
     providers: '供应商',
     configuredN: '{ready} / {total} 已配置',
