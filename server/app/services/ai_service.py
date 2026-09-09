@@ -23,6 +23,7 @@ from app.core.engine.base import GameAction, GameEngine, GameState, LegalAction
 from app.core.policy import get_baseline_policy_registry
 from app.core.policy.base import (
     ActionChosen,
+    ActionSelector,
     Budget,
     LlmRequest,
     LlmUsage,
@@ -31,7 +32,7 @@ from app.core.policy.base import (
     ThinkingDelta,
     ToolResult,
 )
-from app.core.policy.baselines import FirstActionPolicy
+from app.core.policy.baselines import BaselinePolicy, FirstActionPolicy
 from app.core.policy.kinds import is_baseline_policy_kind, is_llm_policy_kind
 from app.core.policy.llm import LLMPolicy
 from app.core.policy.search import SearchAugmentedPolicy
@@ -242,6 +243,7 @@ class AIService:
             player_config["_thinking_max_tokens"] = budget_knobs["max_thinking_tokens"]
         policy = self._build_policy(player_config, stream=stream)
         frozen_version, frozen_prompts = await self._protocol_prompt_freeze(game_id)
+        memory_notes = await self._load_memory_notes(game_id, player_id)
         prompt_source = EnginePromptSource(
             self._prompt_builder,
             engine,
@@ -254,7 +256,12 @@ class AIService:
             rng=random.Random(),
             session_id=game_id,
             prompts=prompt_source,
-            score_actions=self._score_actions_fn(engine, game_id),
+            score_actions=self._score_actions_fn(
+                engine,
+                game_id,
+                self_selector=policy if isinstance(policy, BaselinePolicy) else None,
+            ),
+            memory_notes=memory_notes or None,
         )
         budget = Budget(
             max_llm_calls=MAX_RETRIES,
@@ -306,6 +313,7 @@ class AIService:
                 game_id=game_id,
                 policy_kind=policy.kind,
                 tool_results=trace.tool_results or None,
+                self_selector=policy if isinstance(policy, BaselinePolicy) else None,
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
@@ -383,6 +391,7 @@ class AIService:
         game_id: str | None = None,
         policy_kind: str = "llm",
         tool_results: dict[str, Any] | None = None,
+        self_selector: ActionSelector | None = None,
     ) -> None:
         """Record a decision point for SFT training data.
 
@@ -413,7 +422,12 @@ class AIService:
                 "cards": chosen_action.cards or [],
             }
             ev_loss, evaluator_params = await self._score_decision(
-                engine, state, player_id, chosen_action, game_id=game_id
+                engine,
+                state,
+                player_id,
+                chosen_action,
+                game_id=game_id,
+                self_selector=self_selector,
             )
 
             await self._decision_service.create_decision_point(
@@ -442,6 +456,8 @@ class AIService:
         self,
         engine: GameEngine,
         game_id: str | None,
+        *,
+        self_selector: ActionSelector | None = None,
     ) -> Any:
         """Build Observation-only candidate scorer for SearchAugmentedPolicy."""
         evaluator = self._decision_evaluator
@@ -458,7 +474,7 @@ class AIService:
                 cached = self._ev_params_by_game[game_id]
                 if cached is not None:
                     params = cached
-            rollout = evaluator._evaluator_for(engine, params)
+            rollout, _honesty = evaluator._evaluator_for(engine, params, self_selector)
             want = set(candidate_ids)
             subset = [la for la in legal_actions if la.id in want]
             if not subset:
@@ -478,6 +494,7 @@ class AIService:
         chosen_action: GameAction,
         *,
         game_id: str | None = None,
+        self_selector: ActionSelector | None = None,
     ) -> tuple[float | None, dict[str, Any] | None]:
         """EV loss for the move, or ``(None, None)`` when scoring is off or fails.
 
@@ -488,7 +505,12 @@ class AIService:
             return None, None
         override = await self._protocol_evaluator_params(game_id)
         result = await self._decision_evaluator.score(
-            engine, state, player_id, chosen_action, params=override
+            engine,
+            state,
+            player_id,
+            chosen_action,
+            params=override,
+            self_selector=self_selector,
         )
         if result is None:
             return None, None
@@ -615,6 +637,39 @@ class AIService:
             budget = {}
         self._thinking_budget_by_game[game_id] = budget
         return dict(budget)
+
+    async def _load_memory_notes(self, game_id: str | None, player_id: str) -> str:
+        """Load per-experiment memory notes when protocol.solver.memory is on."""
+        if not game_id or not self._sqlite_path:
+            return ""
+        from app.core.task_protocol import protocol_memory
+        from app.database import open_db_connection
+        from app.repositories.experiment_memory_repo import ExperimentMemoryRepository
+        from app.repositories.experiment_repo import ExperimentRepository
+        from app.repositories.game_repo import GameRepository
+
+        try:
+            conn = await open_db_connection(self._sqlite_path)
+            try:
+                try:
+                    game = await GameRepository(conn).get_by_id(game_id)
+                except KeyError:
+                    return ""
+                experiment_id = game.get("experiment_id")
+                if not experiment_id:
+                    return ""
+                row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
+                protocol = row.get("protocol") if row else None
+                if protocol_memory(protocol if isinstance(protocol, dict) else None) != "per_experiment":
+                    return ""
+                return await ExperimentMemoryRepository(conn).get_notes(
+                    str(experiment_id), player_id
+                )
+            finally:
+                await conn.close()
+        except Exception:
+            logger.warning("memory_notes_lookup_failed", game_id=game_id, exc_info=True)
+            return ""
 
     @staticmethod
     def _truncate_text(text: str, limit: int = 400) -> str:

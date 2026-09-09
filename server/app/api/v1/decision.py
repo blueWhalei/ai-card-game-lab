@@ -116,6 +116,14 @@ class PreferenceExportRequest(ExportRequest):
     )
 
 
+class DistillExportRequest(BaseModel):
+    """Export teacher-vs-student preference pairs matched by deal/round/seat."""
+
+    teacher_experiment_id: str = Field(..., min_length=1)
+    student_experiment_id: str = Field(..., min_length=1)
+    include_thinking: bool = False
+
+
 class ExportResponse(BaseModel):
     """Response model for export result."""
 
@@ -131,6 +139,18 @@ class PreferenceExportResponse(BaseModel):
     skipped_missing_best: int = 0
     skipped_gap: int = 0
     skipped_tie: int = 0
+
+
+class DistillExportResponse(BaseModel):
+    """Distill preference export result."""
+
+    filepath: str
+    count: int
+    matched_keys: int = 0
+    skipped_tie: int = 0
+    skipped_unpaired: int = 0
+    skipped_missing_seed: int = 0
+    skipped_seat_mismatch: int = 0
 
 
 @router.get("", response_model=ApiResponse[PaginatedData[DecisionPointResponse]])
@@ -259,6 +279,40 @@ async def export_preferences(
     return ApiResponse(
         data=payload,
         message=f"Exported {count} preference pairs to {filepath}",
+    )
+
+
+@router.post(
+    "/export-distill-preferences",
+    response_model=ApiResponse[DistillExportResponse],
+)
+async def export_distill_preferences(
+    request: DistillExportRequest,
+    service: DecisionService = Depends(get_decision_service),
+) -> ApiResponse[DistillExportResponse]:
+    """Export DPO pairs: teacher action vs student action (same deal/round/seat)."""
+    filepath, count, meta = await service.export_distill_preferences(
+        teacher_experiment_id=request.teacher_experiment_id,
+        student_experiment_id=request.student_experiment_id,
+        include_thinking=request.include_thinking,
+    )
+    payload = DistillExportResponse(
+        filepath=filepath or "",
+        count=count,
+        matched_keys=int(meta.get("matched_keys", 0)),
+        skipped_tie=int(meta.get("skipped_tie", 0)),
+        skipped_unpaired=int(meta.get("skipped_unpaired", 0)),
+        skipped_missing_seed=int(meta.get("skipped_missing_seed", 0)),
+        skipped_seat_mismatch=int(meta.get("skipped_seat_mismatch", 0)),
+    )
+    if not filepath:
+        return ApiResponse(
+            data=payload,
+            message="No distill preference pairs found to export",
+        )
+    return ApiResponse(
+        data=payload,
+        message=f"Exported {count} distill pairs to {filepath}",
     )
 
 

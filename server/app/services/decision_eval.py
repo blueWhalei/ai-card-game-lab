@@ -12,6 +12,7 @@ already in hand.
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from typing import Any
 
 import structlog
@@ -24,18 +25,64 @@ from app.utils.exceptions import InvalidActionError
 
 logger = structlog.get_logger()
 
+SELF_OPPONENT_KIND = "self"
 
-def resolve_opponent(kind: str) -> ActionSelector:
-    """Map ``EvaluatorParams.opponent_kind`` to a baseline policy."""
+
+def resolve_baseline_opponent(kind: str) -> ActionSelector:
+    """Map a baseline ``opponent_kind`` to a policy (never ``self``)."""
+    normalized = (kind or "heuristic").strip() or "heuristic"
+    if normalized == SELF_OPPONENT_KIND:
+        logger.warning("self_proxy_cannot_be_self")
+        normalized = "heuristic"
     try:
-        policy = get_baseline_policy_registry().create(kind)
+        policy = get_baseline_policy_registry().create(normalized)
     except InvalidActionError:
-        logger.warning("unknown_opponent_kind", opponent_kind=kind)
+        logger.warning("unknown_opponent_kind", opponent_kind=normalized)
         return HeuristicPolicy()
     if isinstance(policy, BaselinePolicy):
         return policy
-    logger.warning("opponent_kind_not_baseline", opponent_kind=kind)
+    logger.warning("opponent_kind_not_baseline", opponent_kind=normalized)
     return HeuristicPolicy()
+
+
+def resolve_opponent(kind: str) -> ActionSelector:
+    """Map ``EvaluatorParams.opponent_kind`` to a baseline policy.
+
+    ``self`` without a seat selector falls back to heuristic (callers that mean
+    true self-play must use :func:`resolve_opponent_for_score`).
+    """
+    if (kind or "").strip() == SELF_OPPONENT_KIND:
+        logger.warning("self_opponent_without_selector")
+        return HeuristicPolicy()
+    return resolve_baseline_opponent(kind)
+
+
+def resolve_opponent_for_score(
+    params: EvaluatorParams,
+    self_selector: ActionSelector | None,
+) -> tuple[ActionSelector, dict[str, str]]:
+    """Pick the playout opponent and honesty labels for one score call."""
+    kind = (params.opponent_kind or "heuristic").strip() or "heuristic"
+    if kind != SELF_OPPONENT_KIND:
+        opponent = resolve_baseline_opponent(kind)
+        return opponent, {}
+
+    if isinstance(self_selector, BaselinePolicy):
+        return self_selector, {
+            "opponent_kind_requested": SELF_OPPONENT_KIND,
+            "opponent_kind_effective": self_selector.kind,
+        }
+
+    proxy_kind = (params.self_proxy or "heuristic").strip() or "heuristic"
+    opponent = resolve_baseline_opponent(proxy_kind)
+    if isinstance(opponent, BaselinePolicy):
+        effective = opponent.kind
+    else:
+        effective = "heuristic"
+    return opponent, {
+        "opponent_kind_requested": SELF_OPPONENT_KIND,
+        "opponent_kind_effective": effective,
+    }
 
 
 def _params_cache_key(params: EvaluatorParams) -> tuple[Any, ...]:
@@ -73,6 +120,7 @@ class DecisionEvaluator:
         chosen_action: GameAction,
         *,
         params: EvaluatorParams | None = None,
+        self_selector: ActionSelector | None = None,
     ) -> EvLoss | None:
         """EV loss for ``chosen_action``, or ``None`` when it cannot be computed."""
         if not self.supports(engine):
@@ -80,7 +128,13 @@ class DecisionEvaluator:
         effective = params or self._params
         try:
             return await asyncio.to_thread(
-                self._score_sync, engine, state, player_id, chosen_action, effective
+                self._score_sync,
+                engine,
+                state,
+                player_id,
+                chosen_action,
+                effective,
+                self_selector,
             )
         except Exception as error:
             # Broad on purpose: a simulation must never take a game down with it.
@@ -99,21 +153,40 @@ class DecisionEvaluator:
         player_id: str,
         chosen_action: GameAction,
         params: EvaluatorParams,
+        self_selector: ActionSelector | None,
     ) -> EvLoss:
-        evaluator = self._evaluator_for(engine, params)
+        evaluator, honesty = self._evaluator_for(engine, params, self_selector)
         observation = engine.observe(state, player_id)
         legal_actions = engine.legal_actions(state, player_id)
-        return evaluator.ev_loss(observation, legal_actions, engine.action_id(chosen_action))
+        result = evaluator.ev_loss(
+            observation, legal_actions, engine.action_id(chosen_action)
+        )
+        if not honesty:
+            return result
+        merged = dict(result.params)
+        merged.update(honesty)
+        return replace(result, params=merged)
 
-    def _evaluator_for(self, engine: GameEngine, params: EvaluatorParams) -> RolloutEvaluator:
+    def _evaluator_for(
+        self,
+        engine: GameEngine,
+        params: EvaluatorParams,
+        self_selector: ActionSelector | None = None,
+    ) -> tuple[RolloutEvaluator, dict[str, str]]:
+        opponent, honesty = resolve_opponent_for_score(params, self_selector)
+        if (params.opponent_kind or "").strip() == SELF_OPPONENT_KIND:
+            # Selector identity matters; avoid sharing cache with fixed baselines.
+            return RolloutEvaluator(engine, opponent, params), honesty
+
         key = (engine.game_type, *_params_cache_key(params))
         cached = self._evaluators.get(key)
         if cached is None:
-            opponent = (
-                self._opponent
-                if params.opponent_kind == self._params.opponent_kind
-                else resolve_opponent(params.opponent_kind)
-            )
-            cached = RolloutEvaluator(engine, opponent, params)
+            if (
+                params.opponent_kind == self._params.opponent_kind
+                and (params.self_proxy or "") == (self._params.self_proxy or "")
+            ):
+                cached = RolloutEvaluator(engine, self._opponent, params)
+            else:
+                cached = RolloutEvaluator(engine, opponent, params)
             self._evaluators[key] = cached
-        return cached
+        return cached, honesty

@@ -21,6 +21,7 @@ def evaluator_params_from_mapping(raw: dict[str, Any] | None) -> EvaluatorParams
         max_candidates=int(raw.get("max_candidates") or 8),
         max_steps=int(raw.get("max_steps") or 400),
         opponent_kind=str(raw.get("opponent_kind") or "heuristic"),
+        self_proxy=str(raw.get("self_proxy") or "heuristic"),
         seed=0,
     )
 
@@ -38,6 +39,7 @@ def freeze_evaluator_snapshot(
     rollouts_per_world: int = 1,
     max_steps: int = 400,
     opponent_kind: str = "heuristic",
+    self_proxy: str = "heuristic",
 ) -> dict[str, Any]:
     """Settings → protocol ``scorer.evaluator`` (no seed)."""
     return EvaluatorParams(
@@ -46,5 +48,6 @@ def freeze_evaluator_snapshot(
         max_candidates=max_candidates,
         max_steps=max_steps,
         opponent_kind=opponent_kind,
+        self_proxy=self_proxy,
         seed=0,
     ).to_dict()

@@ -185,6 +185,8 @@ class LLMPolicy(Policy):
         )
 
         parts: list[str] = [observation.text, ""]
+        if ctx.memory_notes and ctx.memory_notes.strip():
+            parts.extend(["## 对手笔记", ctx.memory_notes.strip(), ""])
         if tool_texts:
             parts.extend(["## AI分析", "\n".join(tool_texts), ""])
         parts.extend(["## 可选动作", render_menu(legal_actions), "", "请决策："])

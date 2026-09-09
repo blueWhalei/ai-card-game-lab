@@ -201,6 +201,17 @@ CREATE TABLE IF NOT EXISTS experiment_configs (
     created_at    TEXT    NOT NULL,
     updated_at    TEXT    NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS experiment_memory (
+    experiment_id TEXT NOT NULL,
+    player_id     TEXT NOT NULL,
+    notes         TEXT NOT NULL DEFAULT '',
+    updated_at    TEXT NOT NULL,
+    PRIMARY KEY (experiment_id, player_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_experiment_memory_experiment
+    ON experiment_memory(experiment_id);
 """
 
 

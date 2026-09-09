@@ -83,13 +83,13 @@ rollout 前必须先 determinization（按观测采样一组与已知信息一�
 `is_reasoning_model()` 已区分模型；预算参数（`reasoning_effort` / `max_thinking_tokens`）
 写入 `protocol.solver.thinking_budget` 并在 collect 时冻结。
 
-**2.1.6 跨局记忆与对手建模**
+**2.1.6 跨局记忆与对手建模** —— **已完成 2026-09-09**（`solver.memory=none|per_experiment`；局末规则摘要，无额外 LLM）
 
-Policy 可挂 `Memory`：每局结束由模型更新对手风格笔记，下局注入。
+Policy 可挂 `Memory`：每局结束更新对手风格笔记，下局注入。
 农民之间的隐式协作是斗地主特有的多智能体研究点。
 
-作用域必须受控：memory 是 protocol 的一部分（`memory: none | per_experiment`），实验开始时重置，
-默认 `none`。否则第 1 局与第 50 局的选手实际上不同，"冻结的 protocol"不再冻结。
+作用域必须受控：memory 是 protocol 的一部分（`memory: none | per_experiment`），默认 `none`。
+否则第 1 局与第 50 局的选手实际上不同，"冻结的 protocol"不再冻结。
 
 ### 2.2 评测层：从"看胜率"到 harness
 
@@ -167,7 +167,8 @@ Gym，否则接每个框架都要自己包一层。奖励来自 `engine.terminal
   `best_action_id` / `action_values` 写入 `evaluator_params`；
   `POST /api/v1/decision-points/export-preferences` 读库导出 JSONL（缺 gold 的行跳过；
   默认 `min_ev_gap=0.05`）。**不做** deal_seed 重算旧行。
-- 大模型选择 vs 小模型选择 → 蒸馏对（仍待；不在 5b 范围）
+- 大模型选择 vs 小模型选择 → 蒸馏对 —— **已完成 2026-09-09**
+  （`POST .../export-distill-preferences`；按 deal_seed+round+seat 对齐）
 
 **2.3.3 拒绝采样微调（RFT）替代裸 SFT**
 
@@ -259,7 +260,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 | — | schema 迁移机制（§5、§9.4 的前置项）—— **已完成 2026-09-07**（`app/migrations.py`） | 解锁第 2 步接线所需的 `decision_points` 加列 |
 | 3 | 录制—重放 + Task/Solver/Scorer 显式化 —— **已完成 2026-09-07**：VCR + protocol v2 + ScorerRegistry（斗地主五指标全覆盖，含 `ev_loss`；按 `game_type` 注册） | harness 成型 |
 | 4 | puzzle set + 鲁棒性探针 —— **已完成 2026-09-08**：4a 题库抽取/跑题；4b `POST .../probe`（合法动作/手牌顺序扰动 → consistency） | 第二种 benchmark |
-| 5 | RL env 接口 + 偏好数据导出 —— **已完成 2026-09-08**：5a duck-typed AEC `CardLabAECEnv`；5b EV 偏好 JSONL（`export-preferences`；蒸馏对仍待） | 训练升级，不自研训练器 |
+| 5 | RL env 接口 + 偏好数据导出 —— **已完成 2026-09-08**：5a duck-typed AEC `CardLabAECEnv`；5b EV 偏好 JSONL（`export-preferences`）；蒸馏对 ✅ 2026-09-09（`export-distill-preferences`） | 训练升级，不自研训练器 |
 | 6 | MCP server + 研究助手草稿 —— **已完成 2026-09-08**：6a stdio MCP（读 + Wave 3a 写 `start_collect`/`cancel_collect`）；6b 结论草稿（模板+确认写入；坏手深链 Wave 3a） | 平台可被 agent 使用 |
 | 7 | 第二个引擎（德扑 heads-up） | 验证引擎抽象；可穿插在 2–4 之间 |
 
@@ -272,7 +273,7 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 ## 8. 待展开的设计问题
 
-- ~~rollout 评估器的对手模型选择与默认值~~ ✅ 默认 `heuristic`；`opponent_kind` 可切 `random` / `first` / `heuristic`（Wave 1）；同 Policy 自博弈仍待
+- ~~rollout 评估器的对手模型选择与默认值~~ ✅ 默认 `heuristic`；`opponent_kind` 可切 `random` / `first` / `heuristic` / `self`（`self` 对 baseline 真自博弈，LLM 席走 `self_proxy` 并写 honesty 字段，2026-09-09）
 - ~~EV loss 与现有 `quality_score` / `train_usable` 字段的迁移关系~~ ✅ 并存：`train_usable`
   判结构有效性，`ev_loss` 判棋力，导出侧是两个独立开关（见 `step2b-ev-loss-wiring.md`）
 - ~~软兜底解析算不算成功~~ ✅ 算失败：兜底动作记 `parse_fallback` 且不进训练集。代价是
@@ -338,7 +339,7 @@ Policy.decide(observation: Observation,
 | protocol 新增 `dataset` / `solver` / `scorer` / `engine`（Task 命名）；~~`scorer.evaluator` EV 旋钮~~ ✅ Wave 4d | `experiments.protocol` | `schema_version: 1 → 2` ✅ 2026-09-07；旧版本在 collect 时拒绝，不静默迁移 |
 | 决策点 ~~`ev_loss` / `evaluator_params`~~ ✅（绿野 `_SCHEMA_SQL`）；~~`policy_kind`~~ ✅（迁移 1）；~~`tool_calls`~~ ✅ Wave 5（迁移 3，摘要形） | `decision_points` | `decision_schema_version` 1 → 2 已升；SQLite `user_version` 见下行 |
 | LLM 请求/响应录制 | JSONL cassette（`data/vcr/`），按 §8 匹配键索引；`VCR_MODE=off\|record\|replay` | 独立；**已完成 2026-09-07** |
-| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1 = 决策 `policy_kind`；迁移 2 = 选手 `policy_kind`；迁移 3 = 决策 `tool_calls`；迁移 4 = 决策 `annotation` → **`SCHEMA_VERSION = 4`** |
+| ~~迁移机制~~ ✅ | `app/migrations.py`：`PRAGMA user_version` + 编号列表；绿野全量在 `_SCHEMA_SQL` | 迁移 1–4 同前；迁移 5 = `experiment_memory` → **`SCHEMA_VERSION = 5`** |
 
 ### 9.5 分层与目录
 
@@ -347,7 +348,7 @@ core/engine/   GameEngine + EngineCapability（+ §9.1 四项能力、Observatio
 core/policy/   Policy、PolicyEvent、Budget、PolicyContext、PolicyRegistry、各实现
 core/eval/     Evaluator、determinization、EV loss；ScorerRegistry；puzzle pack + perturb/probe（Step 4 ✅；Analyze UI Wave 3b ✅）
 core/env/      AEC 环境包装（`CardLabAECEnv` duck-typed；5a ✅）
-core/training/ preference.py DPO 导出 builder（5b ✅；蒸馏对仍待）
+core/training/ preference.py DPO + distill.py 蒸馏对（5b ✅；`export-distill-preferences` ✅）
 core/ai/       LLMClient 不变；VCR 录制/回放（`vcr.py`）；structured output：**无** per-provider 探测，4xx 时降级丢 stream_options / response_format（Ollama→format）
 app/mcp/       stdio MCP（6a ✅ 读；Wave 3a ✅ start_collect / cancel_collect；HTTP ✅ `/mcp/` 挂载）
 core/research/ conclusion_draft 模板草稿（6b ✅；坏手深链 Wave 3a ✅）

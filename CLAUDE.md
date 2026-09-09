@@ -243,11 +243,12 @@ newer than the running build raises `SchemaVersionError` instead of being read. 
 DBs already include historically added columns in `_SCHEMA_SQL`; the migration list was empty
 until the first real ALTER (`policy_kind` on decisions = migration 1; player
 `policy_kind` = migration 2; decision `tool_calls` = migration 3;
-decision `annotation` = migration 4 → `SCHEMA_VERSION = 4`).
+decision `annotation` = migration 4; `experiment_memory` = migration 5 →
+`SCHEMA_VERSION = 5`).
 
 JSONL under `data/games/{YYYY-MM-DD}/` is the full archive; SQLite is the index.
 
-`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`), `policy_kind` (e.g. `llm` / `heuristic`), and `evaluator_params` (rollout knobs plus, when scored, `best_action_id`, `action_values`, `candidates_evaluated`, `legal_action_count`, `truncated` for DPO export and honesty); `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`. ChatML export writes SFT JSONL; `POST .../export-preferences` writes DPO pairs under `{data_dir}/datasets/preferences_*.jsonl` (skips rows missing `best_action_id`; default `min_ev_gap=0.05`; optional thinking only on the rejected side).
+`quality_score` is an **end-game outcome proxy** (win 0.8 / lose 0.3 / draw 0.5), not move quality — one number shared by every decision in a game. `ev_loss` is the per-decision signal: value given up versus the best candidate the rollout evaluator scored. `NULL` means the move was never evaluated and must not be read as 0.0 (which means it was the best candidate). Each point also stores `train_usable_reason` (from `evaluate_train_usable`), `policy_kind` (e.g. `llm` / `heuristic`), and `evaluator_params` (rollout knobs plus, when scored, `best_action_id`, `action_values`, `candidates_evaluated`, `legal_action_count`, `truncated` for DPO export and honesty; when `opponent_kind=self`, also `opponent_kind_requested` / `opponent_kind_effective`). `GET /decision-points/stats` returns `not_usable_reason_counts` plus `evaluated_count` / `avg_ev_loss` / `blunder_count`. Export defaults to `include_thinking=false`. ChatML export writes SFT JSONL; `POST .../export-preferences` writes DPO pairs under `{data_dir}/datasets/preferences_*.jsonl` (skips rows missing `best_action_id`; default `min_ev_gap=0.05`; optional thinking only on the rejected side). `POST .../export-distill-preferences` pairs teacher/student experiments by `deal_seed`+round+seat.
 
 ## Decision points (SFT)
 
@@ -289,6 +290,7 @@ GET  /api/v1/decision-points/{id}
 GET  /api/v1/decision-points/stats
 POST /api/v1/decision-points/export   # ChatML JSONL only; does not register a dataset
 POST /api/v1/decision-points/export-preferences  # DPO JSONL (model vs EV-best); no UI
+POST /api/v1/decision-points/export-distill-preferences  # teacher vs student; no UI
 POST /api/v1/datasets/from-decisions  # register ChatML for the training page
 ```
 

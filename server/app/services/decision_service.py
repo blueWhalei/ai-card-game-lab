@@ -12,9 +12,15 @@ import structlog
 
 from app.core.stats.highlights import BLUNDER_EV_LOSS, pick_game_highlights
 from app.core.training.data_quality import evaluate_train_usable
+from app.core.training.distill import (
+    index_decisions_by_match_key,
+    normalize_game_row,
+    pair_distill_indexes,
+)
 from app.core.training.preference import DEFAULT_MIN_EV_GAP, build_preference_pair
 from app.database import connect_or_reuse
 from app.repositories.decision_repo import DecisionRepository
+from app.repositories.game_repo import GameRepository
 from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
@@ -508,6 +514,99 @@ class DecisionService:
             candidates=len(items),
             min_ev_gap=min_ev_gap,
             experiment_id=experiment_id,
+        )
+        return str(filepath), len(records), meta
+
+    async def export_distill_preferences(
+        self,
+        *,
+        teacher_experiment_id: str,
+        student_experiment_id: str,
+        include_thinking: bool = False,
+        output_path: str | None = None,
+    ) -> tuple[str, int, dict[str, Any]]:
+        """Export teacher-vs-student preference pairs matched by deal/round/seat.
+
+        Returns ``(filepath, count, meta)``. Empty filepath when no pairs written.
+        """
+        teacher_items, _ = await self.list_decision_points(
+            experiment_id=teacher_experiment_id,
+            limit=10000,
+        )
+        student_items, _ = await self.list_decision_points(
+            experiment_id=student_experiment_id,
+            limit=10000,
+        )
+
+        meta: dict[str, Any] = {
+            "teacher_experiment_id": teacher_experiment_id,
+            "student_experiment_id": student_experiment_id,
+            "skipped_tie": 0,
+            "skipped_missing_prompt": 0,
+            "skipped_missing_action": 0,
+            "skipped_seat_mismatch": 0,
+            "skipped_unpaired": 0,
+            "skipped_missing_seed": 0,
+            "matched_keys": 0,
+        }
+
+        async with connect_or_reuse(self._sqlite_path) as db:
+            games_repo = GameRepository(db)
+            teacher_games = {
+                str(g["id"]): normalize_game_row(g)
+                for g in await games_repo.list_by_experiment(teacher_experiment_id)
+            }
+            student_games = {
+                str(g["id"]): normalize_game_row(g)
+                for g in await games_repo.list_by_experiment(student_experiment_id)
+            }
+
+        teacher_index, t_skips = index_decisions_by_match_key(teacher_items, teacher_games)
+        student_index, s_skips = index_decisions_by_match_key(student_items, student_games)
+        meta["skipped_missing_seed"] = int(t_skips["missing_seed"]) + int(s_skips["missing_seed"])
+        meta["skipped_seat_mismatch"] = int(t_skips["seat_mismatch"]) + int(
+            s_skips["seat_mismatch"]
+        )
+        meta["skipped_missing_action"] = int(t_skips["missing_action"]) + int(
+            s_skips["missing_action"]
+        )
+
+        records, pair_meta = pair_distill_indexes(
+            teacher_index,
+            student_index,
+            include_thinking=include_thinking,
+        )
+        for key, value in pair_meta.items():
+            if key.startswith("skipped_") or key == "matched_keys":
+                meta[key] = int(meta.get(key, 0)) + int(value)
+
+        if not records:
+            logger.warning(
+                "export_distill_no_pairs",
+                teacher_experiment_id=teacher_experiment_id,
+                student_experiment_id=student_experiment_id,
+                teacher_decisions=len(teacher_items),
+                student_decisions=len(student_items),
+            )
+            return "", 0, meta
+
+        if output_path:
+            filepath = Path(output_path)
+        else:
+            self._data_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now(tz=UTC).strftime("%Y%m%d_%H%M%S")
+            filepath = self._data_dir / "datasets" / f"distill_{timestamp}.jsonl"
+
+        filepath.parent.mkdir(parents=True, exist_ok=True)
+        lines = [json.dumps(record, ensure_ascii=False) for record in records]
+        await asyncio.to_thread(_write_lines, filepath, lines)
+
+        logger.info(
+            "export_distill_completed",
+            filepath=str(filepath),
+            count=len(records),
+            teacher_experiment_id=teacher_experiment_id,
+            student_experiment_id=student_experiment_id,
         )
         return str(filepath), len(records), meta
 

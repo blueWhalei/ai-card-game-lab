@@ -78,11 +78,30 @@ async def _v4_decision_annotation(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _v5_experiment_memory(db: aiosqlite.Connection) -> None:
+    await db.execute(
+        """
+        CREATE TABLE IF NOT EXISTS experiment_memory (
+            experiment_id TEXT NOT NULL,
+            player_id     TEXT NOT NULL,
+            notes         TEXT NOT NULL DEFAULT '',
+            updated_at    TEXT NOT NULL,
+            PRIMARY KEY (experiment_id, player_id)
+        )
+        """
+    )
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_experiment_memory_experiment "
+        "ON experiment_memory(experiment_id)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "decision_points.policy_kind", _v1_decision_policy_kind),
     Migration(2, "experiment_configs.policy_kind", _v2_experiment_config_policy_kind),
     Migration(3, "decision_points.tool_calls", _v3_decision_tool_calls),
     Migration(4, "decision_points.annotation", _v4_decision_annotation),
+    Migration(5, "experiment_memory", _v5_experiment_memory),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0

@@ -67,10 +67,15 @@ class Settings(BaseSettings):
     ev_loss_enabled: bool = True
     ev_loss_determinizations: int = 4
     ev_loss_max_candidates: int = 8
+    ev_loss_opponent_kind: str = "heuristic"
+    ev_loss_self_proxy: str = "heuristic"
 
     # Frozen into protocol.solver.thinking_budget at experiment create.
     thinking_budget_reasoning_effort: str = ""
     thinking_budget_max_tokens: int | None = None
+
+    # Frozen into protocol.solver.memory (none | per_experiment).
+    memory_scope: str = "none"
 
     # Mount Streamable HTTP MCP at /mcp on the API process (same tools as stdio).
     mcp_http_enabled: bool = True

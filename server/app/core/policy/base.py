@@ -158,6 +158,8 @@ class PolicyContext:
         [Observation, list[LegalAction], list[ActionId]],
         dict[ActionId, float],
     ] | None = None
+    # Per-experiment opponent notes (injected into LLM prompts when set).
+    memory_notes: str | None = None
 
 
 class ActionSelector(Protocol):

@@ -38,6 +38,7 @@ def build_protocol(
     evaluator: dict[str, Any] | None = None,
     prompts: dict[str, dict[str, Any]] | None = None,
     thinking_budget: dict[str, Any] | None = None,
+    memory: str | None = None,
 ) -> dict[str, Any]:
     """Assemble the frozen experiment protocol written at create time."""
     engine = {key: protocol_fingerprint[key] for key in _ENGINE_KEYS if key in protocol_fingerprint}
@@ -54,6 +55,10 @@ def build_protocol(
         solver["prompts"] = prompts
     if thinking_budget:
         solver["thinking_budget"] = dict(thinking_budget)
+    scope = (memory or "none").strip() or "none"
+    if scope not in ("none", "per_experiment"):
+        scope = "none"
+    solver["memory"] = scope
     return {
         "schema_version": PROTOCOL_SCHEMA_VERSION,
         "frozen_at": frozen_at,
@@ -153,6 +158,19 @@ def protocol_thinking_budget(protocol: dict[str, Any] | None) -> dict[str, Any]:
         except (TypeError, ValueError):
             pass
     return out
+
+
+def protocol_memory(protocol: dict[str, Any] | None) -> str:
+    """Frozen memory scope: ``none`` or ``per_experiment``."""
+    if not isinstance(protocol, dict):
+        return "none"
+    solver = protocol.get("solver")
+    if not isinstance(solver, dict):
+        return "none"
+    raw = str(solver.get("memory") or "none").strip() or "none"
+    if raw not in ("none", "per_experiment"):
+        return "none"
+    return raw
 
 
 def prompt_content_hash(content: str) -> str:

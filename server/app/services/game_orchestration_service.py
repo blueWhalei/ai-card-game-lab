@@ -651,6 +651,15 @@ class GameOrchestrationService:
             except Exception:
                 logger.warning("update_decision_outcome_failed", game_id=game_id, exc_info=True)
 
+        try:
+            await self._update_experiment_memory(
+                game_id=game_id,
+                winner_id=winner,
+                player_ids=list(getattr(state, "player_ids", None) or []),
+            )
+        except Exception:
+            logger.warning("experiment_memory_update_failed", game_id=game_id, exc_info=True)
+
         event = GameEndedEvent(
             game_id=game_id,
             game_type=state.game_type,
@@ -659,6 +668,59 @@ class GameOrchestrationService:
             total_rounds=state.round,
         )
         await self._event_bus.publish(event)
+
+    async def _update_experiment_memory(
+        self,
+        *,
+        game_id: str,
+        winner_id: str | None,
+        player_ids: list[str],
+    ) -> None:
+        """Overwrite per-seat rule notes when protocol.solver.memory is per_experiment."""
+        from app.core.policy.memory_notes import build_rule_memory_notes
+        from app.core.task_protocol import protocol_memory
+        from app.database import open_db_connection
+        from app.repositories.experiment_memory_repo import ExperimentMemoryRepository
+        from app.repositories.experiment_repo import ExperimentRepository
+        from app.repositories.game_repo import GameRepository
+
+        conn = await open_db_connection(self._sqlite_path)
+        try:
+            try:
+                game = await GameRepository(conn).get_by_id(game_id)
+            except KeyError:
+                return
+            experiment_id = game.get("experiment_id")
+            if not experiment_id:
+                return
+            row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
+            protocol = row.get("protocol") if row else None
+            if protocol_memory(protocol if isinstance(protocol, dict) else None) != "per_experiment":
+                return
+            decisions: list[dict[str, Any]] = []
+            if self._decision_service is not None:
+                decisions, _ = await self._decision_service.list_decision_points(
+                    game_id=game_id,
+                    limit=10000,
+                )
+            by_player: dict[str, list[dict[str, Any]]] = {}
+            for item in decisions:
+                pid = str(item.get("player_id") or "")
+                if not pid:
+                    continue
+                by_player.setdefault(pid, []).append(item)
+            memory_repo = ExperimentMemoryRepository(conn)
+            now = datetime.now(tz=UTC).isoformat()
+            seats = player_ids or list(by_player.keys())
+            for pid in seats:
+                notes = build_rule_memory_notes(
+                    player_id=pid,
+                    winner_id=winner_id,
+                    decisions=by_player.get(pid, []),
+                )
+                await memory_repo.upsert_notes(str(experiment_id), pid, notes, now)
+        finally:
+            await conn.close()
 
     async def pause_game(self, game_id: str) -> None:
         """Pause an active game."""

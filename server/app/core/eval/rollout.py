@@ -35,6 +35,8 @@ class EvaluatorParams:
     max_candidates: int = 8
     max_steps: int = 400
     opponent_kind: str = "heuristic"
+    # When opponent_kind is ``self`` and the seat is LLM, fall back to this baseline.
+    self_proxy: str = "heuristic"
     seed: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -44,6 +46,7 @@ class EvaluatorParams:
             "max_candidates": self.max_candidates,
             "max_steps": self.max_steps,
             "opponent_kind": self.opponent_kind,
+            "self_proxy": self.self_proxy,
             "seed": self.seed,
         }
 

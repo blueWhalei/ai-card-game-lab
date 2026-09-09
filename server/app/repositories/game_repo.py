@@ -178,3 +178,12 @@ class GameRepository:
                 (winner_id, winner_role, total_rounds, finished_at, game_id),
             )
         await self._db.commit()
+
+    async def list_by_experiment(self, experiment_id: str) -> list[dict[str, Any]]:
+        """Return all games for an experiment (unordered)."""
+        cursor = await self._db.execute(
+            "SELECT * FROM games WHERE experiment_id = ?",
+            (experiment_id,),
+        )
+        rows = await cursor.fetchall()
+        return [dict(r) for r in rows]

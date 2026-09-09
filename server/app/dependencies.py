@@ -214,6 +214,8 @@ def get_decision_evaluator() -> DecisionEvaluator | None:
         EvaluatorParams(
             determinizations=settings.ev_loss_determinizations,
             max_candidates=settings.ev_loss_max_candidates,
+            opponent_kind=settings.ev_loss_opponent_kind.strip() or "heuristic",
+            self_proxy=settings.ev_loss_self_proxy.strip() or "heuristic",
         )
     )
 

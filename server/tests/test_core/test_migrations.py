@@ -100,7 +100,7 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 4
+        assert SCHEMA_VERSION == 5
         assert "policy_kind" in await _columns(db, "decision_points")
         assert "tool_calls" in await _columns(db, "decision_points")
         assert "annotation" in await _columns(db, "decision_points")

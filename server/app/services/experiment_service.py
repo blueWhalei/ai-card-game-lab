@@ -174,6 +174,8 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
         evaluator = freeze_evaluator_snapshot(
             determinizations=settings.ev_loss_determinizations,
             max_candidates=settings.ev_loss_max_candidates,
+            opponent_kind=settings.ev_loss_opponent_kind.strip() or "heuristic",
+            self_proxy=settings.ev_loss_self_proxy.strip() or "heuristic",
         )
         version = self._prompt_version(prompt_version)
         thinking_budget: dict[str, Any] = {}
@@ -181,6 +183,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             thinking_budget["reasoning_effort"] = settings.thinking_budget_reasoning_effort.strip()
         if settings.thinking_budget_max_tokens is not None:
             thinking_budget["max_thinking_tokens"] = int(settings.thinking_budget_max_tokens)
+        memory = settings.memory_scope.strip() or "none"
         return build_protocol(
             players=self._snapshot_players(player_ids),
             source_experiment_id=source_experiment_id,
@@ -193,6 +196,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             evaluator=evaluator,
             prompts=prompts,
             thinking_budget=thinking_budget or None,
+            memory=memory,
         )
 
     async def create_experiment(
