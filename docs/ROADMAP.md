@@ -212,7 +212,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 
 - ~~Demo 数据应产出一个**已走到 verdict 阶段**的完整实验，零成本看到五阶段终点~~ ✅ 2026-09-08（`seed-demo` → 主/对照 + `delta`）
 - 回放解说层：关键决策点叠加 "AI 选 X，基线 Y，EV 最优 Z，loss w"（依赖 §2.2.2；高光列表 ✅ Wave 4d + Wave 5；live 每帧基线仍不做）
-- 全站阻塞态审计：每个阻塞态遵守"替换状态行与 CTA，而不是 banner + 无效按钮"
+- ~~全站阻塞态审计：每个阻塞态遵守"替换状态行与 CTA，而不是 banner + 无效按钮"~~
+  ✅ 2026-09-09（实验 harvest/empty/verdict 阻塞替换 CTA；训练页 block 替换创建按钮，warn 才用 banner）
 - ~~拆分 `ExperimentDetailView.vue`（`useExperimentDetail()` composable + 阶段容器）~~
   ✅ 2026-09-09（逻辑进 `composables/useExperimentDetail.ts`；视图只留模板组装）
 - i18n 按页面拆目录 `locales/zh-CN/{experiment,game,...}.ts`

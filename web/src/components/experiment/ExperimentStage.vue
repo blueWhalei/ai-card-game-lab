@@ -85,12 +85,22 @@ const emptyAct = computed(() => {
 
 const harvestAct = computed(() => {
   if (usable.value === 0) {
+    if (blocked.value) {
+      return {
+        claim: t('stage.empty.blockedClaim'),
+        detail: props.blockedMessage ?? '',
+        actionLabel: t('stage.empty.blockedAction'),
+        action: 'settings' as ExperimentStageAction,
+        disabled: false,
+        showCount: false,
+      }
+    }
     return {
       claim: t('stage.harvest.noneClaim'),
       detail: t('stage.harvest.noneDetail'),
       actionLabel: t('experiment.confirmStart'),
       action: 'collect' as ExperimentStageAction,
-      disabled: blocked.value,
+      disabled: false,
       showCount: true,
     }
   }
@@ -141,11 +151,36 @@ const verdictAct = computed(() => {
   const delta = props.experiment.delta
   if (!delta || delta.can_conclude) return { actionLabel: undefined, action: undefined }
   const isThisRunShort = delta.relation === 'vs_source'
+  if (blocked.value && isThisRunShort) {
+    return {
+      actionLabel: t('stage.empty.blockedAction'),
+      action: 'settings' as ExperimentStageAction,
+    }
+  }
   return {
     actionLabel: isThisRunShort
       ? t('stage.verdictAction.collectHere')
       : t('stage.verdictAction.collectControl'),
     action: (isThisRunShort ? 'collect' : 'collect-control') as ExperimentStageAction,
+  }
+})
+
+/** Secondary “run more” on harvest — never a disabled collect when blocked. */
+const harvestCollectMore = computed(() => {
+  if (remaining.value <= 0 || harvestAct.value.action === 'collect') return null
+  if (blocked.value) {
+    return {
+      label: t('stage.empty.blockedAction'),
+      action: 'settings' as ExperimentStageAction,
+      disabled: false,
+    }
+  }
+  return {
+    label: t(isBenchmark.value ? 'stage.collectMoreSeeds' : 'stage.collectMore', {
+      n: remaining.value,
+    }),
+    action: 'collect' as ExperimentStageAction,
+    disabled: false,
   }
 })
 
@@ -224,8 +259,11 @@ function onCollectCount(value: number | null): void {
         />
       </label>
     </template>
-    <template v-if="remaining > 0 && harvestAct.action !== 'collect'" #secondary>
-      <label class="flex items-center gap-ink-2 text-caption text-ink-text-muted">
+    <template v-if="harvestCollectMore" #secondary>
+      <label
+        v-if="harvestCollectMore.action === 'collect'"
+        class="flex items-center gap-ink-2 text-caption text-ink-text-muted"
+      >
         <span>{{ t('experiment.batchCount') }}</span>
         <UiInputNumber
           :model-value="collectCount"
@@ -234,10 +272,12 @@ function onCollectCount(value: number | null): void {
           @update:model-value="onCollectCount"
         />
       </label>
-      <UiButton variant="secondary" :disabled="blocked" :loading="busy" @click="emit('action', 'collect')">
-        {{
-          t(isBenchmark ? 'stage.collectMoreSeeds' : 'stage.collectMore', { n: remaining })
-        }}
+      <UiButton
+        variant="secondary"
+        :loading="busy"
+        @click="emit('action', harvestCollectMore.action)"
+      >
+        {{ harvestCollectMore.label }}
       </UiButton>
     </template>
   </StageAction>

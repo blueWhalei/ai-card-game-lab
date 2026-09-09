@@ -32,6 +32,7 @@ import TrainingModelsPanel, {
 } from '@/components/training/TrainingModelsPanel.vue'
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
 import PreflightBanner from '@/components/common/PreflightBanner.vue'
+import { preflightCheckMessage } from '@/utils/systemLabels'
 
 const { t } = useI18n()
 const store = useTrainingStore()
@@ -71,6 +72,27 @@ const experimentIdFilter = computed(() => {
 const returnToControl = computed(
   () => route.query.return_control === '1' && Boolean(experimentIdFilter.value),
 )
+
+/** Blocking train preflight replaces Create — never a disabled primary CTA. */
+const trainBlocked = computed(() => {
+  if (!trainingEnvLoaded.value) return false
+  if (!trainingDepsAvailable.value) return true
+  return (preflight.value?.checks ?? []).some((c) => c.severity === 'block' && !c.ok)
+})
+
+const trainBlockDetail = computed(() => {
+  if (!trainingDepsAvailable.value) return t('training.noDeps')
+  const block = (preflight.value?.checks ?? []).find((c) => c.severity === 'block' && !c.ok)
+  return block ? preflightCheckMessage(block) : t('training.blockedFallback')
+})
+
+const trainWarnChecks = computed(() =>
+  (preflight.value?.checks ?? []).filter((c) => !c.ok && c.severity === 'warn'),
+)
+
+function goFixTraining(): void {
+  void router.push(trainingDepsAvailable.value ? '/settings' : '/guide')
+}
 
 function goBackToControl(): void {
   const id = experimentIdFilter.value
@@ -492,10 +514,30 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container">
-    <div class="mb-5 flex justify-end">
+    <div v-if="trainingEnvLoaded && trainBlocked" class="ink-section mb-5 py-ink-4">
+      <h2 class="ink-verdict-claim is-weak">{{ t('training.blockedClaim') }}</h2>
+      <p class="mt-ink-2 max-w-2xl text-lead text-ink-text-secondary">
+        {{ trainBlockDetail }}
+        <template v-if="!trainingDepsAvailable">
+          <code class="ml-1 rounded bg-ink-surface-muted px-1.5 py-0.5 text-caption">
+            cd server && poetry install --with training
+          </code>
+        </template>
+      </p>
+      <div class="mt-ink-4">
+        <UiButton size="lg" @click="goFixTraining">
+          {{
+            trainingDepsAvailable
+              ? t('training.blockedActionSettings')
+              : t('training.blockedActionGuide')
+          }}
+        </UiButton>
+      </div>
+    </div>
+    <div v-else class="mb-5 flex justify-end">
       <UiButton
         class="shrink-0 whitespace-nowrap"
-        :disabled="!trainingEnvLoaded || !trainingDepsAvailable"
+        :disabled="!trainingEnvLoaded"
         @click="openCreateDialog"
       >
         {{ t('training.createTask') }}
@@ -503,17 +545,10 @@ onUnmounted(() => {
     </div>
 
     <PreflightBanner
-      v-if="trainingEnvLoaded && preflight?.checks?.length"
+      v-if="trainingEnvLoaded && trainWarnChecks.length > 0"
       class="mb-5"
-      :checks="preflight!.checks"
+      :checks="trainWarnChecks"
     />
-    <div
-      v-else-if="trainingEnvLoaded && !trainingDepsAvailable"
-      class="mb-5 rounded-ink-md border border-ink-accent/40 bg-ink-surface px-4 py-3 text-sm text-ink-text-secondary"
-    >
-      {{ t('training.noDeps') }}
-      <code class="rounded bg-ink-surface-muted px-1.5 py-0.5 text-xs">cd server && poetry install --with training</code>
-    </div>
 
     <div class="mb-6 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
       <button
