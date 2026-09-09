@@ -157,9 +157,7 @@ def pair_distill_indexes(
         if int(teacher.get("_seat_count") or 0) != int(student.get("_seat_count") or 0):
             meta["skipped_seat_mismatch"] += 1
             continue
-        record, skip = build_distill_pair(
-            teacher, student, include_thinking=include_thinking
-        )
+        record, skip = build_distill_pair(teacher, student, include_thinking=include_thinking)
         if record is not None:
             records.append(record)
             continue

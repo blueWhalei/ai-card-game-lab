@@ -152,9 +152,7 @@ class SearchAugmentedPolicy(LLMPolicy):
         # Do not attach action_id enum — candidates is an array.
         return kwargs
 
-    def _parse_candidates(
-        self, raw: str, legal_ids: list[str]
-    ) -> tuple[str, list[ActionId]]:
+    def _parse_candidates(self, raw: str, legal_ids: list[str]) -> tuple[str, list[ActionId]]:
         data = self._extract_json(raw)
         thinking = str(data.get("thinking") or "")
         raw_cands = data.get("candidates")

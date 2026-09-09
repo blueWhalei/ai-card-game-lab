@@ -695,7 +695,10 @@ class GameOrchestrationService:
                 return
             row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
             protocol = row.get("protocol") if row else None
-            if protocol_memory(protocol if isinstance(protocol, dict) else None) != "per_experiment":
+            if (
+                protocol_memory(protocol if isinstance(protocol, dict) else None)
+                != "per_experiment"
+            ):
                 return
             decisions: list[dict[str, Any]] = []
             if self._decision_service is not None:

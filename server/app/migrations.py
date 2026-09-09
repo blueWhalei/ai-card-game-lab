@@ -73,8 +73,7 @@ async def _v3_decision_tool_calls(db: aiosqlite.Connection) -> None:
 async def _v4_decision_annotation(db: aiosqlite.Connection) -> None:
     await _add_column(db, "decision_points", "annotation", "TEXT")
     await db.execute(
-        "CREATE INDEX IF NOT EXISTS idx_decision_points_annotation "
-        "ON decision_points(annotation)"
+        "CREATE INDEX IF NOT EXISTS idx_decision_points_annotation ON decision_points(annotation)"
     )
 
 

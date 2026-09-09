@@ -16,7 +16,7 @@ from app.mcp.server import build_mcp_server
 
 def test_build_mcp_server_registers_tools() -> None:
     mcp = build_mcp_server(MagicMock(), MagicMock())
-    names = {t.name for t in mcp._tool_manager.list_tools()}  # noqa: SLF001
+    names = {t.name for t in mcp._tool_manager.list_tools()}
     assert {
         "list_experiments",
         "get_experiment",

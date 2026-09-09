@@ -158,9 +158,7 @@ class DecisionEvaluator:
         evaluator, honesty = self._evaluator_for(engine, params, self_selector)
         observation = engine.observe(state, player_id)
         legal_actions = engine.legal_actions(state, player_id)
-        result = evaluator.ev_loss(
-            observation, legal_actions, engine.action_id(chosen_action)
-        )
+        result = evaluator.ev_loss(observation, legal_actions, engine.action_id(chosen_action))
         if not honesty:
             return result
         merged = dict(result.params)
@@ -181,9 +179,8 @@ class DecisionEvaluator:
         key = (engine.game_type, *_params_cache_key(params))
         cached = self._evaluators.get(key)
         if cached is None:
-            if (
-                params.opponent_kind == self._params.opponent_kind
-                and (params.self_proxy or "") == (self._params.self_proxy or "")
+            if params.opponent_kind == self._params.opponent_kind and (params.self_proxy or "") == (
+                self._params.self_proxy or ""
             ):
                 cached = RolloutEvaluator(engine, self._opponent, params)
             else:

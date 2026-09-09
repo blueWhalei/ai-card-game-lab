@@ -154,10 +154,13 @@ class PolicyContext:
     session_id: str | None = None
     prompts: PromptSource | None = None
     # Optional EV scorer for SearchAugmentedPolicy (Observation-only; no GameState).
-    score_actions: Callable[
-        [Observation, list[LegalAction], list[ActionId]],
-        dict[ActionId, float],
-    ] | None = None
+    score_actions: (
+        Callable[
+            [Observation, list[LegalAction], list[ActionId]],
+            dict[ActionId, float],
+        ]
+        | None
+    ) = None
     # Per-experiment opponent notes (injected into LLM prompts when set).
     memory_notes: str | None = None
 

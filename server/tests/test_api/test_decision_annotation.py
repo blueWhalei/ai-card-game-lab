@@ -11,9 +11,7 @@ from app.repositories.decision_repo import DecisionRepository
 
 
 @pytest.mark.asyncio
-async def test_annotation_patch_and_filter(
-    client: AsyncClient, test_settings: Settings
-) -> None:
+async def test_annotation_patch_and_filter(client: AsyncClient, test_settings: Settings) -> None:
     async with connect_sqlite(test_settings.sqlite_path) as db:
         await db.execute(
             "INSERT INTO games (id, game_type, status, player_ids, data_file, created_at) "

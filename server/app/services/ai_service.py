@@ -660,7 +660,10 @@ class AIService:
                     return ""
                 row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
                 protocol = row.get("protocol") if row else None
-                if protocol_memory(protocol if isinstance(protocol, dict) else None) != "per_experiment":
+                if (
+                    protocol_memory(protocol if isinstance(protocol, dict) else None)
+                    != "per_experiment"
+                ):
                     return ""
                 return await ExperimentMemoryRepository(conn).get_notes(
                     str(experiment_id), player_id

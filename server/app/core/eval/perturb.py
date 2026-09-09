@@ -223,9 +223,7 @@ def _rotate_seat_ids(observation: dict[str, Any]) -> dict[str, Any]:
             public[key] = [mapping.get(str(x), x) for x in raw]
     counts = public.get("hand_counts")
     if isinstance(counts, dict):
-        public["hand_counts"] = {
-            mapping.get(str(k), str(k)): v for k, v in counts.items()
-        }
+        public["hand_counts"] = {mapping.get(str(k), str(k)): v for k, v in counts.items()}
     history = public.get("play_history")
     if isinstance(history, list):
         new_hist = []

@@ -18,7 +18,6 @@ import structlog
 
 from app.core.ai.action_menu import render_menu
 from app.core.ai.errors import map_provider_error
-from app.core.ai.parsers.action_id_parser import response_format
 from app.core.policy.base import (
     ActionChosen,
     Budget,
@@ -28,7 +27,7 @@ from app.core.policy.base import (
     ToolCall,
     ToolResult,
 )
-from app.core.policy.llm import LLMPolicy, RETRY_BACKOFF_S
+from app.core.policy.llm import RETRY_BACKOFF_S, LLMPolicy
 from app.utils.exceptions import AIParseError, AITimeoutError, InvalidActionError
 
 if TYPE_CHECKING:
@@ -117,8 +116,10 @@ class ToolLoopPolicy(LLMPolicy):
                 yield ToolResult(name=tool_name, result=result)
                 messages.append({"role": "assistant", "content": raw})
                 text = result.get("text") if isinstance(result, dict) else None
-                payload = text if isinstance(text, str) and text else json.dumps(
-                    result, ensure_ascii=False
+                payload = (
+                    text
+                    if isinstance(text, str) and text
+                    else json.dumps(result, ensure_ascii=False)
                 )
                 messages.append(
                     {

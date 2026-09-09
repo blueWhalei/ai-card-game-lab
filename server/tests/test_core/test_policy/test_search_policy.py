@@ -9,7 +9,6 @@ import pytest
 from app.core.engine.doudizhu.engine import DoudizhuEngine
 from app.core.policy.base import ActionChosen, Budget, PolicyContext
 from app.core.policy.search import SearchAugmentedPolicy
-
 from tests.test_core.test_policy.test_llm_policy import ScriptedClient, _run, _setup
 
 
@@ -28,9 +27,7 @@ async def test_search_picks_higher_scored_candidate(engine: DoudizhuEngine) -> N
     observation, legal, ctx = _setup(engine)
     assert len(legal) >= 2
     low, high = legal[0].id, legal[1].id
-    client = ScriptedClient(
-        [json.dumps({"thinking": "two options", "candidates": [low, high]})]
-    )
+    client = ScriptedClient([json.dumps({"thinking": "two options", "candidates": [low, high]})])
 
     def score_actions(_obs, _legal, candidates):  # type: ignore[no-untyped-def]
         return {low: 0.1, high: 0.9}

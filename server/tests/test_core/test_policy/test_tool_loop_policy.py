@@ -9,7 +9,6 @@ import pytest
 from app.core.engine.doudizhu.engine import DoudizhuEngine
 from app.core.policy.base import ActionChosen, Budget, ToolCall, ToolResult
 from app.core.policy.tool_loop import ToolLoopPolicy
-
 from tests.test_core.test_policy.test_llm_policy import (
     ScriptedClient,
     _reply,
@@ -41,9 +40,7 @@ async def test_tool_then_action(engine) -> None:
         stream_replies=[],  # force non-stream path via empty? use stream=False
     )
     policy = ToolLoopPolicy(client, stream=False)
-    events = await _run(
-        policy, observation, legal, ctx, Budget(max_llm_calls=4, max_tool_calls=2)
-    )
+    events = await _run(policy, observation, legal, ctx, Budget(max_llm_calls=4, max_tool_calls=2))
     assert any(isinstance(e, ToolCall) and e.name == tool_name for e in events)
     assert any(isinstance(e, ToolResult) for e in events)
     chosen = next(e for e in events if isinstance(e, ActionChosen))
@@ -58,9 +55,7 @@ async def test_budget_exhaustion_still_chooses(engine) -> None:
     # action-only after rebuild — send a valid action on the first call.
     client = ScriptedClient([_reply(legal[0].id)])
     policy = ToolLoopPolicy(client, stream=False)
-    events = await _run(
-        policy, observation, legal, ctx, Budget(max_llm_calls=2, max_tool_calls=0)
-    )
+    events = await _run(policy, observation, legal, ctx, Budget(max_llm_calls=2, max_tool_calls=0))
     chosen = next(e for e in events if isinstance(e, ActionChosen))
     assert chosen.action_id == legal[0].id
     assert not any(isinstance(e, ToolCall) for e in events)
@@ -77,8 +72,6 @@ async def test_unknown_tool_is_parse_error_then_retry(engine) -> None:
         ]
     )
     policy = ToolLoopPolicy(client, stream=False)
-    events = await _run(
-        policy, observation, legal, ctx, Budget(max_llm_calls=3, max_tool_calls=2)
-    )
+    events = await _run(policy, observation, legal, ctx, Budget(max_llm_calls=3, max_tool_calls=2))
     chosen = next(e for e in events if isinstance(e, ActionChosen))
     assert chosen.action_id == legal[0].id
