@@ -145,6 +145,18 @@ async def get_highlights(
     return ApiResponse(data={"items": items})
 
 
+@router.get("/{game_id}/decision-commentary")
+async def get_decision_commentary(
+    game_id: str,
+    service: GameService = Depends(get_game_service),
+    decisions: DecisionService = Depends(get_decision_service),
+) -> ApiResponse[dict[str, Any]]:
+    """All decision points with baseline / EV fields for finished-game replay."""
+    await service.get_game(game_id)
+    items = await decisions.commentary_for_game(game_id)
+    return ApiResponse(data={"items": items})
+
+
 @router.post("/batch", status_code=201)
 async def batch_create(
     body: BatchCreateRequest,

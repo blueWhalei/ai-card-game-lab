@@ -5,7 +5,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import { decisionApi, type DecisionPoint, type DecisionStats } from '@/api/decision'
+import { decisionApi, type DecisionAnnotation, type DecisionPoint, type DecisionStats } from '@/api/decision'
 import { systemApi } from '@/api/systemApi'
 import { formatDateTime } from '@/utils/format'
 import { defaultEngineId } from '@/utils/engineSlots'
@@ -48,6 +48,8 @@ const decisionPoints = ref<DecisionPoint[]>([])
 const listTotal = ref(0)
 const loading = ref(false)
 const exporting = ref(false)
+const annotationFilter = ref<DecisionAnnotation | ''>('')
+const annotating = ref(false)
 const registering = ref(false)
 const registerOpen = ref(false)
 const registerEvalRatio = ref(0.1)
@@ -184,6 +186,7 @@ async function fetchDecisionPoints() {
       min_quality?: number
       train_usable?: boolean
       max_ev_loss?: number
+      annotation?: DecisionAnnotation
       page: number
       page_size: number
     } = { page: page.value, page_size: pageSize.value }
@@ -197,6 +200,7 @@ async function fetchDecisionPoints() {
     }
     if (trainUsableFilter.value !== undefined) params.train_usable = trainUsableFilter.value
     if (maxEvLossFilter.value !== undefined) params.max_ev_loss = maxEvLossFilter.value
+    if (annotationFilter.value) params.annotation = annotationFilter.value
     const res = await decisionApi.list(params)
     decisionPoints.value = res.data.items
     listTotal.value = res.data.total
@@ -285,6 +289,29 @@ function setTrainUsableChip(value: 'true' | 'false' | 'all'): void {
   void fetchDecisionPoints()
 }
 
+function setAnnotationFilter(value: DecisionAnnotation | ''): void {
+  annotationFilter.value = value
+  if (props.embedded) localPage.value = 1
+  void fetchDecisionPoints()
+}
+
+async function setPointAnnotation(value: DecisionAnnotation | null): Promise<void> {
+  const point = selectedPoint.value
+  if (!point) return
+  annotating.value = true
+  try {
+    const res = await decisionApi.patchAnnotation(point.id, value)
+    selectedPoint.value = res.data
+    const idx = decisionPoints.value.findIndex((p) => p.id === point.id)
+    if (idx >= 0) decisionPoints.value[idx] = res.data
+    toast.success(t('decision.annotationSaved'))
+  } catch (e: unknown) {
+    showApiError(e, t('decision.annotationFailed'))
+  } finally {
+    annotating.value = false
+  }
+}
+
 async function fetchStats() {
   try {
     const res = await decisionApi.stats(
@@ -308,6 +335,7 @@ function exportScopeParams() {
     min_quality: minQuality.value,
     max_ev_loss: maxEvLossFilter.value,
     include_thinking: exportIncludeThinking.value,
+    annotation: annotationFilter.value || undefined,
   }
   if (trainUsableFilter.value === undefined) {
     return { ...base, train_usable_only: false as const }
@@ -532,6 +560,41 @@ onMounted(async () => {
         :filters="localFilters"
         @update:filters="onLocalFiltersUpdate"
       />
+      <div v-if="!embedded" class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="text-ink-text-muted">{{ t('decision.annotation') }}</span>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === '' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('')"
+        >
+          {{ t('decision.annotationAll') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'good' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('good')"
+        >
+          {{ t('decision.annotationGood') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'bad' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('bad')"
+        >
+          {{ t('decision.annotationBad') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'doubt' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('doubt')"
+        >
+          {{ t('decision.annotationDoubt') }}
+        </UiButton>
+      </div>
       <div v-if="embedded && stats" class="flex flex-wrap items-center gap-2 text-xs">
         <span class="text-ink-text-secondary">
           {{ t('experiment.registerUsable', { n: stats.train_usable_count ?? 0 }) }} ·
@@ -560,6 +623,39 @@ onMounted(async () => {
           @click="setTrainUsableChip('all')"
         >
           {{ t('filter.allTrain') }}
+        </UiButton>
+        <span class="text-ink-text-muted">·</span>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === '' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('')"
+        >
+          {{ t('decision.annotationAll') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'good' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('good')"
+        >
+          {{ t('decision.annotationGood') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'bad' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('bad')"
+        >
+          {{ t('decision.annotationBad') }}
+        </UiButton>
+        <UiButton
+          size="sm"
+          :variant="annotationFilter === 'doubt' ? 'primary' : 'secondary'"
+          type="button"
+          @click="setAnnotationFilter('doubt')"
+        >
+          {{ t('decision.annotationDoubt') }}
         </UiButton>
         <UiButton
           size="sm"
@@ -744,6 +840,42 @@ onMounted(async () => {
                       :formula="t('metricHint.evLoss.formula')"
                     />
                   </span>
+                </div>
+                <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                  <span class="text-xs text-ink-text-muted">{{ t('decision.annotation') }}</span>
+                  <UiButton
+                    size="sm"
+                    :variant="selectedPoint.annotation === 'good' ? 'primary' : 'secondary'"
+                    :loading="annotating"
+                    @click="setPointAnnotation('good')"
+                  >
+                    {{ t('decision.annotationGood') }}
+                  </UiButton>
+                  <UiButton
+                    size="sm"
+                    :variant="selectedPoint.annotation === 'bad' ? 'primary' : 'secondary'"
+                    :loading="annotating"
+                    @click="setPointAnnotation('bad')"
+                  >
+                    {{ t('decision.annotationBad') }}
+                  </UiButton>
+                  <UiButton
+                    size="sm"
+                    :variant="selectedPoint.annotation === 'doubt' ? 'primary' : 'secondary'"
+                    :loading="annotating"
+                    @click="setPointAnnotation('doubt')"
+                  >
+                    {{ t('decision.annotationDoubt') }}
+                  </UiButton>
+                  <UiButton
+                    size="sm"
+                    variant="ghost"
+                    :loading="annotating"
+                    :disabled="!selectedPoint.annotation"
+                    @click="setPointAnnotation(null)"
+                  >
+                    {{ t('decision.annotationClear') }}
+                  </UiButton>
                 </div>
               </div>
             </div>

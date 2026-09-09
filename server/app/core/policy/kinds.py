@@ -4,14 +4,21 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-PlayerPolicyKind = Literal["llm", "heuristic", "random", "first"]
+PlayerPolicyKind = Literal["llm", "tool_loop", "search", "heuristic", "random", "first"]
 
-PLAYER_POLICY_KINDS: frozenset[str] = frozenset({"llm", "heuristic", "random", "first"})
+PLAYER_POLICY_KINDS: frozenset[str] = frozenset(
+    {"llm", "tool_loop", "search", "heuristic", "random", "first"}
+)
 BASELINE_POLICY_KINDS: frozenset[str] = frozenset({"heuristic", "random", "first"})
+LLM_POLICY_KINDS: frozenset[str] = frozenset({"llm", "tool_loop", "search"})
 
 
 def is_baseline_policy_kind(kind: str) -> bool:
     return kind in BASELINE_POLICY_KINDS
+
+
+def is_llm_policy_kind(kind: str) -> bool:
+    return kind in LLM_POLICY_KINDS
 
 
 def normalize_player_policy_kind(raw: Any, *, default: str = "llm") -> str:

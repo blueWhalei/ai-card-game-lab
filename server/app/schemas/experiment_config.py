@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
-PolicyKind = Literal["llm", "heuristic", "random", "first"]
+PolicyKind = Literal["llm", "tool_loop", "search", "heuristic", "random", "first"]
 
 
 class ModelConfig(BaseModel):
@@ -34,8 +34,8 @@ class CreateExperimentConfigRequest(BaseModel):
 
     @model_validator(mode="after")
     def require_model_for_llm(self) -> CreateExperimentConfigRequest:
-        if self.policy_kind == "llm" and self.model_config_data is None:
-            raise ValueError("model_config_data is required when policy_kind is llm")
+        if self.policy_kind in ("llm", "tool_loop", "search") and self.model_config_data is None:
+            raise ValueError("model_config_data is required when policy_kind uses an LLM")
         return self
 
 

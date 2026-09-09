@@ -2,7 +2,7 @@ import { apiClient } from './client'
 import type { ApiResponse } from './types'
 import type { ExperimentPack } from './experimentApi'
 
-export type PlayerPolicyKind = 'llm' | 'heuristic' | 'random' | 'first'
+export type PlayerPolicyKind = 'llm' | 'tool_loop' | 'search' | 'heuristic' | 'random' | 'first'
 
 export interface ExperimentConfig {
   id: string

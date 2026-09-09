@@ -70,10 +70,19 @@ async def _v3_decision_tool_calls(db: aiosqlite.Connection) -> None:
     await _add_column(db, "decision_points", "tool_calls", "TEXT")
 
 
+async def _v4_decision_annotation(db: aiosqlite.Connection) -> None:
+    await _add_column(db, "decision_points", "annotation", "TEXT")
+    await db.execute(
+        "CREATE INDEX IF NOT EXISTS idx_decision_points_annotation "
+        "ON decision_points(annotation)"
+    )
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "decision_points.policy_kind", _v1_decision_policy_kind),
     Migration(2, "experiment_configs.policy_kind", _v2_experiment_config_policy_kind),
     Migration(3, "decision_points.tool_calls", _v3_decision_tool_calls),
+    Migration(4, "decision_points.annotation", _v4_decision_annotation),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0

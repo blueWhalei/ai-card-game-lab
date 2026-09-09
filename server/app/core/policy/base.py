@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import random
 from abc import ABC, abstractmethod
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol, TypeAlias
 
@@ -153,6 +153,11 @@ class PolicyContext:
     rng: random.Random
     session_id: str | None = None
     prompts: PromptSource | None = None
+    # Optional EV scorer for SearchAugmentedPolicy (Observation-only; no GameState).
+    score_actions: Callable[
+        [Observation, list[LegalAction], list[ActionId]],
+        dict[ActionId, float],
+    ] | None = None
 
 
 class ActionSelector(Protocol):

@@ -70,6 +70,17 @@ const supportLine = computed(() => {
       range: formatWinRateCi(props.delta.this_landlord_win_rate_ci ?? undefined),
     }),
   ]
+  if (props.delta.paired_p != null) {
+    parts.push(t('stage.support.pairedP', { p: props.delta.paired_p.toFixed(3) }))
+  }
+  if (props.delta.paired_ci && props.delta.paired_ci.length >= 2) {
+    const [lo, hi] = props.delta.paired_ci
+    parts.push(
+      t('stage.support.pairedCi', {
+        range: `${formatDeltaPp(lo)}…${formatDeltaPp(hi)}`,
+      }),
+    )
+  }
   return parts.join(' · ')
 })
 

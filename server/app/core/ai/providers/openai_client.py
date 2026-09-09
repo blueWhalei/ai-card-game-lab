@@ -47,6 +47,7 @@ class OpenAICompatibleClient(LLMClient):
         temperature = kwargs.pop("temperature", 0.7)
         max_tokens = kwargs.pop("max_tokens", 2048)
         response_format = kwargs.pop("response_format", None)
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
 
         headers = {
             "Content-Type": "application/json",
@@ -59,6 +60,8 @@ class OpenAICompatibleClient(LLMClient):
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
 
         url = f"{self._base_url}/chat/completions"
 

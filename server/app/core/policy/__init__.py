@@ -21,16 +21,19 @@ from app.core.policy.baselines import (
     HeuristicPolicy,
     RandomPolicy,
 )
+from app.core.policy.llm import LLMPolicy
+from app.core.policy.registry import PolicyRegistry
+from app.core.policy.tool_loop import ToolLoopPolicy
 from app.core.policy.kinds import (
     BASELINE_POLICY_KINDS,
+    LLM_POLICY_KINDS,
     PLAYER_POLICY_KINDS,
     PlayerPolicyKind,
     baseline_placeholder_model_config,
     is_baseline_policy_kind,
+    is_llm_policy_kind,
     normalize_player_policy_kind,
 )
-from app.core.policy.llm import LLMPolicy
-from app.core.policy.registry import PolicyRegistry
 
 __all__ = [
     "BASELINE_POLICY_KINDS",
@@ -43,6 +46,9 @@ __all__ = [
     "FirstActionPolicy",
     "HeuristicPolicy",
     "LLMPolicy",
+    "LLM_POLICY_KINDS",
+    "ToolLoopPolicy",
+    "is_llm_policy_kind",
     "LlmRequest",
     "LlmUsage",
     "PlayerPolicyKind",

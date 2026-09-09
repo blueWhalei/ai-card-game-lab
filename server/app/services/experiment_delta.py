@@ -380,7 +380,11 @@ class ExperimentDeltaMixin:
         paired_n = 0
         paired_diff: float | None = None
         paired_low_power = False
+        paired_p: float | None = None
+        paired_ci: list[float] | None = None
         if paired is not None:
+            from app.core.stats.paired import mcnemar_exact_p, paired_bootstrap_ci
+
             paired_n = int(paired.get("shared_seeds") or 0)
             raw_diff = paired.get("landlord_win_rate_diff")
             if raw_diff is not None:
@@ -390,6 +394,20 @@ class ExperimentDeltaMixin:
                 else:
                     paired_diff = round(-ctl_minus_src, 4)
             paired_low_power = bool(paired.get("low_power"))
+            b = int(paired.get("mcnemar_b") or 0)
+            c = int(paired.get("mcnemar_c") or 0)
+            if relation == "vs_control":
+                # Flip discordant counts so "this vs peer" matches delta sign.
+                b, c = c, b
+            if paired_n > 0:
+                paired_p = round(mcnemar_exact_p(b, c), 4)
+                seed_diffs = list(paired.get("seed_diffs") or [])
+                if relation == "vs_control":
+                    seed_diffs = [-float(x) for x in seed_diffs]
+                elif relation == "vs_source":
+                    seed_diffs = [float(x) for x in seed_diffs]
+                lo, hi = paired_bootstrap_ci(seed_diffs, n_boot=2000, seed=0)
+                paired_ci = [lo, hi]
 
         this_cred = summary.get("credibility") or {}
         peer_cred = peer_summary.get("credibility") or {}
@@ -409,6 +427,8 @@ class ExperimentDeltaMixin:
             paired_n=paired_n,
             paired_landlord_win_rate_diff=paired_diff,
             paired_low_power=paired_low_power,
+            paired_p=paired_p,
+            paired_ci=paired_ci,
             scenario_diffs=scenario_rate_diffs(
                 summary.get("scenario_scores")
                 if isinstance(summary.get("scenario_scores"), dict)
@@ -658,27 +678,43 @@ class ExperimentDeltaMixin:
 
         src_ll_wins, src_dec = landlord_wins_on_common(source_id)
         ctl_ll_wins, ctl_dec = landlord_wins_on_common(control_id)
+
+        def landlord_on_seed(exp_id: str, seed: int) -> int | None:
+            """1 landlord win, 0 peasant win, None if missing/undecisive."""
+            for game in games_by_exp.get(exp_id, []):
+                meta = game.get("metadata") or {}
+                if not isinstance(meta, dict):
+                    continue
+                raw_seed = meta.get("deal_seed")
+                if raw_seed is None:
+                    continue
+                if int(raw_seed) != int(seed):
+                    continue
+                if not game.get("winner_id"):
+                    return None
+                role = str(game.get("winner_role") or "")
+                if role == "landlord":
+                    return 1
+                if role == "peasant":
+                    return 0
+                return None
+            return None
+
         shared_played = 0
+        mcnemar_b = 0  # control landlord, source peasant
+        mcnemar_c = 0  # control peasant, source landlord
+        seed_diffs: list[float] = []
         for seed in common:
-            has_src = has_ctl = False
-            for exp_id in (source_id, control_id):
-                games = games_by_exp.get(exp_id, [])
-                for game in games:
-                    meta = game.get("metadata") or {}
-                    if not isinstance(meta, dict):
-                        continue
-                    if meta.get("deal_seed") != seed:
-                        continue
-                    if game.get("winner_id") and str(game.get("winner_role") or "") in (
-                        "landlord",
-                        "peasant",
-                    ):
-                        if exp_id == source_id:
-                            has_src = True
-                        else:
-                            has_ctl = True
-            if has_src and has_ctl:
-                shared_played += 1
+            src_ll = landlord_on_seed(source_id, seed)
+            ctl_ll = landlord_on_seed(control_id, seed)
+            if src_ll is None or ctl_ll is None:
+                continue
+            shared_played += 1
+            seed_diffs.append(float(ctl_ll - src_ll))
+            if ctl_ll == 1 and src_ll == 0:
+                mcnemar_b += 1
+            elif ctl_ll == 0 and src_ll == 1:
+                mcnemar_c += 1
 
         if shared_played <= 0:
             return {
@@ -687,6 +723,9 @@ class ExperimentDeltaMixin:
                 "control_id": control_id,
                 "landlord_win_rate_diff": None,
                 "low_power": True,
+                "mcnemar_b": 0,
+                "mcnemar_c": 0,
+                "seed_diffs": [],
             }
 
         src_rate = src_ll_wins / src_dec if src_dec else 0.0
@@ -698,6 +737,9 @@ class ExperimentDeltaMixin:
             "control_id": control_id,
             "landlord_win_rate_diff": diff,
             "low_power": shared_played < CREDIBILITY_MIN_DECISIVE_N,
+            "mcnemar_b": mcnemar_b,
+            "mcnemar_c": mcnemar_c,
+            "seed_diffs": seed_diffs,
         }
 
 

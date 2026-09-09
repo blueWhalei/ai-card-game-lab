@@ -139,6 +139,7 @@ class DecisionService:
         outcome: str | None = None,
         train_usable: bool | None = None,
         max_ev_loss: float | None = None,
+        annotation: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -155,6 +156,7 @@ class DecisionService:
                 outcome=outcome,
                 train_usable=train_usable,
                 max_ev_loss=max_ev_loss,
+                annotation=annotation,
                 limit=limit,
                 offset=offset,
             )
@@ -163,6 +165,17 @@ class DecisionService:
         """Get a single decision point by ID."""
         async with connect_or_reuse(self._sqlite_path) as db:
             repo = DecisionRepository(db)
+            return await repo.get_by_id(decision_id)
+
+    async def update_annotation(
+        self, decision_id: str, annotation: str | None
+    ) -> dict[str, Any] | None:
+        """Set or clear human annotation; returns the updated row or None."""
+        async with connect_or_reuse(self._sqlite_path) as db:
+            repo = DecisionRepository(db)
+            ok = await repo.update_annotation(decision_id, annotation)
+            if not ok:
+                return None
             return await repo.get_by_id(decision_id)
 
     async def highlights_for_game(
@@ -202,6 +215,46 @@ class DecisionService:
                 row["baseline_action_id"] = baseline_id
                 row["baseline_label"] = baseline_label
         return highlights
+
+    async def commentary_for_game(self, game_id: str) -> list[dict[str, Any]]:
+        """All decision points with EV / baseline fields for replay commentary."""
+        from app.core.stats.highlights import as_commentary_row
+
+        items, _total = await self.list_decision_points(
+            game_id=game_id,
+            limit=2000,
+            offset=0,
+        )
+        if not items:
+            return []
+
+        rows: list[dict[str, Any]] = [
+            as_commentary_row(point)
+            for point in sorted(items, key=lambda p: int(p.get("round_number") or 0))
+        ]
+
+        game_type = await self._game_type_for(game_id)
+        if not game_type:
+            return rows
+
+        from app.dependencies import get_engine_registry
+        from app.services.decision_snapshot import baseline_suggestion_for_point
+
+        try:
+            engine = get_engine_registry().get(game_type)
+        except Exception:
+            return rows
+
+        by_id = {str(p.get("id") or ""): p for p in items if p.get("id")}
+        for row in rows:
+            point = by_id.get(str(row.get("decision_id") or ""))
+            if not point:
+                continue
+            baseline_id, baseline_label = baseline_suggestion_for_point(point, engine)
+            if baseline_id:
+                row["baseline_action_id"] = baseline_id
+                row["baseline_label"] = baseline_label
+        return rows
 
     async def _game_type_for(self, game_id: str) -> str | None:
         from app.repositories.game_repo import GameRepository
@@ -256,6 +309,7 @@ class DecisionService:
         train_usable: bool | None = None,
         train_usable_only: bool = True,
         max_ev_loss: float | None = None,
+        annotation: str | None = None,
         include_thinking: bool = False,
         output_path: str | None = None,
         eval_ratio: float = 0.0,
@@ -282,6 +336,7 @@ class DecisionService:
             game_phase=game_phase,
             train_usable=train_usable_filter,
             max_ev_loss=max_ev_loss,
+            annotation=annotation,
             limit=10000,
         )
 
@@ -365,6 +420,7 @@ class DecisionService:
         train_usable: bool | None = None,
         train_usable_only: bool = True,
         max_ev_loss: float | None = None,
+        annotation: str | None = None,
         min_ev_gap: float = DEFAULT_MIN_EV_GAP,
         include_thinking: bool = False,
         output_path: str | None = None,
@@ -390,6 +446,7 @@ class DecisionService:
             game_phase=game_phase,
             train_usable=train_usable_filter,
             max_ev_loss=max_ev_loss,
+            annotation=annotation,
             limit=10000,
         )
 

@@ -43,6 +43,8 @@ const providerOptions = computed(() =>
 
 const policyKindOptions = computed(() => [
   { label: t('config.policyKindLlm'), value: 'llm' },
+  { label: t('config.policyKindToolLoop'), value: 'tool_loop' },
+  { label: t('config.policyKindSearch'), value: 'search' },
   { label: t('config.policyKindHeuristic'), value: 'heuristic' },
   { label: t('config.policyKindRandom'), value: 'random' },
   { label: t('config.policyKindFirst'), value: 'first' },
@@ -50,6 +52,10 @@ const policyKindOptions = computed(() => [
 
 function policyLabel(kind: PlayerPolicyKind | undefined): string {
   switch (kind) {
+    case 'tool_loop':
+      return t('config.policyKindToolLoop')
+    case 'search':
+      return t('config.policyKindSearch')
     case 'heuristic':
       return t('config.policyKindHeuristic')
     case 'random':
@@ -59,6 +65,10 @@ function policyLabel(kind: PlayerPolicyKind | undefined): string {
     default:
       return t('config.policyKindLlm')
   }
+}
+
+function isBaselineKind(kind: PlayerPolicyKind | undefined): boolean {
+  return kind === 'heuristic' || kind === 'random' || kind === 'first'
 }
 
 const defaultModelConfig = () => ({
@@ -78,7 +88,10 @@ const defaultForm = (): CreateExperimentConfigRequest => ({
 })
 
 const form = ref<CreateExperimentConfigRequest>(defaultForm())
-const isBaselineForm = computed(() => (form.value.policy_kind ?? 'llm') !== 'llm')
+const isBaselineForm = computed(() => {
+  const kind = form.value.policy_kind ?? 'llm'
+  return kind === 'heuristic' || kind === 'random' || kind === 'first'
+})
 
 function onProviderChange(val: string) {
   const provider = providers.value.find((p) => p.id === val)
@@ -90,7 +103,10 @@ function onProviderChange(val: string) {
 function onPolicyKindChange(val: string) {
   const kind = (val as PlayerPolicyKind) || 'llm'
   form.value.policy_kind = kind
-  if (kind === 'llm' && (!form.value.model_config_data || form.value.model_config_data.provider === 'baseline')) {
+  if (
+    (kind === 'llm' || kind === 'tool_loop' || kind === 'search') &&
+    (!form.value.model_config_data || form.value.model_config_data.provider === 'baseline')
+  ) {
     form.value.model_config_data = defaultModelConfig()
   }
 }
@@ -161,13 +177,15 @@ async function handleSubmit() {
     return
   }
   const policyKind = form.value.policy_kind ?? 'llm'
+  const usesLlm =
+    policyKind === 'llm' || policyKind === 'tool_loop' || policyKind === 'search'
   try {
     if (isEditing.value) {
       const updateData: UpdateExperimentConfigRequest = {
         name,
         notes: form.value.notes,
         policy_kind: policyKind,
-        model_config_data: policyKind === 'llm' ? form.value.model_config_data : null,
+        model_config_data: usesLlm ? form.value.model_config_data : null,
       }
       await experimentConfigApi.update(form.value.id, updateData)
       toast.success(t('config.updated'))
@@ -177,7 +195,7 @@ async function handleSubmit() {
         name,
         notes: form.value.notes,
         policy_kind: policyKind,
-        model_config_data: policyKind === 'llm' ? form.value.model_config_data : null,
+        model_config_data: usesLlm ? form.value.model_config_data : null,
       })
       toast.success(t('config.created'))
     }
@@ -285,7 +303,7 @@ async function importPack(): Promise<void> {
             <div class="min-w-0">
               <h3 class="truncate text-body font-semibold text-ink-text">{{ row.name }}</h3>
               <p class="mt-ink-1 truncate text-caption text-ink-text-secondary">
-                <template v-if="(row.policy_kind ?? 'llm') !== 'llm'">
+                <template v-if="isBaselineKind(row.policy_kind)">
                   {{ policyLabel(row.policy_kind) }}
                 </template>
                 <template v-else>
@@ -293,7 +311,7 @@ async function importPack(): Promise<void> {
                 </template>
               </p>
               <p
-                v-if="(row.policy_kind ?? 'llm') === 'llm'"
+                v-if="!isBaselineKind(row.policy_kind)"
                 class="mt-ink-1 text-caption text-ink-text-muted"
               >
                 T={{ row.model_config.temperature }} · top_p={{ row.model_config.top_p }} · max={{

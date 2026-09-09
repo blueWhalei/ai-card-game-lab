@@ -12,7 +12,8 @@ import { useGameWebSocket } from '@/composables/useGameWebSocket'
 import type { HistoryEntry } from '@/composables/useGameWebSocket'
 import { coerceObserverSnapshot } from '@/types/observer'
 import { displayCard, isRedCard } from '@/utils/card'
-import { findReplayIndex } from '@/utils/gameHighlights'
+import { findCommentaryAtIndex, findReplayIndex, formatEvExplain } from '@/utils/gameHighlights'
+import { formatPlayAction } from '@/utils/traceOutput'
 import { thinkingExcerpt } from '@/utils/thinkingExcerpt'
 import { Icon } from '@iconify/vue'
 import GameHeaderBar from '@/components/game/GameHeaderBar.vue'
@@ -33,6 +34,7 @@ const loading = ref(true)
 const replayLoading = ref(false)
 const showResultDialog = ref(false)
 const highlights = ref<GameHighlight[]>([])
+const commentary = ref<GameHighlight[]>([])
 const rightPanelCollapsed = ref(false)
 const experimentName = ref('')
 const thinkingExpandedSet = ref(new Set<number>())
@@ -151,6 +153,27 @@ async function fetchHighlights(): Promise<void> {
   }
 }
 
+async function fetchCommentary(): Promise<void> {
+  try {
+    const res = await gameApi.decisionCommentary(gameId.value)
+    commentary.value = res.data.items ?? []
+  } catch {
+    commentary.value = []
+  }
+}
+
+const currentFrameExplain = computed(() => {
+  if (!isFinished.value || !isReplayMode.value || !replayData.value) return null
+  const rounds = replayData.value.rounds ?? []
+  const item = findCommentaryAtIndex(rounds, commentary.value, replayIndex.value)
+  if (!item) return null
+  const fallback = formatPlayAction({
+    action_type: item.action_type,
+    cards: item.cards,
+  })
+  return formatEvExplain(item, t, fallback)
+})
+
 async function jumpToHighlight(item: GameHighlight): Promise<void> {
   showResultDialog.value = false
   replayPause()
@@ -168,10 +191,10 @@ async function jumpToHighlight(item: GameHighlight): Promise<void> {
 
 watch(winner, async (newWinner) => {
   if (!newWinner) return
-  await fetchHighlights()
+  await Promise.all([fetchHighlights(), fetchCommentary()])
   if (highlights.value.length === 0) {
     await new Promise((resolve) => setTimeout(resolve, 1500))
-    await fetchHighlights()
+    await Promise.all([fetchHighlights(), fetchCommentary()])
   }
   showResultDialog.value = true
 })
@@ -393,7 +416,7 @@ onMounted(async () => {
   }
   if (isFinished.value) {
     await loadReplay()
-    await fetchHighlights()
+    await Promise.all([fetchHighlights(), fetchCommentary()])
   } else {
     connectWs()
   }
@@ -409,9 +432,10 @@ watch(gameId, async (next, prev) => {
   if (isFinished.value) {
     disconnectWs()
     await loadReplay()
-    await fetchHighlights()
+    await Promise.all([fetchHighlights(), fetchCommentary()])
   } else {
     highlights.value = []
+    commentary.value = []
   }
 })
 
@@ -529,6 +553,13 @@ onUnmounted(() => {
             ref="historyPanel"
             class="max-h-[36%] shrink-0 overflow-y-auto border-t border-ink-obs-border px-ink-4 py-ink-3"
           >
+            <p
+              v-if="currentFrameExplain"
+              class="mb-ink-2 font-mono text-caption text-ink-obs-muted"
+              data-testid="replay-frame-explain"
+            >
+              {{ currentFrameExplain }}
+            </p>
             <p class="mb-ink-2 text-caption text-ink-obs-muted">{{ t('game.actionLog') }}</p>
             <div v-if="isFinished && highlights.length" class="mb-ink-3">
               <p class="mb-ink-2 text-caption font-medium text-ink-obs-muted">

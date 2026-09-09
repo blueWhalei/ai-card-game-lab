@@ -176,6 +176,11 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             max_candidates=settings.ev_loss_max_candidates,
         )
         version = self._prompt_version(prompt_version)
+        thinking_budget: dict[str, Any] = {}
+        if settings.thinking_budget_reasoning_effort.strip():
+            thinking_budget["reasoning_effort"] = settings.thinking_budget_reasoning_effort.strip()
+        if settings.thinking_budget_max_tokens is not None:
+            thinking_budget["max_thinking_tokens"] = int(settings.thinking_budget_max_tokens)
         return build_protocol(
             players=self._snapshot_players(player_ids),
             source_experiment_id=source_experiment_id,
@@ -187,6 +192,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             protocol_fingerprint=self._engine_capability(game_type).protocol_fingerprint(),
             evaluator=evaluator,
             prompts=prompts,
+            thinking_budget=thinking_budget or None,
         )
 
     async def create_experiment(

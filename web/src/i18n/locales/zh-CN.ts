@@ -139,6 +139,7 @@ export default {
           '每局 Token：各局 Token 之和 / 已结束局数。',
           '地主胜率差：本实验地主胜率 − 对照（或上一轮）实验。单位百分点（pp）。',
           '同牌局胜率差：只统计相同发牌种子的配对局。',
+          '配对 McNemar / bootstrap：同种子地主胜负翻转的精确 p，以及对种子差分的百分位区间。',
           '场景子分：叫分 / 出牌 / 残局（任一方手牌 ≤8）/ 炸弹。炸弹优先。展示可训练占比与解析成功率，Δ 不是好坏。',
           '对局结果分：终局胜负代理（赢 0.8 / 输 0.3 / 平 0.5），不是单步质量。微调筛选用「可用来训练」。',
           '基准覆盖：创建时写入的固定发牌种子里，已经结束的副数。失败局计入覆盖。种子用尽后不能再采集。',
@@ -293,6 +294,11 @@ export default {
     pairedDelta: {
       plain: '只比较发到同一手牌的那些局，更公平。',
       formula: '相同 deal_seed 的配对局里，地主胜率之差。n 是配对数。',
+    },
+    pairedStats: {
+      plain: '配对 McNemar 检验与自助法区间：看同牌局上的胜负翻转是否可信。',
+      formula:
+        'McNemar：对同种子地主胜/负的不一致对数做精确二项双侧 p。配对 Δ 的 95% 区间用对种子差分做百分位 bootstrap。',
     },
     ci: {
       plain: '在当前局数下，真实胜率大概落在这个区间。局越少区间越宽。',
@@ -618,6 +624,8 @@ export default {
     support: {
       paired: '同牌对局 {n} 组',
       interval: '胜率区间 {range}',
+      pairedP: 'McNemar p={p}',
+      pairedCi: '配对Δ区间 {range}',
     },
     scenarioTitle: '分场景看',
     scenarioNotable: '差异主要来自「{name}」（{delta}）。',
@@ -663,6 +671,8 @@ export default {
     policyKind: '决策方式',
     policyKindHint: '基线选手不消耗 API',
     policyKindLlm: '大模型',
+    policyKindToolLoop: '工具循环（主动调用）',
+    policyKindSearch: '搜索增强（候选+rollout）',
     policyKindHeuristic: '启发式',
     policyKindRandom: '随机',
     policyKindFirst: '首位动作',
@@ -976,6 +986,14 @@ export default {
     evLossLabel: '让出 {n}',
     policyKind: '策略 {kind}',
     evLossUnknown: '这一手未评估',
+    annotation: '人工标注',
+    annotationAll: '标注不限',
+    annotationGood: '好',
+    annotationBad: '坏',
+    annotationDoubt: '存疑',
+    annotationClear: '清除标注',
+    annotationSaved: '标注已保存',
+    annotationFailed: '标注保存失败',
     avgEvLoss: '平均让出 {n}（已评估 {evaluated}）',
     hand: '手牌',
     oppLeft: '对手剩余牌数',

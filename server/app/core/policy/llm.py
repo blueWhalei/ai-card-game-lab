@@ -67,6 +67,8 @@ class LLMPolicy(Policy):
         max_tokens: int | None = None,
         stream: bool = True,
         use_response_format: bool = True,
+        reasoning_effort: str | None = None,
+        max_thinking_tokens: int | None = None,
     ) -> None:
         self._client = client
         self._provider = provider
@@ -75,6 +77,8 @@ class LLMPolicy(Policy):
         self._max_tokens = max_tokens
         self._stream = stream
         self._use_response_format = use_response_format
+        self._reasoning_effort = reasoning_effort
+        self._max_thinking_tokens = max_thinking_tokens
         self._parser = ActionIdParser()
 
     async def decide(
@@ -191,13 +195,20 @@ class LLMPolicy(Policy):
         ]
 
     def _call_kwargs(self, legal_ids: list[str]) -> dict[str, Any]:
+        from app.core.ai.prompt import is_reasoning_model
+
         kwargs: dict[str, Any] = {}
         if self._model_name:
             kwargs["model"] = self._model_name
         if self._temperature is not None:
             kwargs["temperature"] = self._temperature
-        if self._max_tokens is not None:
-            kwargs["max_tokens"] = self._max_tokens
+        max_tokens = self._max_tokens
+        if is_reasoning_model(self._model_name) and self._max_thinking_tokens is not None:
+            max_tokens = self._max_thinking_tokens
+        if max_tokens is not None:
+            kwargs["max_tokens"] = max_tokens
+        if self._reasoning_effort:
+            kwargs["reasoning_effort"] = self._reasoning_effort
         if self._use_response_format:
             kwargs["response_format"] = response_format(legal_ids)
         return kwargs

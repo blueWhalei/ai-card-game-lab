@@ -45,8 +45,12 @@ export interface DecisionPoint {
   } | null
   /** Compact tool-use summary from the turn (names + result keys only). */
   tool_calls?: Array<{ name: string; keys?: string[]; has_text?: boolean }> | null
+  /** Human label: good / bad / doubt, or null when unlabeled. */
+  annotation?: 'good' | 'bad' | 'doubt' | null
   created_at: string
 }
+
+export type DecisionAnnotation = 'good' | 'bad' | 'doubt'
 
 export interface DecisionStats {
   total: number
@@ -80,6 +84,7 @@ export interface DecisionExportParams {
   train_usable?: boolean
   train_usable_only?: boolean
   max_ev_loss?: number
+  annotation?: DecisionAnnotation
   include_thinking?: boolean
 }
 
@@ -94,6 +99,7 @@ export const decisionApi = {
     outcome?: string
     train_usable?: boolean
     max_ev_loss?: number
+    annotation?: DecisionAnnotation
     page?: number
     page_size?: number
   }) =>
@@ -103,6 +109,11 @@ export const decisionApi = {
 
   get: (id: string) =>
     apiClient.get<never, ApiResponse<DecisionPoint>>(`/api/v1/decision-points/${id}`),
+
+  patchAnnotation: (id: string, annotation: DecisionAnnotation | null) =>
+    apiClient.patch<never, ApiResponse<DecisionPoint>>(`/api/v1/decision-points/${id}`, {
+      annotation,
+    }),
 
   stats: (params?: { experiment_id?: string }) =>
     apiClient.get<never, ApiResponse<DecisionStats>>('/api/v1/decision-points/stats', {

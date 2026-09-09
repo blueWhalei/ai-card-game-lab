@@ -1,6 +1,6 @@
 """Decision point API endpoints for SFT training data."""
 
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
@@ -10,6 +10,8 @@ from app.schemas.common import ApiResponse, PaginatedData
 from app.services.decision_service import DecisionService
 
 router = APIRouter(tags=["decision-points"])
+
+AnnotationValue = Literal["good", "bad", "doubt"]
 
 
 class DecisionPointResponse(BaseModel):
@@ -35,6 +37,7 @@ class DecisionPointResponse(BaseModel):
     evaluator_params: dict[str, Any] | None = None
     policy_kind: str = "llm"
     tool_calls: list[dict[str, Any]] | None = None
+    annotation: str | None = None
     created_at: str
     parser_ok: bool | None = None
     win_probability: dict[str, Any] | None = None
@@ -84,9 +87,22 @@ class ExportRequest(BaseModel):
             "Unevaluated moves are kept, so old data is not silently excluded."
         ),
     )
+    annotation: AnnotationValue | None = Field(
+        default=None,
+        description="Exact human annotation filter; omit to keep unlabeled rows too",
+    )
     include_thinking: bool = Field(
         default=False,
         description="Include chain-of-thought text in assistant messages",
+    )
+
+
+class AnnotationUpdateRequest(BaseModel):
+    """Set or clear a human annotation on one decision point."""
+
+    annotation: AnnotationValue | None = Field(
+        ...,
+        description="good / bad / doubt, or null to clear",
     )
 
 
@@ -130,6 +146,9 @@ async def list_decision_points(
     max_ev_loss: float | None = Query(
         None, description="Keep moves at or below this EV loss (unevaluated moves are kept)"
     ),
+    annotation: AnnotationValue | None = Query(
+        None, description="Filter by human annotation (good/bad/doubt)"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(10, ge=1, le=200),
     service: DecisionService = Depends(get_decision_service),
@@ -146,6 +165,7 @@ async def list_decision_points(
         outcome=outcome,
         train_usable=train_usable,
         max_ev_loss=max_ev_loss,
+        annotation=annotation,
         limit=page_size,
         offset=offset,
     )
@@ -187,6 +207,7 @@ async def export_chatml(
         train_usable=request.train_usable,
         train_usable_only=request.train_usable_only,
         max_ev_loss=request.max_ev_loss,
+        annotation=request.annotation,
         include_thinking=request.include_thinking,
     )
 
@@ -218,6 +239,7 @@ async def export_preferences(
         train_usable=request.train_usable,
         train_usable_only=request.train_usable_only,
         max_ev_loss=request.max_ev_loss,
+        annotation=request.annotation,
         min_ev_gap=request.min_ev_gap,
         include_thinking=request.include_thinking,
     )
@@ -247,6 +269,19 @@ async def get_decision_point(
 ) -> ApiResponse[DecisionPointResponse]:
     """Get a single decision point by ID."""
     item = await service.get_decision_point(decision_id)
+    if not item:
+        raise HTTPException(status_code=404, detail=f"Decision point {decision_id} not found")
+    return ApiResponse(data=DecisionPointResponse(**item))
+
+
+@router.patch("/{decision_id}", response_model=ApiResponse[DecisionPointResponse])
+async def patch_decision_point(
+    decision_id: str,
+    body: AnnotationUpdateRequest,
+    service: DecisionService = Depends(get_decision_service),
+) -> ApiResponse[DecisionPointResponse]:
+    """Set or clear the human annotation on a decision point."""
+    item = await service.update_annotation(decision_id, body.annotation)
     if not item:
         raise HTTPException(status_code=404, detail=f"Decision point {decision_id} not found")
     return ApiResponse(data=DecisionPointResponse(**item))

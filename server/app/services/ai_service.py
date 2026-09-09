@@ -32,8 +32,10 @@ from app.core.policy.base import (
     ToolResult,
 )
 from app.core.policy.baselines import FirstActionPolicy
-from app.core.policy.kinds import is_baseline_policy_kind
+from app.core.policy.kinds import is_baseline_policy_kind, is_llm_policy_kind
 from app.core.policy.llm import LLMPolicy
+from app.core.policy.search import SearchAugmentedPolicy
+from app.core.policy.tool_loop import ToolLoopPolicy
 from app.services.decision_snapshot import (
     compact_tool_calls,
     game_phase_from_observation,
@@ -122,6 +124,7 @@ class AIService:
         self._ev_params_by_game: dict[str, EvaluatorParams | None] = {}
         # game_id → (prompt_version, prompts map); None prompts = live DB
         self._prompt_freeze_by_game: dict[str, tuple[str, dict[str, dict[str, Any]]] | None] = {}
+        self._thinking_budget_by_game: dict[str, dict[str, Any] | None] = {}
 
     def _get_client(self, player_config: dict[str, Any]) -> LLMClient:
         model_cfg = player_config.get("model_config", {})
@@ -141,7 +144,7 @@ class AIService:
         return self._client_cache[provider]
 
     def _build_policy(self, player_config: dict[str, Any], *, stream: bool) -> Policy:
-        """Pick LLM or baseline policy from the seat's ``policy_kind``."""
+        """Pick LLM / tool-loop / search or baseline policy from ``policy_kind``."""
         raw = str(player_config.get("policy_kind") or "llm").strip() or "llm"
         if is_baseline_policy_kind(raw):
             try:
@@ -149,19 +152,26 @@ class AIService:
             except InvalidActionError:
                 logger.error("unknown_baseline_policy_kind", policy_kind=raw)
                 return FirstActionPolicy()
-        if raw != "llm":
-            # Dirty protocol / pack data: keep the game alive without spending API.
+        if not is_llm_policy_kind(raw):
             logger.error("unknown_player_policy_kind", policy_kind=raw)
             return FirstActionPolicy()
         model_cfg = player_config.get("model_config", {})
-        return LLMPolicy(
-            self._get_client(player_config),
-            provider=model_cfg.get("provider", "unknown"),
-            model_name=model_cfg.get("model_name"),
-            temperature=model_cfg.get("temperature"),
-            max_tokens=model_cfg.get("max_tokens"),
-            stream=stream,
-        )
+        common = {
+            "provider": model_cfg.get("provider", "unknown"),
+            "model_name": model_cfg.get("model_name"),
+            "temperature": model_cfg.get("temperature"),
+            "max_tokens": model_cfg.get("max_tokens"),
+            "stream": stream,
+            "reasoning_effort": player_config.get("_thinking_reasoning_effort"),
+            "max_thinking_tokens": player_config.get("_thinking_max_tokens"),
+        }
+        client = self._get_client(player_config)
+        if raw == "tool_loop":
+            return ToolLoopPolicy(client, **common)
+        if raw == "search":
+            search_k = int(model_cfg.get("search_k") or player_config.get("search_k") or 4)
+            return SearchAugmentedPolicy(client, search_k=search_k, **common)
+        return LLMPolicy(client, **common)
 
     @staticmethod
     def _map_provider_error(provider: str, error: Exception) -> AppError:
@@ -224,6 +234,12 @@ class AIService:
     ) -> AIDecisionResult:
         start_time = time.perf_counter()
         model_cfg = player_config.get("model_config", {})
+        player_config = dict(player_config)
+        budget_knobs = await self._protocol_thinking_budget(game_id)
+        if budget_knobs.get("reasoning_effort"):
+            player_config["_thinking_reasoning_effort"] = budget_knobs["reasoning_effort"]
+        if budget_knobs.get("max_thinking_tokens") is not None:
+            player_config["_thinking_max_tokens"] = budget_knobs["max_thinking_tokens"]
         policy = self._build_policy(player_config, stream=stream)
         frozen_version, frozen_prompts = await self._protocol_prompt_freeze(game_id)
         prompt_source = EnginePromptSource(
@@ -238,6 +254,7 @@ class AIService:
             rng=random.Random(),
             session_id=game_id,
             prompts=prompt_source,
+            score_actions=self._score_actions_fn(engine, game_id),
         )
         budget = Budget(
             max_llm_calls=MAX_RETRIES,
@@ -421,6 +438,38 @@ class AIService:
         except Exception:
             logger.warning("record_decision_point_failed", exc_info=True)
 
+    def _score_actions_fn(
+        self,
+        engine: GameEngine,
+        game_id: str | None,
+    ) -> Any:
+        """Build Observation-only candidate scorer for SearchAugmentedPolicy."""
+        evaluator = self._decision_evaluator
+        if evaluator is None or not evaluator.supports(engine):
+            return None
+
+        def score_actions(
+            observation: Any,
+            legal_actions: list[Any],
+            candidate_ids: list[str],
+        ) -> dict[str, float]:
+            params = evaluator.params
+            if game_id and game_id in self._ev_params_by_game:
+                cached = self._ev_params_by_game[game_id]
+                if cached is not None:
+                    params = cached
+            rollout = evaluator._evaluator_for(engine, params)
+            want = set(candidate_ids)
+            subset = [la for la in legal_actions if la.id in want]
+            if not subset:
+                return {}
+            return {
+                str(aid): float(val)
+                for aid, val in rollout.action_values(observation, subset).items()
+            }
+
+        return score_actions
+
     async def _score_decision(
         self,
         engine: GameEngine,
@@ -532,6 +581,40 @@ class AIService:
             params = None
         self._ev_params_by_game[game_id] = params
         return params
+
+    async def _protocol_thinking_budget(self, game_id: str | None) -> dict[str, Any]:
+        """Frozen ``solver.thinking_budget`` for the game's experiment."""
+        if not game_id or not self._sqlite_path:
+            return {}
+        if game_id in self._thinking_budget_by_game:
+            return dict(self._thinking_budget_by_game[game_id] or {})
+        from app.core.task_protocol import protocol_thinking_budget
+        from app.database import open_db_connection
+        from app.repositories.experiment_repo import ExperimentRepository
+        from app.repositories.game_repo import GameRepository
+
+        budget: dict[str, Any] = {}
+        try:
+            conn = await open_db_connection(self._sqlite_path)
+            try:
+                try:
+                    game = await GameRepository(conn).get_by_id(game_id)
+                except KeyError:
+                    self._thinking_budget_by_game[game_id] = {}
+                    return {}
+                experiment_id = game.get("experiment_id")
+                if experiment_id:
+                    row = await ExperimentRepository(conn).get_by_id(str(experiment_id))
+                    protocol = row.get("protocol") if row else None
+                    if isinstance(protocol, dict):
+                        budget = protocol_thinking_budget(protocol)
+            finally:
+                await conn.close()
+        except Exception:
+            logger.warning("protocol_thinking_budget_lookup_failed", game_id=game_id, exc_info=True)
+            budget = {}
+        self._thinking_budget_by_game[game_id] = budget
+        return dict(budget)
 
     @staticmethod
     def _truncate_text(text: str, limit: int = 400) -> str:

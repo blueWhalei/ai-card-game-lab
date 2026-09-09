@@ -150,6 +150,7 @@ class DecisionRepository:
         outcome: str | None = None,
         train_usable: bool | None = None,
         max_ev_loss: float | None = None,
+        annotation: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -157,6 +158,8 @@ class DecisionRepository:
 
         ``max_ev_loss`` keeps unevaluated points (``ev_loss IS NULL``): those moves
         were never scored, which is not the same as a loss of zero.
+
+        ``annotation`` filters by exact label; pass ``""`` to keep only unlabeled rows.
         """
         conditions: list[str] = []
         params: list[Any] = []
@@ -188,6 +191,12 @@ class DecisionRepository:
         if max_ev_loss is not None:
             conditions.append("(ev_loss IS NULL OR ev_loss <= ?)")
             params.append(max_ev_loss)
+        if annotation is not None:
+            if annotation == "":
+                conditions.append("annotation IS NULL")
+            else:
+                conditions.append("annotation = ?")
+                params.append(annotation)
 
         where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
 
@@ -223,6 +232,15 @@ class DecisionRepository:
         )
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
+
+    async def update_annotation(self, decision_id: str, annotation: str | None) -> bool:
+        """Set or clear human annotation. Returns False if the row is missing."""
+        cursor = await self._db.execute(
+            "UPDATE decision_points SET annotation = ? WHERE id = ?",
+            (annotation, decision_id),
+        )
+        await self._db.commit()
+        return (cursor.rowcount or 0) > 0
 
     async def count_total(self, experiment_id: str | None = None) -> int:
         """Count total decision points, optionally scoped to an experiment."""
@@ -490,6 +508,7 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "evaluator_params": _parse_json_object(row["evaluator_params"]),
         "policy_kind": row["policy_kind"] if "policy_kind" in keys else "llm",
         "tool_calls": _parse_json_list(row["tool_calls"] if "tool_calls" in keys else None),
+        "annotation": row["annotation"] if "annotation" in keys else None,
         "created_at": row["created_at"],
         "win_probability": _parse_json_object(
             row["win_probability_json"] if "win_probability_json" in keys else None

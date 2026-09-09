@@ -47,12 +47,12 @@ Policy.decide(observation, legal_actions, budget) -> Decision
 
 实现集合（选手配置从 "provider + model + prompt" 变成 "policy + 参数"）：
 
-- `SingleShotLLMPolicy` — 现状
-- `ToolLoopPolicy` — ReAct：模型主动调用工具后再决策
-- `SearchAugmentedPolicy` — LLM 提议 k 个候选，rollout 评估 n 次，再选择
+- `SingleShotLLMPolicy` — 现状（`policy_kind=llm`）
+- `ToolLoopPolicy` — ReAct：模型主动调用工具后再决策 —— **已完成 2026-09-09**（`policy_kind=tool_loop`）
+- `SearchAugmentedPolicy` — LLM 提议 k 个候选，rollout 评估 n 次，再选择 —— **已完成 2026-09-09**（`policy_kind=search`）
 - `HeuristicPolicy` / `FirstActionPolicy` / `RandomPolicy` — 非 LLM 基线；也让 CI 能跑零成本真实对局
-- `HumanPolicy` — 人类席位（观战界面替某座位出牌 / 中途接管）
-- `EnsemblePolicy` — 多模型投票或大模型仲裁
+- `HumanPolicy` — 人类席位（观战界面替某座位出牌 / 中途接管）—— **本批不做**
+- `EnsemblePolicy` — 多模型投票或大模型仲裁 —— **本批不做**
 
 接口契约见 §9.2：输入是 `Observation` 与规范化 action id，输出是事件流，Policy 对持久化零感知。
 
@@ -62,7 +62,7 @@ Policy.decide(observation, legal_actions, budget) -> Decision
 解析失败率归零；`fallback_parse` 仅保留给不支持约束输出的模型。
 附带一个诚实的对照实验："约束输出是否让模型变笨"。
 
-**2.1.3 工具成为模型可主动调用的动作**
+**2.1.3 工具成为模型可主动调用的动作** —— **ToolLoop ✅ 2026-09-09**
 
 `analyze_hand`、`simulate_playout(action, n)`、`count_remaining_by_rank`、`opponent_history`。
 每轮调用记录进 spans。"被动注入 vs 主动调用"是平台的第一份研究报告素材。
@@ -71,17 +71,17 @@ Policy.decide(observation, legal_actions, budget) -> Decision
 schema 并转发调用，不理解任何游戏语义（见 §9.1）。Dou Dizhu `HandAnalyzerTool` 已迁到
 `engine/doudizhu/hand_analyzer.py`（2026-09-08）；`core/ai/tools/` 不再持有牌面分析器。
 
-**2.1.4 搜索增强（test-time compute 作为变量）**
+**2.1.4 搜索增强（test-time compute 作为变量）** —— **Search ✅ 2026-09-09**
 
 引擎无状态、`GameState` 可复制，rollout 成本低。注意斗地主与德扑都是**不完美信息**博弈：
 rollout 前必须先 determinization（按观测采样一组与已知信息一致的隐藏状态），依赖
 `engine.sample_hidden_state()`（§9.1）。k、n、determinization 次数、thinking budget
 进入 protocol 并冻结，使"同模型不同预算"成为可对照的实验。
 
-**2.1.5 推理模型的 thinking budget 是一等变量**
+**2.1.5 推理模型的 thinking budget 是一等变量** —— **已完成 2026-09-09**
 
 `is_reasoning_model()` 已区分模型；预算参数（`reasoning_effort` / `max_thinking_tokens`）
-必须写入 protocol。
+写入 `protocol.solver.thinking_budget` 并在 collect 时冻结。
 
 **2.1.6 跨局记忆与对手建模**
 
@@ -138,12 +138,12 @@ cassette 为 `data/vcr/*.jsonl`。
 同局面一致性区分"理解"与"模式匹配"。
 本阶段落地：题包上 `shuffle_legal_actions` + `shuffle_hand_cards`；
 `POST /api/v1/puzzles/packs/{id}/probe` 报 consistency（扰动前后同选率）及相对金标 hit/EV loss。
-座位旋转 / zh-en / 牌面符号替换未做。
+座位旋转 / zh-en / 牌面符号替换 —— **已完成 2026-09-09**（`rotate_seats` / `zh_en_labels` / `card_symbol_style`）。
 
 **2.2.6 双层指标 + 更严谨的配对统计**
 
-- 局级：Elo / Bradley-Terry（锦标赛）、配对对照用 McNemar 或配对 bootstrap
-  （已有 `pair_deals`，独立样本 CI 是在浪费配对信息）
+- 局级：Elo / Bradley-Terry（锦标赛，延后）、配对对照用 McNemar 或配对 bootstrap
+  —— **McNemar + bootstrap ✅ 2026-09-09**（`paired_p` / `paired_ci`；已有 `pair_deals`）
 - 决策级：EV loss、tactical rating、一致性
 - 多 seed 方差报告；`VERDICT_EVEN_THRESHOLD` 等阈值进入 protocol；verdict 旁标注统计功效
 
@@ -211,7 +211,8 @@ tokens/game）写回模型库。模型列表从"文件名 + 大小"变成 eval c
 ## 4. UI/UX 项
 
 - ~~Demo 数据应产出一个**已走到 verdict 阶段**的完整实验，零成本看到五阶段终点~~ ✅ 2026-09-08（`seed-demo` → 主/对照 + `delta`）
-- 回放解说层：关键决策点叠加 "AI 选 X，基线 Y，EV 最优 Z，loss w"（依赖 §2.2.2；高光列表 ✅ Wave 4d + Wave 5；live 每帧基线仍不做）
+- 回放解说层：关键决策点叠加 "AI 选 X，基线 Y，EV 最优 Z，loss w"（依赖 §2.2.2；高光列表 ✅ Wave 4d + Wave 5；回放当前帧 ✅ 2026-09-09；live 每帧基线仍不做）
+- 决策点人工标注（好 / 坏 / 存疑）写回 `decision_points`，作为 SFT 过滤与偏好数据来源 —— **已完成 2026-09-09**（`annotation` 列 migration 4 + PATCH + DecisionView）
 - ~~全站阻塞态审计：每个阻塞态遵守"替换状态行与 CTA，而不是 banner + 无效按钮"~~
   ✅ 2026-09-09（实验 harvest/empty/verdict 阻塞替换 CTA；训练页 block 替换创建按钮，warn 才用 banner）
 - ~~拆分 `ExperimentDetailView.vue`（`useExperimentDetail()` composable + 阶段容器）~~

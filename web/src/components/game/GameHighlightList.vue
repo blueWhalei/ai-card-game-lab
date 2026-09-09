@@ -3,6 +3,7 @@ import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import UiButton from '@/components/ui/Button.vue'
 import type { GameHighlight } from '@/api/gameApi'
+import { formatEvExplain } from '@/utils/gameHighlights'
 import { formatPlayAction } from '@/utils/traceOutput'
 
 const props = withDefaults(
@@ -42,22 +43,7 @@ function actionLabel(item: GameHighlight): string {
 }
 
 function evExplain(item: GameHighlight): string | null {
-  const baseline = item.baseline_label || item.baseline_action_id || null
-  if (!item.best_action_id && !baseline) return null
-  const ai = item.action_id || actionLabel(item)
-  const parts = [t('game.evExplainAi', { ai })]
-  if (baseline) {
-    parts.push(t('game.evExplainBaseline', { base: baseline }))
-  }
-  if (item.best_action_id) {
-    parts.push(t('game.evExplainBest', { best: item.best_action_id }))
-    const loss =
-      item.ev_loss == null || Number.isNaN(Number(item.ev_loss))
-        ? '—'
-        : Number(item.ev_loss).toFixed(2)
-    parts.push(t('game.evExplainLoss', { loss }))
-  }
-  return parts.join(' · ')
+  return formatEvExplain(item, t, actionLabel(item))
 }
 
 function goDecision(item: GameHighlight): void {

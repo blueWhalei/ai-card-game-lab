@@ -37,6 +37,7 @@ def build_protocol(
     protocol_fingerprint: dict[str, Any],
     evaluator: dict[str, Any] | None = None,
     prompts: dict[str, dict[str, Any]] | None = None,
+    thinking_budget: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Assemble the frozen experiment protocol written at create time."""
     engine = {key: protocol_fingerprint[key] for key in _ENGINE_KEYS if key in protocol_fingerprint}
@@ -51,6 +52,8 @@ def build_protocol(
     }
     if prompts:
         solver["prompts"] = prompts
+    if thinking_budget:
+        solver["thinking_budget"] = dict(thinking_budget)
     return {
         "schema_version": PROTOCOL_SCHEMA_VERSION,
         "frozen_at": frozen_at,
@@ -126,6 +129,29 @@ def protocol_prompts(protocol: dict[str, Any] | None) -> dict[str, dict[str, Any
     for key, entry in raw.items():
         if isinstance(entry, dict) and entry.get("content"):
             out[str(key)] = dict(entry)
+    return out
+
+
+def protocol_thinking_budget(protocol: dict[str, Any] | None) -> dict[str, Any]:
+    """Frozen reasoning budget from ``solver.thinking_budget`` (may be empty)."""
+    if not isinstance(protocol, dict):
+        return {}
+    solver = protocol.get("solver")
+    if not isinstance(solver, dict):
+        return {}
+    raw = solver.get("thinking_budget")
+    if not isinstance(raw, dict):
+        return {}
+    out: dict[str, Any] = {}
+    effort = raw.get("reasoning_effort")
+    if isinstance(effort, str) and effort.strip():
+        out["reasoning_effort"] = effort.strip()
+    max_tok = raw.get("max_thinking_tokens")
+    if max_tok is not None:
+        try:
+            out["max_thinking_tokens"] = int(max_tok)
+        except (TypeError, ValueError):
+            pass
     return out
 
 

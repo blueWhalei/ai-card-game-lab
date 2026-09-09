@@ -102,11 +102,15 @@ def build_experiment_delta(
     paired_n: int,
     paired_landlord_win_rate_diff: float | None,
     paired_low_power: bool,
+    paired_p: float | None = None,
+    paired_ci: list[float] | None = None,
     scenario_diffs: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """One-screen verdict vs a source or control experiment (this minus peer)."""
     overall_diff: float | None = None
-    if this_decisive_n > 0 and peer_decisive_n > 0:
+    if paired_landlord_win_rate_diff is not None and paired_n > 0:
+        overall_diff = paired_landlord_win_rate_diff
+    elif this_decisive_n > 0 and peer_decisive_n > 0:
         overall_diff = round(this_landlord_win_rate - peer_landlord_win_rate, 4)
 
     low_power = this_low_power or peer_low_power or paired_low_power
@@ -133,6 +137,8 @@ def build_experiment_delta(
         "peer_decisive_n": peer_decisive_n,
         "paired_n": paired_n,
         "paired_landlord_win_rate_diff": paired_landlord_win_rate_diff,
+        "paired_p": paired_p,
+        "paired_ci": paired_ci,
         "low_power": low_power,
         "can_conclude": inconclusive_reason is None and overall_diff is not None,
         "inconclusive_reason": inconclusive_reason,

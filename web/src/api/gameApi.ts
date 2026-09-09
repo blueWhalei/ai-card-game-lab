@@ -109,6 +109,11 @@ export const gameApi = {
       `/api/v1/games/${id}/highlights`,
     ),
 
+  decisionCommentary: (id: string) =>
+    apiClient.get<never, ApiResponse<{ items: GameHighlight[] }>>(
+      `/api/v1/games/${id}/decision-commentary`,
+    ),
+
   batch: (data: BatchCreateRequest) =>
     apiClient.post<never, ApiResponse<{ game_ids: string[]; count: number }>>(
       '/api/v1/games/batch',

@@ -88,3 +88,33 @@ def test_unknown_kind_raises() -> None:
 def test_default_kinds_tuple() -> None:
     assert "shuffle_legal_actions" in DEFAULT_PERTURB_KINDS
     assert "shuffle_hand_cards" in DEFAULT_PERTURB_KINDS
+
+
+def test_zh_en_labels_keeps_ids() -> None:
+    original = _sample_puzzle()
+    original.legal_actions = [
+        {"id": "a", "label": "不出", "action": {"action_type": "PASS", "cards": []}},
+        {"id": "b", "label": "单张", "action": {"action_type": "SINGLE", "cards": ["3"]}},
+    ]
+    pert = perturb_puzzle(original, ["zh_en_labels"], random.Random(0))
+    assert [row["id"] for row in pert.legal_actions] == ["a", "b"]
+    assert pert.legal_actions[0]["label"] == "Pass"
+    assert pert.best_action_id == original.best_action_id
+
+
+def test_card_symbol_style_preserves_gold() -> None:
+    original = _sample_puzzle()
+    original.observation["private"]["hand_cards"] = ["C3", "D5"]
+    pert = perturb_puzzle(original, ["card_symbol_style"], random.Random(0))
+    assert pert.observation["private"]["hand_cards"] == ["C③", "D⑤"]
+    assert pert.best_action_id == "b"
+    assert [row["id"] for row in pert.legal_actions] == ["a", "b", "c"]
+
+
+def test_rotate_seats_cycles_ids_keeps_action_gold() -> None:
+    original = _sample_puzzle()
+    pert = perturb_puzzle(original, ["rotate_seats"], random.Random(0))
+    assert pert.observation["player_id"] == "p2"
+    assert pert.observation["public"]["turn_order"] == ["p2", "p3", "p1"]
+    assert pert.best_action_id == "b"
+    assert pert.action_values == original.action_values

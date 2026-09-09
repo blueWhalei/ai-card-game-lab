@@ -138,6 +138,13 @@ def _as_highlight(point: dict[str, Any], reason: str) -> dict[str, Any]:
     }
 
 
+def as_commentary_row(point: dict[str, Any]) -> dict[str, Any]:
+    """Decision row for replay commentary (no highlight reason)."""
+    row = _as_highlight(point, reason="play")
+    row.pop("reason", None)
+    return row
+
+
 def pick_game_highlights(
     points: list[dict[str, Any]],
     *,

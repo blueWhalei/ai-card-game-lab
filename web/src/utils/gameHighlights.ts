@@ -7,6 +7,14 @@ export interface ReplayRoundRef {
   cards?: string[]
 }
 
+export type EvExplainFields = Pick<
+  GameHighlight,
+  'action_id' | 'baseline_label' | 'baseline_action_id' | 'best_action_id' | 'ev_loss'
+> & {
+  action_type?: string
+  cards?: string[]
+}
+
 function cardsKey(cards: string[] | undefined): string {
   return (cards ?? []).join(',')
 }
@@ -41,4 +49,42 @@ export function findReplayIndex(
     (round) =>
       round.round_num === item.round_number + 1 && round.player_id === item.player_id,
   )
+}
+
+/** Find commentary row for the current replay frame (inverse of findReplayIndex). */
+export function findCommentaryAtIndex(
+  rounds: ReplayRoundRef[],
+  items: Array<
+    Pick<GameHighlight, 'round_number' | 'player_id' | 'action_type' | 'cards'>
+  >,
+  replayIndex: number,
+): (typeof items)[number] | null {
+  if (replayIndex < 0 || replayIndex >= rounds.length) return null
+  for (const item of items) {
+    if (findReplayIndex(rounds, item) === replayIndex) return item
+  }
+  return null
+}
+
+export function formatEvExplain(
+  item: EvExplainFields,
+  t: (key: string, values?: Record<string, unknown>) => string,
+  aiFallback: string,
+): string | null {
+  const baseline = item.baseline_label || item.baseline_action_id || null
+  if (!item.best_action_id && !baseline) return null
+  const ai = item.action_id || aiFallback
+  const parts = [t('game.evExplainAi', { ai })]
+  if (baseline) {
+    parts.push(t('game.evExplainBaseline', { base: baseline }))
+  }
+  if (item.best_action_id) {
+    parts.push(t('game.evExplainBest', { best: item.best_action_id }))
+    const loss =
+      item.ev_loss == null || Number.isNaN(Number(item.ev_loss))
+        ? '—'
+        : Number(item.ev_loss).toFixed(2)
+    parts.push(t('game.evExplainLoss', { loss }))
+  }
+  return parts.join(' · ')
 }

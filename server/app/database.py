@@ -182,6 +182,7 @@ CREATE TABLE IF NOT EXISTS decision_points (
     evaluator_params TEXT,
     policy_kind     TEXT    NOT NULL DEFAULT 'llm',
     tool_calls      TEXT,
+    annotation      TEXT,
     created_at      TEXT    NOT NULL
 );
 

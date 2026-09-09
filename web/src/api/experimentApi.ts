@@ -220,6 +220,8 @@ export interface ExperimentDelta {
   peer_decisive_n: number
   paired_n: number
   paired_landlord_win_rate_diff: number | null
+  paired_p?: number | null
+  paired_ci?: [number, number] | null
   low_power: boolean
   can_conclude: boolean
   inconclusive_reason: ExperimentDeltaReason | null

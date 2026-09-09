@@ -144,6 +144,7 @@ const en: typeof zhCN = {
           'Tokens per game: sum of tokens / finished games.',
           'Landlord WR difference: this run − control (or previous run), in percentage points (pp).',
           'Same-deal WR difference: only pairs that share a deal seed.',
+          'Paired McNemar / bootstrap: exact p on landlord flips; percentile CI on per-seed Δ.',
           'Scenario subscores: bidding / playing / endgame (any hand ≤8) / bomb. Bomb outranks endgame. Trainable share and parse rate; Δ is not good/bad.',
           'Game result score: end-game outcome proxy (win 0.8 / loss 0.3 / draw 0.5), not move quality. SFT filtering uses train_usable.',
           'Benchmark coverage: finished deals among the deal_seeds written at create time. Failed games still count as coverage. Collecting stops when those seeds are used.',
@@ -298,6 +299,11 @@ const en: typeof zhCN = {
     pairedDelta: {
       plain: 'Only games that were dealt the same cards — a fairer comparison.',
       formula: 'Landlord WR difference on shared deal_seed pairs. n is the pair count.',
+    },
+    pairedStats: {
+      plain: 'Paired McNemar and bootstrap CI on same-deal landlord flips.',
+      formula:
+        'McNemar: exact two-sided binomial p on discordant landlord outcomes. Paired Δ 95% CI: percentile bootstrap over per-seed differences.',
     },
     ci: {
       plain: 'Where the true win rate likely sits given current n. Fewer games → wider band.',
@@ -634,6 +640,8 @@ const en: typeof zhCN = {
     support: {
       paired: '{n} same-deal pairs',
       interval: 'win-rate range {range}',
+      pairedP: 'McNemar p={p}',
+      pairedCi: 'Paired Δ CI {range}',
     },
     scenarioTitle: 'By scenario',
     scenarioNotable: 'The gap comes mostly from {name} ({delta}).',
@@ -680,6 +688,8 @@ const en: typeof zhCN = {
     policyKind: 'Decision policy',
     policyKindHint: 'Baseline seats use no API budget',
     policyKindLlm: 'LLM',
+    policyKindToolLoop: 'Tool loop (active tools)',
+    policyKindSearch: 'Search-augmented (candidates + rollout)',
     policyKindHeuristic: 'Heuristic',
     policyKindRandom: 'Random',
     policyKindFirst: 'First action',
@@ -993,6 +1003,14 @@ const en: typeof zhCN = {
     evLossLabel: 'Gave up {n}',
     policyKind: 'Policy {kind}',
     evLossUnknown: 'Not evaluated',
+    annotation: 'Annotation',
+    annotationAll: 'Any label',
+    annotationGood: 'Good',
+    annotationBad: 'Bad',
+    annotationDoubt: 'Doubt',
+    annotationClear: 'Clear',
+    annotationSaved: 'Annotation saved',
+    annotationFailed: 'Failed to save annotation',
     avgEvLoss: 'Avg gave up {n} ({evaluated} evaluated)',
     hand: 'Hand',
     oppLeft: 'Opponent cards left',

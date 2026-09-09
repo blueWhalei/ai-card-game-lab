@@ -33,6 +33,7 @@ async def test_a_fresh_database_is_stamped_at_the_current_version(tmp_path: Path
             "parse_fallback",
             "policy_kind",
             "tool_calls",
+            "annotation",
         } <= decision_columns
         assert "policy_kind" in await _columns(db, "experiment_configs")
 
@@ -99,9 +100,10 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 3
+        assert SCHEMA_VERSION == 4
         assert "policy_kind" in await _columns(db, "decision_points")
         assert "tool_calls" in await _columns(db, "decision_points")
+        assert "annotation" in await _columns(db, "decision_points")
 
 
 async def test_migration_2_adds_policy_kind_to_legacy_experiment_configs(
@@ -182,5 +184,6 @@ async def test_migration_3_adds_tool_calls_to_legacy_decision_points(
     await init_db(sqlite_path)
 
     async with connect_sqlite(sqlite_path) as db:
-        assert await get_schema_version(db) == 3
+        assert await get_schema_version(db) == SCHEMA_VERSION
         assert "tool_calls" in await _columns(db, "decision_points")
+        assert "annotation" in await _columns(db, "decision_points")
