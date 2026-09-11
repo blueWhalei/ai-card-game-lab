@@ -1,5 +1,17 @@
 export default {
   experiment: {
+    libraryCount: '{n} 个实验',
+    collectionProgress: '采集 {progress}',
+    outcomeCounts: {
+      finished: '正常结束 {n} 局',
+      no_bid: '流局 {n} 局',
+      cancelled: '取消 {n} 局',
+      failed: '失败 {n} 局',
+      interrupted: '中断 {n} 局',
+    },
+    decidedCount: '分出胜负 {n} 局',
+    analysisLinks: '本实验分析',
+
     title: '实验',
     compare: '对比实验',
     compareMany: '对比多个实验',
@@ -29,7 +41,7 @@ export default {
     status: {
       pending_collect: '待开始',
       collecting: '对局中',
-      ready_review: '已完成',
+      ready_review: '采集已结束',
       ready_more: '可继续',
     },
     startGames: '开始实验',
@@ -229,7 +241,8 @@ export default {
     pairedHint: '配对局按相同发牌种子对齐；座位胜场见「配对胜」。',
     pairedDiff: '配对地主胜率差（对照实验 − 源实验）{diff}pp · n={n}',
     lowPowerHint: '部分实验决胜局偏少或置信区间过宽，点估计请谨慎解读。',
-    protocolMismatch: '所选实验的协议指纹不一致（游戏类型 / 引擎版本 / 提示词键 / 决策结构），对比仅供参考。',
+    protocolMismatch:
+      '所选实验的协议指纹不一致（游戏类型 / 引擎版本 / 提示词键 / 决策结构），对比仅供参考。',
     scenarioTitle: '场景子分（可训练占比）',
   },
   stage: {
@@ -249,6 +262,7 @@ export default {
       action: '观战',
     },
     harvest: {
+      readyClaim: '训练数据已就绪',
       metricLabel: '可训练决策',
       claim: '这些对局产出了 {n} 条可训练决策',
       detail: '另有 {n} 条因为格式或结果原因不适合训练，已自动排除。',
@@ -267,7 +281,8 @@ export default {
         '本实验地主胜率 {rate}。对照会复用这 {seeds} 副牌，只把其中一个座位换成微调后的模型。发牌相同，才能验证这个数字。对照是同源发牌验证，不是基准测试（不会出种子覆盖报告）。',
       action: '开始对照实验',
       needPlayerClaim: '先把训练好的模型登记成选手',
-      needPlayerDetail: '对照实验需要一名已登记、可参赛的选手。到模型仓库把它推给 Ollama 并登记为选手，然后回来开始对照实验。',
+      needPlayerDetail:
+        '对照实验需要一名已登记、可参赛的选手。到模型仓库把它推给 Ollama 并登记为选手，然后回来开始对照实验。',
       needPlayerAction: '去模型仓库',
     },
     verdict: {
@@ -334,6 +349,12 @@ export default {
     sectionPlayers: '选手表现',
   },
   config: {
+    libraryCount: '{n} 位选手',
+    transfer: '导入与导出',
+    actionsFor: '{name} 的操作',
+
+    finishedGames: '正常完局 {n} 场',
+    noFinishedGames: '暂无完局记录',
     add: '新增选手',
     emptyTitle: '还没有选手配置',
     empty: '暂无选手配置，点击上方按钮创建',

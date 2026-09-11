@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
+from app.core.policy.kinds import is_baseline_policy_kind, normalize_player_policy_kind
 from app.database import open_db_connection
 from app.repositories.game_repo import GameRepository
 from app.utils.exceptions import (
@@ -72,6 +73,8 @@ class GameService:
         for pid in player_ids:
             config = self._experiment_config_service.get_config(pid)
             if config is None:
+                continue
+            if is_baseline_policy_kind(normalize_player_policy_kind(config.get("policy_kind"))):
                 continue
             provider = str((config.get("model_config") or {}).get("provider") or "")
             if provider and not is_provider_configured(self._settings, provider):
@@ -158,6 +161,7 @@ class GameService:
         deal_seed: int | None = None,
         paired: bool = False,
         frozen_players: list[dict[str, Any]] | None = None,
+        commit: bool = True,
     ) -> dict[str, Any]:
         """Create a new game.
 
@@ -183,7 +187,11 @@ class GameService:
         game_id = generate_id("game")
         now = datetime.now(tz=UTC).isoformat()
 
-        data_file = self._collector.start_game(game_id, game_type, player_ids)
+        data_file = (
+            self._collector.start_game(game_id, game_type, player_ids)
+            if commit
+            else self._collector.prepare_game_file(game_id)
+        )
 
         metadata: dict[str, Any] = {
             "mode": mode,
@@ -205,8 +213,11 @@ class GameService:
                 status="created",
                 metadata=metadata,
                 experiment_id=experiment_id,
+                commit=commit,
             )
         finally:
+            if not commit:
+                self._collector.release_game(game_id)
             if db is None:
                 await conn.close()
         logger.info(
@@ -267,21 +278,32 @@ class GameService:
 
                 deal_seed = secrets.randbits(31)
                 metadata["deal_seed"] = deal_seed
-                await conn.execute(
-                    "UPDATE games SET status = 'running', metadata = ? WHERE id = ?",
-                    (json_mod.dumps(metadata, ensure_ascii=False), game_id),
-                )
-            else:
-                await conn.execute("UPDATE games SET status = 'running' WHERE id = ?", (game_id,))
-            await conn.commit()
-
-            await self._orchestration_service.start_game_execution(
-                game_id=game_id,
-                game_type=game["game_type"],
-                player_ids=player_ids,
-                seed=int(deal_seed),
-                frozen_players=metadata.get("players"),
+            cursor = await conn.execute(
+                "UPDATE games SET status = 'running', metadata = ? WHERE id = ? AND status = 'created'",
+                (json_mod.dumps(metadata, ensure_ascii=False), game_id),
             )
+            await conn.commit()
+            if cursor.rowcount != 1:
+                raise GameAlreadyStartedError(game_id)
+
+            try:
+                self._collector.bind_game_file(game_id, game["data_file"])
+                self._collector.ensure_started(game_id, game["game_type"], player_ids)
+                await self._orchestration_service.start_game_execution(
+                    game_id=game_id,
+                    game_type=game["game_type"],
+                    player_ids=player_ids,
+                    seed=int(deal_seed),
+                    frozen_players=metadata.get("players"),
+                )
+            except BaseException:
+                if not self._orchestration_service.has_active_game(game_id):
+                    await conn.execute(
+                        "UPDATE games SET status = 'created' WHERE id = ? AND status = 'running'",
+                        (game_id,),
+                    )
+                    await conn.commit()
+                raise
 
             logger.info("game_started", game_id=game_id, deal_seed=deal_seed)
 

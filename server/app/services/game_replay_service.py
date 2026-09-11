@@ -58,7 +58,7 @@ class GameReplayService:
                 raise GameNotFoundError(game_id) from None
             rounds = await round_repo.list_by_game(game_id)
 
-        fallback_thinking_map = self._read_thinking_map_from_jsonl(game_id)
+        fallback_thinking_map = await self.read_thinking_map_from_jsonl(game_id)
         replay_rounds: list[dict[str, Any]] = []
         thinking_map: dict[int, str] = {}
 
@@ -146,7 +146,7 @@ class GameReplayService:
         games_dir = data_dir / "games"
         if not games_dir.exists():
             return thinking_map
-        for jsonl_file in games_dir.rglob(f"{game_id}.jsonl"):
+        for jsonl_file in sorted(games_dir.rglob(f"{game_id}.jsonl")):
             with jsonl_file.open("r", encoding="utf-8") as f:
                 for line in f:
                     try:
@@ -165,7 +165,6 @@ class GameReplayService:
                     thinking = record.get("thinking")
                     if isinstance(round_num, int) and thinking:
                         thinking_map[round_num] = thinking
-            break
         return thinking_map
 
     async def read_thinking_map_from_jsonl(self, game_id: str) -> dict[int, str]:
@@ -206,7 +205,7 @@ class GameReplayService:
         if not games_dir.exists():
             return player_thinking
 
-        for jsonl_file in games_dir.rglob(f"{game_id}.jsonl"):
+        for jsonl_file in sorted(games_dir.rglob(f"{game_id}.jsonl")):
             with jsonl_file.open("r", encoding="utf-8") as f:
                 for line in f:
                     try:
@@ -227,6 +226,5 @@ class GameReplayService:
                         if player_id not in player_thinking:
                             player_thinking[player_id] = []
                         player_thinking[player_id].append(thinking)
-            break
 
         return player_thinking

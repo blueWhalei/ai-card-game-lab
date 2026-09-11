@@ -156,7 +156,10 @@ class GameOrchestrationService:
     async def _run_game_loop(self, game_id: str) -> None:
         """Run the main game loop until completion."""
         logger.info("game_loop_entering", game_id=game_id)
-        await self._run_game_loop_locked(game_id)
+        try:
+            await self._run_game_loop_locked(game_id)
+        finally:
+            self._collector.release_game(game_id)
 
     async def _run_game_loop_locked(self, game_id: str) -> None:
         """Execute one game; concurrency slot is held only during each AI round."""

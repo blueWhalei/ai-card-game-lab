@@ -25,6 +25,8 @@ class GameRepository:
         status: str = "created",
         metadata: dict[str, Any] | None = None,
         experiment_id: str | None = None,
+        *,
+        commit: bool = True,
     ) -> dict[str, Any]:
         """Insert a new game record and return it as a dict."""
         await self._db.execute(
@@ -45,7 +47,8 @@ class GameRepository:
                 experiment_id,
             ),
         )
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
         return await self.get_by_id(game_id)
 
     async def get_by_id(self, game_id: str) -> dict[str, Any]:

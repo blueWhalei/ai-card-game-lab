@@ -5,10 +5,12 @@ from __future__ import annotations
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 import aiosqlite
 import structlog
 
+from app.repositories.collect_repo import CollectRepository
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.experiment_errors import ExperimentValidationError
 from app.services.experiment_protocol import (
@@ -23,7 +25,12 @@ from app.services.experiment_protocol import (
     validate_protocol,
 )
 from app.services.game_service import GameService
-from app.utils.exceptions import ProviderNotConfiguredError
+from app.utils.exceptions import (
+    AppError,
+    GameAlreadyStartedError,
+    GameNotFoundError,
+    ProviderNotConfiguredError,
+)
 from app.utils.providers import unconfigured_providers_from_players
 
 logger = structlog.get_logger()
@@ -57,12 +64,61 @@ class ExperimentCollectMixin:
         *,
         count: int,
         db: aiosqlite.Connection,
+        idempotency_key: str | None = None,
     ) -> dict[str, Any]:
+        """Reserve a whole batch atomically; retries start only its unstarted games."""
+        if not 1 <= count <= 50:
+            raise ExperimentValidationError("Collection count must be between 1 and 50")
+        if idempotency_key is not None and not 1 <= len(idempotency_key) <= 128:
+            raise ExperimentValidationError("Idempotency key must contain 1–128 characters")
+        key = idempotency_key or uuid4().hex
+        db.row_factory = aiosqlite.Row
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            requests = CollectRepository(db)
+            previous = await requests.get(experiment_id, key)
+            if previous is not None:
+                if previous["requested_count"] != count:
+                    raise AppError(
+                        message="Idempotency key was already used with a different count",
+                        code="COLLECT_IDEMPOTENCY_CONFLICT",
+                        status_code=409,
+                    )
+                game_ids = list(previous["game_ids"])
+            else:
+                game_ids = await self._reserve_collection(
+                    experiment_id, count=count, db=db, requests=requests, key=key
+                )
+            await db.commit()
+        except BaseException:
+            await db.rollback()
+            raise
+
+        for game_id in game_ids:
+            try:
+                await self._game_service.start_game(game_id, db=db)
+            except (GameAlreadyStartedError, GameNotFoundError):
+                # A concurrent retry claimed it, or the original game was archived.
+                # Never recreate a previously reserved id or repeat its model calls.
+                continue
+        logger.info("experiment_collect_started", experiment_id=experiment_id, count=len(game_ids))
+        return {"game_ids": game_ids, "count": len(game_ids)}
+
+    async def _reserve_collection(
+        self,
+        experiment_id: str,
+        *,
+        count: int,
+        db: aiosqlite.Connection,
+        requests: CollectRepository,
+        key: str,
+    ) -> list[str]:
+        requested_count = count
         experiment = await self.get_experiment(experiment_id, include_games=True)
         player_ids = list(experiment["player_ids"])
         game_type = str(experiment["game_type"])
         existing_games = list(experiment.get("games") or [])
-        start_index = len(existing_games)
+        start_index = max(len(existing_games), await requests.next_index(experiment_id))
 
         now = datetime.now(tz=UTC).isoformat()
         try:
@@ -113,26 +169,17 @@ class ExperimentCollectMixin:
                 deal_seed=seed,
                 paired=paired,
                 frozen_players=frozen_players,
+                commit=False,
             )
-            await self._game_service.start_game(game["id"], db=db)
             game_ids.append(game["id"])
 
         set_protocol_deal_seeds(protocol, deal_seeds)
         set_protocol_pair_deals(protocol, pair_deals)
-        conn = await self._conn()
-        try:
-            repo = ExperimentRepository(conn)
-            await repo.update_protocol(experiment_id, protocol, updated_at=now)
-        finally:
-            await conn.close()
-
-        logger.info(
-            "experiment_collect_started",
-            experiment_id=experiment_id,
-            count=len(game_ids),
-            deal_seed_count=len(deal_seeds),
+        await ExperimentRepository(db).update_protocol(
+            experiment_id, protocol, updated_at=now, commit=False
         )
-        return {"game_ids": game_ids, "count": len(game_ids)}
+        await requests.create(experiment_id, key, requested_count, start_index, game_ids, now)
+        return game_ids
 
     async def cancel_collect(self, experiment_id: str) -> dict[str, Any]:
         """Cancel all active games for an experiment (stop an in-flight collect)."""

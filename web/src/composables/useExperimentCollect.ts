@@ -1,12 +1,9 @@
 import { computed, ref, type Ref } from 'vue'
-import {
-  experimentApi,
-  isBenchmarkExperiment,
-  type Experiment,
-} from '@/api/experimentApi'
+import { experimentApi, isBenchmarkExperiment, type Experiment } from '@/api/experimentApi'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { remainingCollectGames } from '@/utils/experimentBenchmark'
+import { createCollectRequestCache } from '@/utils/collectRequest'
 import type { ComposerTranslation } from 'vue-i18n'
 
 type Translate = ComposerTranslation
@@ -25,6 +22,7 @@ export function useExperimentCollect(opts: {
   const collecting = ref(false)
   const collectOpen = ref(false)
   const collectCount = ref(1)
+  const requestCache = createCollectRequestCache()
 
   const remaining = computed(() =>
     opts.experiment.value ? remainingCollectGames(opts.experiment.value) : 0,
@@ -56,6 +54,7 @@ export function useExperimentCollect(opts: {
   }
 
   async function submitCollect(): Promise<void> {
+    if (collecting.value) return
     const exp = opts.experiment.value
     if (!exp) return
     if (opts.collectBlocked.value) {
@@ -71,7 +70,11 @@ export function useExperimentCollect(opts: {
     if (n < 1 || n > 50) return
     collecting.value = true
     try {
-      const res = await experimentApi.collect(exp.id, { count: n })
+      const res = await experimentApi.collect(exp.id, {
+        count: n,
+        idempotency_key: requestCache.get(exp.id, n),
+      })
+      requestCache.complete(exp.id)
       collectOpen.value = false
       toast.success(opts.t('experiment.startedN', { n: res.data.count }))
       await opts.onCollected?.()

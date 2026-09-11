@@ -34,6 +34,7 @@ export default {
     expandSidebar: '展开侧栏',
   },
   common: {
+    noOutcomes: '暂无胜负样本',
     cancel: '取消',
     confirm: '确认',
     ok: '确定',
@@ -115,11 +116,9 @@ export default {
     DEPLOY_MERGE_FAILED: 'LoRA 合并失败，请查看后端日志。',
     DEPLOY_NOT_LORA: '该任务不是可用的 LoRA 适配器目录，请先完成训练。',
     TRAINING_GUARD_FAILED: '训练环境检查未通过。',
-    PROVIDER_NOT_CONFIGURED:
-      '实验座位供应商未配置。请在 .env 配置密钥，或改选手配置。',
+    PROVIDER_NOT_CONFIGURED: '实验座位供应商未配置。请在 .env 配置密钥，或改选手配置。',
     EXPERIMENT_VALIDATION_FAILED: '实验校验未通过，请检查选手人数、协议或对照设置。',
-    OLLAMA_UNREACHABLE:
-      '无法连接 Ollama（{url}）。请确认 Ollama 已启动，且本机可访问该地址。',
+    OLLAMA_UNREACHABLE: '无法连接 Ollama（{url}）。请确认 Ollama 已启动，且本机可访问该地址。',
     OLLAMA_TIMEOUT: '连接 Ollama 超时（{url}）。请确认服务已启动且网络正常。',
     OLLAMA_TAG_NOT_FOUND:
       'Ollama 中未找到模型标签「{tag}」。请先推送到 Ollama 或执行 ollama create。',

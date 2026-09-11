@@ -15,9 +15,44 @@ import structlog
 
 from app.core.ai.base import ChatResponse, LLMClient
 from app.core.ai.stream_chunk import StreamChunk
-from app.utils.exceptions import AIProviderError
+from app.utils.exceptions import (
+    AIProviderError,
+    AIProviderUnavailableError,
+    AIRateLimitExceededError,
+    AppError,
+)
 
 logger = structlog.get_logger()
+
+
+def _unsupported_field(response: httpx.Response, field: str) -> bool:
+    """Only explicit parameter incompatibility permits dropping a request constraint."""
+    if response.status_code not in (400, 422):
+        return False
+    detail = response.text.lower()
+    if field == "response_format" and "response_format type is unavailable" in detail:
+        return True
+    markers = (
+        "unsupported",
+        "not supported",
+        "does not support",
+        "unknown parameter",
+        "unknown field",
+        "unrecognized",
+        "unrecognised",
+        "unexpected keyword",
+        "extra inputs are not permitted",
+    )
+    return field in detail and any(marker in detail for marker in markers)
+
+
+def _http_error(provider: str, response: httpx.Response) -> AppError:
+    detail = f"HTTP {response.status_code}: {response.text[:500]}"
+    if response.status_code == 429:
+        return AIRateLimitExceededError(provider, detail)
+    if response.status_code in (502, 503, 504):
+        return AIProviderUnavailableError(provider, detail)
+    return AIProviderError(provider, detail, retryable=not 400 <= response.status_code < 500)
 
 
 class OpenAICompatibleClient(LLMClient):
@@ -62,6 +97,8 @@ class OpenAICompatibleClient(LLMClient):
         }
         if reasoning_effort:
             payload["reasoning_effort"] = reasoning_effort
+        if self._provider_name == "deepseek" and (thinking := kwargs.pop("thinking", None)):
+            payload["thinking"] = thinking
 
         url = f"{self._base_url}/chat/completions"
 
@@ -97,10 +134,7 @@ class OpenAICompatibleClient(LLMClient):
         except httpx.TimeoutException as e:
             raise AIProviderError(self._provider_name, f"Request timed out: {e}") from e
         except httpx.HTTPStatusError as e:
-            raise AIProviderError(
-                self._provider_name,
-                f"HTTP {e.response.status_code}: {e.response.text[:500]}",
-            ) from e
+            raise _http_error(self._provider_name, e.response) from e
         except Exception as e:
             raise AIProviderError(self._provider_name, str(e)) from e
 
@@ -114,8 +148,9 @@ class OpenAICompatibleClient(LLMClient):
     ) -> httpx.Response:
         """Post once with the schema, and again without it if the vendor rejects it.
 
-        ``json_schema`` support is uneven across OpenAI-compatible endpoints, and a
-        vendor that does not know the field answers 4xx. Dropping the constraint
+        Only a 400/422 explicitly rejecting ``response_format`` permits a retry.
+        Authentication, quota and unrelated validation errors keep their meaning.
+        Dropping the constraint
         still leaves the text instructions, so the decision protocol is unchanged --
         only the decoder-level guarantee is lost.
         """
@@ -125,7 +160,7 @@ class OpenAICompatibleClient(LLMClient):
         resp = await client.post(
             url, json={**payload, "response_format": response_format}, headers=headers
         )
-        if 400 <= resp.status_code < 500:
+        if _unsupported_field(resp, "response_format"):
             logger.warning(
                 "llm_response_format_rejected",
                 provider=self._provider_name,
@@ -164,8 +199,12 @@ class OpenAICompatibleClient(LLMClient):
             "max_tokens": max_tokens,
             "stream": True,
         }
-        # Some providers reject stream_options or json_schema; on 4xx drop one
-        # optional field at a time rather than failing the whole call.
+        reasoning_effort = kwargs.pop("reasoning_effort", None)
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+        if self._provider_name == "deepseek" and (thinking := kwargs.pop("thinking", None)):
+            payload["thinking"] = thinking
+        # Drop only the optional field explicitly rejected by the provider.
         include_usage = True
         include_schema = response_format is not None
 
@@ -182,21 +221,31 @@ class OpenAICompatibleClient(LLMClient):
                     async with client.stream(
                         "POST", url, json=req_payload, headers=headers
                     ) as response:
-                        if 400 <= response.status_code < 500 and (include_usage or include_schema):
-                            body = (await response.aread())[:300]
-                            dropped = "stream_options" if include_usage else "response_format"
-                            logger.warning(
-                                "llm_stream_field_rejected",
-                                provider=self._provider_name,
-                                status=response.status_code,
-                                dropped=dropped,
-                                body=body.decode("utf-8", errors="replace"),
+                        if response.is_error:
+                            await response.aread()
+                            dropped = next(
+                                (
+                                    field
+                                    for field, enabled in (
+                                        ("stream_options", include_usage),
+                                        ("response_format", include_schema),
+                                    )
+                                    if enabled and _unsupported_field(response, field)
+                                ),
+                                None,
                             )
-                            if include_usage:
-                                include_usage = False
-                            else:
-                                include_schema = False
-                            continue
+                            if dropped is not None:
+                                logger.warning(
+                                    "llm_stream_field_rejected",
+                                    provider=self._provider_name,
+                                    status=response.status_code,
+                                    dropped=dropped,
+                                )
+                                if dropped == "stream_options":
+                                    include_usage = False
+                                else:
+                                    include_schema = False
+                                continue
                         response.raise_for_status()
 
                         async for line in response.aiter_lines():
@@ -259,10 +308,7 @@ class OpenAICompatibleClient(LLMClient):
         except httpx.TimeoutException as e:
             raise AIProviderError(self._provider_name, f"Stream request timed out: {e}") from e
         except httpx.HTTPStatusError as e:
-            raise AIProviderError(
-                self._provider_name,
-                f"HTTP {e.response.status_code}: {e.response.text[:500]}",
-            ) from e
+            raise _http_error(self._provider_name, e.response) from e
         except Exception as e:
             raise AIProviderError(self._provider_name, str(e)) from e
 

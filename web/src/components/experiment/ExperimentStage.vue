@@ -71,13 +71,10 @@ const emptyAct = computed(() => {
   }
   return {
     claim: t('stage.empty.claim'),
-    detail: t(
-      isBenchmark.value ? 'stage.empty.detailBenchmark' : 'stage.empty.detail',
-      {
-        target: summary.value.target_games,
-        players: props.experiment.player_ids.length,
-      },
-    ),
+    detail: t(isBenchmark.value ? 'stage.empty.detailBenchmark' : 'stage.empty.detail', {
+      target: summary.value.target_games,
+      players: props.experiment.player_ids.length,
+    }),
     actionLabel: t('experiment.confirmStart'),
     action: 'collect' as ExperimentStageAction,
   }
@@ -115,7 +112,7 @@ const harvestAct = computed(() => {
     }
   }
   return {
-    claim: t('stage.harvest.claim', { n: usable.value }),
+    claim: t('stage.harvest.readyClaim'),
     detail:
       notUsable.value > 0
         ? t('stage.harvest.detail', { n: notUsable.value })
@@ -139,7 +136,9 @@ const controlAct = computed(() => {
   return {
     claim: t('stage.control.claim'),
     detail: t('stage.control.detail', {
-      seeds: flattenProtocol(props.experiment.protocol)?.deal_seeds?.length ?? summary.value.finished_games,
+      seeds:
+        flattenProtocol(props.experiment.protocol)?.deal_seeds?.length ??
+        summary.value.finished_games,
       rate: formatWinRate(summary.value.landlord_win_rate ?? 0),
     }),
     actionLabel: t('stage.control.action'),

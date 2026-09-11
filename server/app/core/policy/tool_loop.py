@@ -17,7 +17,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.ai.action_menu import render_menu
-from app.core.ai.errors import map_provider_error
+from app.core.ai.errors import is_non_retryable_provider_error, map_provider_error
 from app.core.policy.base import (
     ActionChosen,
     Budget,
@@ -140,6 +140,10 @@ class ToolLoopPolicy(LLMPolicy):
                 last_error = AITimeoutError(self._provider, f"Timeout on attempt {llm_calls}")
             except Exception as error:
                 last_error = map_provider_error(self._provider, error)
+                if is_non_retryable_provider_error(last_error):
+                    if last_error is error:
+                        raise
+                    raise last_error from error
                 logger.warning(
                     "tool_loop_call_failed",
                     player_id=observation.player_id,

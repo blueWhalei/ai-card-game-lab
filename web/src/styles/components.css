@@ -1,7 +1,11 @@
 @layer components {
   /* Workbench fills the main pane; cap only on ultra-wide so tables don't stretch endlessly */
   .page-container {
-    @apply w-full max-w-[1680px] px-6 py-6 md:px-8 md:py-8 xl:px-10;
+    @apply mx-auto w-full max-w-[1440px] px-4 py-6 md:px-8 md:py-8 xl:px-10;
+  }
+
+  .research-page {
+    max-width: 1200px;
   }
 
   .page-title {
@@ -109,4 +113,13 @@
 
     font-weight: var(--ink-evidence-weight-weak);
   }
+}
+
+/* Consistent keyboard focus, including native disclosures and replay controls. */
+:where(button, a, summary, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid var(--ink-primary);
+  outline-offset: 3px;
+}
+.observer-workspace :focus-visible {
+  outline-color: var(--ink-obs-accent);
 }

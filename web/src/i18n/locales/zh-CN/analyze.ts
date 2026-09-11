@@ -36,6 +36,11 @@ export default {
     miss: '未中',
   },
   decision: {
+    datasetTools: '数据集与导出',
+    evaluationTitle: '评估与标注',
+    technicalEvidence: '合法动作与解析详情',
+    roundLabel: '第 {n} 回合',
+
     includeThinking: '包含思考',
     datasetNamePh: '数据集名（可选）',
     saveDataset: '保存为训练数据集',
@@ -163,7 +168,7 @@ export default {
     scale: '规模',
     totalGames: '总对局',
     totalRounds: '总轮次',
-    avgResponseMs: '平均响应 (ms)',
+    avgResponseMs: '平均响应',
     gameKinds: '游戏种类',
     tokenUsage: 'Token 用量',
     totalTokens: '总 Token',
@@ -237,6 +242,16 @@ export default {
     deleteArchive: '删除归档文件 {name}？',
   },
   training: {
+    workspaceHint: '从训练数据集创建任务，再将完成的模型加入选手配置。',
+    runtimeDetails: '运行资源',
+    runtimePending: '暂未获取到运行资源数据',
+
+    emptyTasksBlockedHint: '训练前请先完成环境检查。你也可以先查看决策点，准备训练数据集。',
+    emptyTasksTitle: '还没有训练任务',
+    emptyTasksHint:
+      '先从决策点保存训练数据集，再创建训练任务。已有数据集可直接使用上方的创建按钮。',
+    reviewDecisions: '查看可训练决策',
+
     status: {
       pending: '等待中',
       exporting: '导出数据',
@@ -274,7 +289,8 @@ export default {
     maxSteps: '最大步数',
     loraHint: '产物为 LoRA 适配器目录。无 GPU 时自动按 CPU 快速验证模式限制步数与样本。',
     qlora: '4-bit QLoRA（需要 NVIDIA GPU）',
-    qloraHint: '需 CUDA 与 bitsandbytes（pip install bitsandbytes，不随 training extra 安装）。未勾选时使用普通 LoRA。',
+    qloraHint:
+      '需 CUDA 与 bitsandbytes（pip install bitsandbytes，不随 training extra 安装）。未勾选时使用普通 LoRA。',
     loadDatasetsFailed: '加载数据集失败',
     needTaskName: '请输入任务名称',
     needDataset: '请选择数据集',

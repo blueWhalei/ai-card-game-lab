@@ -191,7 +191,6 @@ ai-card-game-lab/
 │   │   │   └── index.ts
 │   │   │
 │   │   ├── stores/                     # Pinia 状态管理
-│   │   │   ├── useGameStore.ts
 │   │   │   ├── useDataStore.ts
 │   │   │   └── useTrainingStore.ts
 │   │   │

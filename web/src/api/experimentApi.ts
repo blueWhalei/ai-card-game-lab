@@ -351,6 +351,7 @@ export interface CloneExperimentRequest {
 
 export interface CollectExperimentRequest {
   count: number
+  idempotency_key?: string
 }
 
 export interface CollectExperimentResult {
@@ -515,7 +516,7 @@ export const EXPERIMENT_STATUS_VARIANT: Record<
 > = {
   pending_collect: 'muted',
   collecting: 'accent',
-  ready_review: 'success',
+  ready_review: 'muted',
   ready_more: 'warning',
 }
 

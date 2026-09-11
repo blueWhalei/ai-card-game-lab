@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { experimentOutcomeText } from '@/utils/experimentOutcomes'
 import { Icon } from '@iconify/vue'
 import { isBenchmarkExperiment } from '@/api/experimentApi'
 import { useExperimentDetail } from '@/composables/useExperimentDetail'
@@ -93,7 +94,7 @@ const {
 } = useExperimentDetail()
 </script>
 <template>
-  <div class="page-container space-y-ink-8">
+  <div class="page-container research-page space-y-ink-6">
     <div v-if="loading">
       <UiSkeletonList :rows="6" />
     </div>
@@ -128,19 +129,42 @@ const {
         {{ experiment.hypothesis }}
       </p>
 
-      <ExperimentStage
-        :experiment="experiment"
-        :blocked-message="blockedMessage"
-        :has-challenger="hasChallenger"
-        :busy="stageBusy"
-        v-model:collect-count="collectCount"
-        :remaining-collect="remaining"
-        :cancelling-collect="cancellingCollect"
-        @action="onStageAction"
-        @compare="goCompareWithSuggested"
-        @open-experiment="openExperiment"
-        @conclusion-saved="load"
-      />
+      <section class="rounded-ink-md border border-ink-border bg-ink-surface p-ink-6 md:p-ink-8">
+        <ExperimentStage
+          :experiment="experiment"
+          :blocked-message="blockedMessage"
+          :has-challenger="hasChallenger"
+          :busy="stageBusy"
+          v-model:collect-count="collectCount"
+          :remaining-collect="remaining"
+          :cancelling-collect="cancellingCollect"
+          @action="onStageAction"
+          @compare="goCompareWithSuggested"
+          @open-experiment="openExperiment"
+          @conclusion-saved="load"
+        />
+
+        <div
+          class="mt-ink-6 flex flex-wrap items-center justify-between gap-ink-3 border-t border-ink-border pt-ink-4"
+        >
+          <p v-if="summary.total_games > 0" class="text-caption text-ink-text-secondary">
+            {{ experimentOutcomeText(summary) }}
+          </p>
+          <nav
+            :aria-label="t('experiment.analysisLinks')"
+            class="flex flex-wrap gap-ink-4 text-body"
+          >
+            <RouterLink
+              v-for="tool in ['data', 'decisions', 'traces']"
+              :key="tool"
+              :to="{ path: `/pipeline/${tool}`, query: { experiment_id: experimentId } }"
+              class="text-ink-primary underline-offset-4 hover:underline focus-visible:underline"
+            >
+              {{ t(`nav.${tool}`) }}
+            </RouterLink>
+          </nav>
+        </div>
+      </section>
 
       <ExperimentBenchmarkReport
         v-if="showBenchmarkReport"
@@ -156,12 +180,6 @@ const {
       >
         {{ noticeText }}
       </button>
-
-      <ExperimentTimeline
-        :events="experiment.timeline"
-        :control-progress="validation?.control_progress"
-        @open-experiment="openExperiment"
-      />
 
       <ExperimentGamesTab
         v-if="finishedCount > 0 || activeGames.length > 0"
@@ -188,6 +206,11 @@ const {
           <ExperimentPlayersTab :summary="summary" :config-label="configLabel" />
         </div>
       </section>
+      <ExperimentTimeline
+        :events="experiment.timeline"
+        :control-progress="validation?.control_progress"
+        @open-experiment="openExperiment"
+      />
     </template>
 
     <div v-else class="py-16 text-center text-ink-text-muted">{{ t('experiment.missing') }}</div>

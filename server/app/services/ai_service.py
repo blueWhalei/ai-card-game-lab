@@ -172,7 +172,9 @@ class AIService:
         if raw == "search":
             search_k = int(model_cfg.get("search_k") or player_config.get("search_k") or 4)
             return SearchAugmentedPolicy(client, search_k=search_k, **common)
-        return LLMPolicy(client, **common)
+        return LLMPolicy(
+            client, deepseek_direct_json=bool(model_cfg.get("deepseek_direct_json")), **common
+        )
 
     @staticmethod
     def _map_provider_error(provider: str, error: Exception) -> AppError:

@@ -34,6 +34,7 @@ export default {
     expandSidebar: 'Expand sidebar',
   },
   common: {
+    noOutcomes: 'No decided games',
     cancel: 'Cancel',
     confirm: 'Confirm',
     ok: 'OK',
@@ -111,18 +112,15 @@ export default {
     DEPLOY_LLAMA_CPP_MISSING:
       'LLAMA_CPP_DIR is missing or invalid. Set it in .env to a llama.cpp checkout with convert_hf_to_gguf.py.',
     DEPLOY_GGUF_FAILED: 'GGUF conversion failed. Check server logs for details.',
-    DEPLOY_OLLAMA_FAILED:
-      'Failed to push to Ollama. Ensure Ollama is installed and on PATH.',
+    DEPLOY_OLLAMA_FAILED: 'Failed to push to Ollama. Ensure Ollama is installed and on PATH.',
     DEPLOY_MERGE_FAILED: 'LoRA merge failed. Check server logs for details.',
-    DEPLOY_NOT_LORA:
-      'This task is not a usable LoRA adapter directory. Finish training first.',
+    DEPLOY_NOT_LORA: 'This task is not a usable LoRA adapter directory. Finish training first.',
     TRAINING_GUARD_FAILED: 'Training environment check failed.',
     PROVIDER_NOT_CONFIGURED:
       'Seat LLM provider is not configured. Set the API key in .env, or change the player configs.',
     EXPERIMENT_VALIDATION_FAILED:
       'Experiment validation failed. Check player count, protocol, or control settings.',
-    OLLAMA_UNREACHABLE:
-      'Cannot reach Ollama at {url}. Ensure Ollama is running and reachable.',
+    OLLAMA_UNREACHABLE: 'Cannot reach Ollama at {url}. Ensure Ollama is running and reachable.',
     OLLAMA_TIMEOUT: 'Timed out connecting to Ollama ({url}). Ensure the service is running.',
     OLLAMA_TAG_NOT_FOUND:
       'Model tag "{tag}" not found in Ollama. Push to Ollama or run ollama create first.',

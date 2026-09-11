@@ -4,6 +4,8 @@ import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiProgress from '@/components/ui/Progress.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import { useRoute, useRouter } from 'vue-router'
 import UiTable from '@/components/ui/Table.vue'
 import { TRAINING_STATUS_MAP } from '@/utils/constants'
 import { formatDateTime } from '@/utils/format'
@@ -12,11 +14,14 @@ defineProps<{
   columns: { key: string; label: string; class?: string }[]
   rows: Record<string, unknown>[]
   loading: boolean
+  canCreate: boolean
   statusVariant: (status: string) => 'muted' | 'success' | 'warning' | 'danger' | 'default'
   formatProgress: (progress: number) => string
 }>()
 
 const { t } = useI18n()
+const route = useRoute()
+const router = useRouter()
 
 const emit = defineEmits<{
   delete: [id: string]
@@ -33,7 +38,26 @@ function taskError(row: Record<string, unknown>): string {
 <template>
   <div class="relative">
     <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
-    <UiTable :columns="columns" :rows="rows" row-key="id">
+    <EmptyState
+      v-if="!loading && rows.length === 0"
+      :title="t('training.emptyTasksTitle')"
+      :description="t(canCreate ? 'training.emptyTasksHint' : 'training.emptyTasksBlockedHint')"
+    >
+      <template #action>
+        <UiButton
+          variant="secondary"
+          @click="
+            router.push({
+              path: '/pipeline/decisions',
+              query: { experiment_id: route.query.experiment_id, train_usable: 'true' },
+            })
+          "
+        >
+          {{ t('training.reviewDecisions') }}
+        </UiButton>
+      </template>
+    </EmptyState>
+    <UiTable v-else :columns="columns" :rows="rows" row-key="id">
       <template #cell-base_model="{ row }">
         <span class="font-mono text-xs">{{ row.base_model }}</span>
       </template>

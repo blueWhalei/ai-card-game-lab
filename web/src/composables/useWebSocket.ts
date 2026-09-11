@@ -43,12 +43,11 @@ export function useWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
     }
   }
 
-  function connect(): void {
+  function openSocket(): void {
     const gameId = currentGameId()
     if (!gameId) return
 
     const generation = ++socketGeneration
-    reconnectAttempts = 0
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
     const host = window.location.host
     ws = new WebSocket(`${protocol}//${host}/api/v1/games/ws/${gameId}`)
@@ -93,7 +92,7 @@ export function useWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
         reconnectAttempts++
         reconnectTimer = setTimeout(() => {
           if (generation !== socketGeneration) return
-          connect()
+          openSocket()
         }, RECONNECT_DELAY_MS)
       }
     }
@@ -128,6 +127,12 @@ export function useWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
     }
   }
 
+  function connect(): void {
+    disconnect()
+    reconnectAttempts = 0
+    openSocket()
+  }
+
   function send(message: WsMessage): void {
     if (ws?.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify(message))
@@ -137,9 +142,9 @@ export function useWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
   watch(
     () => currentGameId(),
     (next, prev) => {
-      if (!next || next === prev) return
-      disconnect()
-      connect()
+      if (next === prev) return
+      if (next) connect()
+      else disconnect()
     },
   )
 

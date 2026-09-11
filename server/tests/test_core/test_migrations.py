@@ -6,7 +6,7 @@ import aiosqlite
 import pytest
 
 from app.database import connect_sqlite, init_db
-from app.migrations import SCHEMA_VERSION, get_schema_version
+from app.migrations import SCHEMA_VERSION, get_schema_version, migrate
 from app.utils.exceptions import SchemaVersionError
 
 
@@ -46,6 +46,20 @@ async def test_initialising_twice_changes_nothing(tmp_path: Path) -> None:
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
+
+
+async def test_v5_database_gains_collection_reservations(tmp_path: Path) -> None:
+    sqlite_path = str(tmp_path / "legacy_collect.db")
+    await init_db(sqlite_path)
+    async with connect_sqlite(sqlite_path) as db:
+        await db.execute("DROP TABLE experiment_collect_requests")
+        await db.execute("PRAGMA user_version = 5")
+        await db.commit()
+        await migrate(db)
+        assert await get_schema_version(db) == 6
+        assert {"experiment_id", "request_key", "requested_count", "start_index", "game_ids"} <= (
+            await _columns(db, "experiment_collect_requests")
+        )
 
 
 async def test_a_newer_database_is_refused(tmp_path: Path) -> None:
@@ -100,7 +114,7 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 5
+        assert SCHEMA_VERSION == 6
         assert "policy_kind" in await _columns(db, "decision_points")
         assert "tool_calls" in await _columns(db, "decision_points")
         assert "annotation" in await _columns(db, "decision_points")

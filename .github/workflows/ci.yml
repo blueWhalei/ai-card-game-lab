@@ -51,7 +51,7 @@ jobs:
         run: npm run lint:ci
       - name: Unit tests
         run: npm test
-      - name: Type-check and build
+      - name: Type-check app, tests and build
         run: npm run build
 
   e2e:

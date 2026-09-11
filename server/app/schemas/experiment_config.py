@@ -15,6 +15,13 @@ class ModelConfig(BaseModel):
     temperature: float = 0.8
     top_p: float = 0.95
     max_tokens: int = 1024
+    deepseek_direct_json: bool = False
+
+    @model_validator(mode="after")
+    def validate_direct_json_provider(self) -> ModelConfig:
+        if self.deepseek_direct_json and self.provider != "deepseek":
+            raise ValueError("deepseek_direct_json requires provider deepseek")
+        return self
 
 
 class CreateExperimentConfigRequest(BaseModel):

@@ -69,6 +69,7 @@ class ExperimentRepository:
         protocol: dict[str, Any],
         *,
         updated_at: str | None = None,
+        commit: bool = True,
     ) -> None:
         if updated_at is not None:
             await self._db.execute(
@@ -80,7 +81,8 @@ class ExperimentRepository:
                 "UPDATE experiments SET protocol = ? WHERE id = ?",
                 (json.dumps(protocol, ensure_ascii=False), experiment_id),
             )
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
 
     async def get_by_id(self, experiment_id: str) -> dict[str, Any]:
         cursor = await self._db.execute(

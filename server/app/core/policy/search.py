@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.ai.action_menu import render_menu
-from app.core.ai.errors import map_provider_error
+from app.core.ai.errors import is_non_retryable_provider_error, map_provider_error
 from app.core.engine.base import ActionId
 from app.core.policy.base import (
     ActionChosen,
@@ -81,6 +81,10 @@ class SearchAugmentedPolicy(LLMPolicy):
                 last_error = AITimeoutError(self._provider, f"Timeout on attempt {attempt}")
             except Exception as error:
                 last_error = map_provider_error(self._provider, error)
+                if is_non_retryable_provider_error(last_error):
+                    if last_error is error:
+                        raise
+                    raise last_error from error
                 logger.warning(
                     "search_policy_call_failed",
                     player_id=observation.player_id,

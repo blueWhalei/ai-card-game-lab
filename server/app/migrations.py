@@ -95,12 +95,28 @@ async def _v5_experiment_memory(db: aiosqlite.Connection) -> None:
     )
 
 
+async def _v6_collect_requests(db: aiosqlite.Connection) -> None:
+    await db.execute("""
+        CREATE TABLE IF NOT EXISTS experiment_collect_requests (
+            experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+            request_key TEXT NOT NULL,
+            requested_count INTEGER NOT NULL,
+            start_index INTEGER NOT NULL,
+            game_count INTEGER NOT NULL,
+            game_ids TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            PRIMARY KEY (experiment_id, request_key)
+        )
+    """)
+
+
 MIGRATIONS: tuple[Migration, ...] = (
     Migration(1, "decision_points.policy_kind", _v1_decision_policy_kind),
     Migration(2, "experiment_configs.policy_kind", _v2_experiment_config_policy_kind),
     Migration(3, "decision_points.tool_calls", _v3_decision_tool_calls),
     Migration(4, "decision_points.annotation", _v4_decision_annotation),
     Migration(5, "experiment_memory", _v5_experiment_memory),
+    Migration(6, "experiment_collect_requests", _v6_collect_requests),
 )
 
 SCHEMA_VERSION = MIGRATIONS[-1].version if MIGRATIONS else 0

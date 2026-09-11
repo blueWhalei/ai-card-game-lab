@@ -5,9 +5,17 @@ import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import { decisionApi, type DecisionAnnotation, type DecisionPoint, type DecisionStats } from '@/api/decision'
+import {
+  decisionApi,
+  type DecisionAnnotation,
+  type DecisionPoint,
+  type DecisionStats,
+} from '@/api/decision'
 import { systemApi } from '@/api/systemApi'
 import { formatDateTime } from '@/utils/format'
+import { displayCard } from '@/utils/card'
+import { formatPlayAction } from '@/utils/traceOutput'
+import { experimentConfigApi } from '@/api/experimentConfigApi'
 import { defaultEngineId } from '@/utils/engineSlots'
 import { useRegisterAndTrain } from '@/composables/useRegisterAndTrain'
 import WorkbenchFilterBar from '@/components/common/WorkbenchFilterBar.vue'
@@ -24,6 +32,7 @@ import UiInput from '@/components/ui/Input.vue'
 import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
+import CardDisplay from '@/components/game/CardDisplay.vue'
 import MoveExplainStrip from '@/components/common/MoveExplainStrip.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize, type PageSizeOption } from '@/utils/pagination'
 
@@ -43,6 +52,7 @@ const route = useRoute()
 const router = useRouter()
 const { registerDataset } = useRegisterAndTrain()
 const defaultGameType = ref('')
+const playerNames = ref<Record<string, string>>({})
 const lastRegisteredName = ref('')
 const decisionPoints = ref<DecisionPoint[]>([])
 const listTotal = ref(0)
@@ -116,17 +126,13 @@ const gameId = computed(() =>
   props.embedded ? localFilters.value.game_id || undefined : routeGameId.value,
 )
 const playerId = computed(() =>
-  props.embedded
-    ? localFilters.value.player_id || undefined
-    : routePlayerId.value,
+  props.embedded ? localFilters.value.player_id || undefined : routePlayerId.value,
 )
 const outcome = computed(() =>
   props.embedded ? localFilters.value.outcome || undefined : routeOutcome.value,
 )
 const gamePhase = computed(() =>
-  props.embedded
-    ? localFilters.value.game_phase || undefined
-    : routeGamePhase.value,
+  props.embedded ? localFilters.value.game_phase || undefined : routeGamePhase.value,
 )
 const trainUsableFilter = computed(() => {
   if (props.embedded) {
@@ -157,9 +163,7 @@ const maxEvLossFilter = computed(() => {
   return n !== undefined && Number.isFinite(n) ? n : undefined
 })
 const page = computed(() => (props.embedded ? localPage.value : routePage.value))
-const pageSize = computed(() =>
-  props.embedded ? localPageSize.value : routePageSize.value,
-)
+const pageSize = computed(() => (props.embedded ? localPageSize.value : routePageSize.value))
 
 const registerPreview = computed(() => {
   const usable = stats.value?.train_usable_count ?? 0
@@ -170,9 +174,9 @@ const registerPreview = computed(() => {
   return { usable, notUsable, train: Math.max(0, usable - evalCount), eval: evalCount }
 })
 
-const playerCandidates = computed(() =>
-  [...new Set(decisionPoints.value.map((p) => p.player_id).filter(Boolean))],
-)
+const playerCandidates = computed(() => [
+  ...new Set(decisionPoints.value.map((p) => p.player_id).filter(Boolean)),
+])
 
 async function fetchDecisionPoints() {
   loading.value = true
@@ -382,9 +386,7 @@ async function registerAsDataset(evalRatio = 0): Promise<void> {
       ...exportScopeParams(),
     })
     lastRegisteredName.value = dataset.name
-    toast.success(
-      t('decision.savedChatml', { name: dataset.name, count: dataset.sample_count }),
-    )
+    toast.success(t('decision.savedChatml', { name: dataset.name, count: dataset.sample_count }))
     datasetName.value = ''
   } catch (e: unknown) {
     showApiError(e, t('decision.saveDatasetFailed'))
@@ -398,14 +400,9 @@ function selectPointById(id: string): void {
   if (point) selectedPoint.value = point
 }
 
-function formatCards(cards: string[]): string {
-  return cards.join(', ')
-}
-
 function formatAction(action: { action_type: string; cards: string[] } | null): string {
   if (!action) return t('common.none')
-  if (action.action_type === 'PASS') return t('action.PASS')
-  return `${action.action_type} [${action.cards.join(', ')}]`
+  return formatPlayAction({ ...action, cards: action.cards.map(displayCard) })
 }
 
 function outcomeLabel(o: string | null | undefined): string {
@@ -438,7 +435,7 @@ const compactRecords = computed((): CompactRecord[] =>
   decisionPoints.value.map((point) => ({
     id: point.id,
     primary: `R${point.round_number}`,
-    secondary: `${point.player_id} · ${formatAction(point.chosen_action)}`,
+    secondary: `${playerNames.value[point.player_id] ?? point.player_id} · ${formatAction(point.chosen_action)}`,
     meta: formatDateTime(point.created_at),
     badge: outcomeLabel(point.outcome),
     badgeTone: outcomeTone(point.outcome),
@@ -468,7 +465,24 @@ watch(effectiveExperimentId, () => {
   void fetchStats()
 })
 
+function phaseLabel(phase: string): string {
+  const keys: Record<string, string> = {
+    bidding: 'game.phaseBidding',
+    playing: 'game.phasePlaying',
+    finished: 'game.status.finished',
+  }
+  return keys[phase] ? t(keys[phase]) : phase
+}
+
 onMounted(async () => {
+  void experimentConfigApi
+    .list()
+    .then((res) => {
+      playerNames.value = Object.fromEntries(res.data.map((player) => [player.id, player.name]))
+    })
+    .catch(() => {
+      /* Historical IDs remain available if names cannot be loaded. */
+    })
   try {
     const engineRes = await systemApi.listEngines().catch(() => null)
     defaultGameType.value = defaultEngineId(engineRes?.data ?? [])
@@ -498,25 +512,32 @@ onMounted(async () => {
           {{ t('common.howTo') }}
         </button>
         <div v-else />
-        <div class="flex flex-wrap items-center gap-2">
-          <UiCheckbox v-model="exportIncludeThinking" :label="t('decision.includeThinking')" />
-          <UiInput
-            v-model="datasetName"
-            :placeholder="t('decision.datasetNamePh')"
-            :class="embedded ? 'w-40' : undefined"
-          />
-          <UiButton
-            variant="primary"
-            size="sm"
-            :loading="registering"
-            @click="openRegisterDialog"
+        <details class="max-w-full">
+          <summary
+            class="cursor-pointer rounded-ink px-2 py-2 text-sm font-medium text-ink-text-secondary focus-visible:outline-2 focus-visible:outline-ink-primary"
           >
-            {{ registering ? t('decision.saving') : t('decision.saveDataset') }}
-          </UiButton>
-          <UiButton variant="secondary" size="sm" :loading="exporting" @click="exportChatml">
-            {{ exporting ? t('decision.exporting') : t('decision.exportFile') }}
-          </UiButton>
-        </div>
+            {{ t('decision.datasetTools') }}
+          </summary>
+          <div class="flex flex-wrap items-center gap-2">
+            <UiCheckbox v-model="exportIncludeThinking" :label="t('decision.includeThinking')" />
+            <UiInput
+              v-model="datasetName"
+              :placeholder="t('decision.datasetNamePh')"
+              class="w-48"
+            />
+            <UiButton
+              variant="primary"
+              size="sm"
+              :loading="registering"
+              @click="openRegisterDialog"
+            >
+              {{ registering ? t('decision.saving') : t('decision.saveDataset') }}
+            </UiButton>
+            <UiButton variant="secondary" size="sm" :loading="exporting" @click="exportChatml">
+              {{ exporting ? t('decision.exporting') : t('decision.exportFile') }}
+            </UiButton>
+          </div>
+        </details>
       </div>
 
       <div
@@ -525,7 +546,9 @@ onMounted(async () => {
       >
         <ol class="list-decimal space-y-1 pl-5 leading-relaxed">
           <li>
-            {{ t('decision.tip1pre') }}<strong class="font-medium text-ink-text">{{ t('decision.tip1strong') }}</strong>{{ t('decision.tip1post') }}
+            {{ t('decision.tip1pre')
+            }}<strong class="font-medium text-ink-text">{{ t('decision.tip1strong') }}</strong
+            >{{ t('decision.tip1post') }}
           </li>
           <li>{{ t('decision.tip2') }}</li>
           <li>{{ t('decision.tip3') }}</li>
@@ -676,16 +699,13 @@ onMounted(async () => {
         class="flex flex-wrap items-center gap-2 text-xs text-ink-text-secondary"
       >
         <span class="font-medium text-ink-text-muted">{{ t('decision.reasonBreakdown') }}</span>
-        <UiBadge
-          v-for="[code, count] in reasonBreakdown"
-          :key="code"
-          variant="muted"
-        >
+        <UiBadge v-for="[code, count] in reasonBreakdown" :key="code" variant="muted">
           {{ reasonLabel(code) }} · {{ count }}
         </UiBadge>
       </div>
       <WorkbenchFilterBar
         v-else-if="!embedded"
+        hide-experiment-scope
         mode="decision"
         :player-candidates="playerCandidates"
       />
@@ -704,13 +724,17 @@ onMounted(async () => {
             })
           }}
         </span>
-        <span class="text-ink-success">{{ t('decision.wins', { n: stats.outcome_counts.win || 0 }) }}</span>
-        <span class="text-ink-danger">{{ t('decision.losses', { n: stats.outcome_counts.lose || 0 }) }}</span>
+        <span class="text-ink-success">{{
+          t('decision.wins', { n: stats.outcome_counts.win || 0 })
+        }}</span>
+        <span class="text-ink-danger">{{
+          t('decision.losses', { n: stats.outcome_counts.lose || 0 })
+        }}</span>
       </p>
     </div>
 
-    <div :class="embedded ? 'grid grid-cols-1 gap-4 lg:grid-cols-3' : 'grid grid-cols-1 gap-6 lg:grid-cols-3'">
-      <div class="lg:col-span-1">
+    <div :class="embedded ? 'grid grid-cols-1 gap-4 lg:grid-cols-3' : 'decision-split'">
+      <div class="min-w-0" :class="embedded ? 'lg:col-span-1' : 'decision-list'">
         <div
           class="rounded-ink-md border border-ink-border bg-ink-surface"
           :class="embedded ? 'p-3' : 'p-4'"
@@ -718,21 +742,12 @@ onMounted(async () => {
           <div class="mb-2 border-b border-ink-border pb-2">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
               <h3 class="text-sm font-semibold text-ink-text">{{ t('decision.listTitle') }}</h3>
-              <span class="text-xs text-ink-text-muted">{{ t('decision.totalItems', { n: listTotal }) }}</span>
+              <span class="text-xs text-ink-text-muted">{{
+                t('decision.totalItems', { n: listTotal })
+              }}</span>
             </div>
             <p v-if="gameId" class="mt-1 truncate text-xs text-ink-text-muted" :title="gameId">
               {{ t('decision.thisGame', { id: gameId }) }}
-            </p>
-            <p
-              v-else-if="effectiveExperimentId && !embedded"
-              class="mt-1 truncate text-xs text-ink-text-muted"
-              :title="effectiveExperimentId"
-            >
-              {{
-                t('filter.thisExperiment', {
-                  name: effectiveExperimentId.slice(0, 12) + '…',
-                })
-              }}
             </p>
           </div>
 
@@ -764,9 +779,7 @@ onMounted(async () => {
             v-else
             :records="compactRecords"
             :selected-id="selectedPoint?.id"
-            :list-class="
-              embedded ? '!h-[min(48vh,calc(100vh-26rem))]' : undefined
-            "
+            :list-class="embedded ? '!h-[min(48vh,calc(100vh-26rem))]' : undefined"
             @select="selectPointById"
           />
           <div v-if="listTotal > 0" class="mt-3 border-t border-ink-border pt-3">
@@ -782,108 +795,25 @@ onMounted(async () => {
         </div>
       </div>
 
-      <div class="lg:col-span-2">
+      <div class="min-w-0" :class="embedded ? 'lg:col-span-2' : undefined">
         <div
           v-if="selectedPoint"
           class="rounded-ink-md border border-ink-border bg-ink-surface"
           :class="embedded ? 'p-4' : 'p-5'"
         >
           <div class="mb-4 border-b border-ink-border pb-3">
-            <h3 class="text-base font-semibold text-ink-text">{{ t('decision.detailTitle') }}</h3>
+            <p class="text-caption text-ink-text-muted">{{ t('decision.detailTitle') }}</p>
+            <h3 class="mt-1 text-lead font-semibold text-ink-text">
+              {{ playerNames[selectedPoint.player_id] || selectedPoint.player_id }} ·
+              {{ t('decision.roundLabel', { n: selectedPoint.round_number }) }}
+            </h3>
           </div>
 
           <div class="space-y-4">
-            <div class="grid grid-cols-2 gap-4">
-              <div>
-                <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.phase') }}</div>
-                <div class="mt-1 text-sm text-ink-text">{{ selectedPoint.game_phase }}</div>
-              </div>
-              <div>
-                <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.trainOutcome') }}</div>
-                <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-text">
-                  <UiBadge :variant="selectedPoint.train_usable ? 'success' : 'warning'">
-                    {{
-                      selectedPoint.train_usable
-                        ? t('filter.trainable')
-                        : reasonLabel(selectedPoint.train_usable_reason)
-                    }}
-                  </UiBadge>
-                  <UiBadge v-if="selectedPoint.policy_kind" variant="muted">
-                    {{ t('decision.policyKind', { kind: selectedPoint.policy_kind }) }}
-                  </UiBadge>
-                  <UiBadge
-                    :variant="
-                      selectedPoint.outcome === 'win'
-                        ? 'success'
-                        : selectedPoint.outcome === 'lose'
-                          ? 'danger'
-                          : 'muted'
-                    "
-                  >
-                    {{ outcomeLabel(selectedPoint.outcome) }}
-                  </UiBadge>
-                  <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
-                    {{ t('decision.qualityLabel', { n: selectedPoint.quality_score.toFixed(2) }) }}
-                    <MetricHint
-                      :plain="t('metricHint.quality.plain')"
-                      :formula="t('metricHint.quality.formula')"
-                    />
-                  </span>
-                  <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
-                    {{
-                      selectedPoint.ev_loss == null
-                        ? t('decision.evLossUnknown')
-                        : t('decision.evLossLabel', { n: selectedPoint.ev_loss.toFixed(2) })
-                    }}
-                    <MetricHint
-                      :plain="t('metricHint.evLoss.plain')"
-                      :formula="t('metricHint.evLoss.formula')"
-                    />
-                  </span>
-                </div>
-                <div class="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span class="text-xs text-ink-text-muted">{{ t('decision.annotation') }}</span>
-                  <UiButton
-                    size="sm"
-                    :variant="selectedPoint.annotation === 'good' ? 'primary' : 'secondary'"
-                    :loading="annotating"
-                    @click="setPointAnnotation('good')"
-                  >
-                    {{ t('decision.annotationGood') }}
-                  </UiButton>
-                  <UiButton
-                    size="sm"
-                    :variant="selectedPoint.annotation === 'bad' ? 'primary' : 'secondary'"
-                    :loading="annotating"
-                    @click="setPointAnnotation('bad')"
-                  >
-                    {{ t('decision.annotationBad') }}
-                  </UiButton>
-                  <UiButton
-                    size="sm"
-                    :variant="selectedPoint.annotation === 'doubt' ? 'primary' : 'secondary'"
-                    :loading="annotating"
-                    @click="setPointAnnotation('doubt')"
-                  >
-                    {{ t('decision.annotationDoubt') }}
-                  </UiButton>
-                  <UiButton
-                    size="sm"
-                    variant="ghost"
-                    :loading="annotating"
-                    :disabled="!selectedPoint.annotation"
-                    @click="setPointAnnotation(null)"
-                  >
-                    {{ t('decision.annotationClear') }}
-                  </UiButton>
-                </div>
-              </div>
-            </div>
-
             <div>
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.hand') }}</div>
-              <div class="mt-1 rounded-ink bg-ink-surface-muted p-2 font-mono text-sm">
-                {{ formatCards(selectedPoint.hand_cards) }}
+              <div class="mt-2 overflow-x-auto pb-1">
+                <CardDisplay :cards="selectedPoint.hand_cards" size="mini" :show-count="false" />
               </div>
             </div>
 
@@ -891,47 +821,158 @@ onMounted(async () => {
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.oppLeft') }}</div>
               <div class="mt-1 text-sm text-ink-text">
                 <span v-for="(count, pid) in selectedPoint.opponent_hands" :key="pid" class="mr-3">
-                  {{ t('decision.oppCards', { id: pid, n: count }) }}
+                  {{ t('decision.oppCards', { id: playerNames[pid] || pid, n: count }) }}
                 </span>
               </div>
             </div>
 
             <div v-if="selectedPoint.last_action">
-              <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.lastPlay') }}</div>
+              <div class="text-xs font-medium text-ink-text-muted">
+                {{ t('decision.lastPlay') }}
+              </div>
               <div class="mt-1 text-sm text-ink-text">
-                {{ selectedPoint.last_action.player }}: {{ formatAction(selectedPoint.last_action) }}
+                {{ playerNames[selectedPoint.last_action.player] || selectedPoint.last_action.player }}:
+                {{ formatAction(selectedPoint.last_action) }}
               </div>
             </div>
 
-            <div
-              v-if="selectedPoint.tool_calls?.length"
-              class="text-caption text-ink-text-muted"
-            >
+            <div v-if="selectedPoint.tool_calls?.length" class="text-caption text-ink-text-muted">
               {{ t('decision.toolsUsed') }}：
               {{ selectedPoint.tool_calls.map((c) => c.name).join(' · ') }}
             </div>
 
             <div>
               <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.chosen') }}</div>
-              <div class="mt-1 rounded-ink bg-ink-primary-muted p-2 font-medium text-ink-text">
+              <div
+                class="mt-2 rounded-ink border-l-2 border-ink-primary bg-ink-primary-muted px-4 py-3 text-lead font-medium text-ink-text"
+              >
                 {{ formatAction(selectedPoint.chosen_action) }}
               </div>
             </div>
 
-            <MoveExplainStrip
-              :legal-actions="selectedPoint.legal_actions"
-              :chosen="selectedPoint.chosen_action"
-              :parser-ok="selectedPoint.parser_ok"
-              :win-probability="selectedPoint.win_probability"
-              :hand-analysis="selectedPoint.hand_analysis"
-            />
-
             <div v-if="selectedPoint.thinking">
-              <div class="text-xs font-medium text-ink-text-muted">{{ t('decision.thinking') }}</div>
-              <div class="mt-1 rounded-ink bg-ink-surface-muted p-3 text-sm leading-relaxed text-ink-text-secondary">
+              <div class="text-xs font-medium text-ink-text-muted">
+                {{ t('decision.thinking') }}
+              </div>
+              <div
+                class="mt-1 rounded-ink bg-ink-surface-muted p-3 text-sm leading-relaxed text-ink-text-secondary"
+              >
                 {{ selectedPoint.thinking }}
               </div>
             </div>
+            <section class="space-y-3 border-t border-ink-border pt-4">
+              <h4 class="text-sm font-semibold text-ink-text">
+                {{ t('decision.evaluationTitle') }}
+              </h4>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <div class="text-xs font-medium text-ink-text-muted">
+                    {{ t('decision.phase') }}
+                  </div>
+                  <div class="mt-1 text-sm text-ink-text">
+                    {{ phaseLabel(selectedPoint.game_phase) }}
+                  </div>
+                </div>
+                <div>
+                  <div class="text-xs font-medium text-ink-text-muted">
+                    {{ t('decision.trainOutcome') }}
+                  </div>
+                  <div class="mt-1 flex flex-wrap items-center gap-2 text-sm text-ink-text">
+                    <UiBadge :variant="selectedPoint.train_usable ? 'success' : 'warning'">
+                      {{
+                        selectedPoint.train_usable
+                          ? t('filter.trainable')
+                          : reasonLabel(selectedPoint.train_usable_reason)
+                      }}
+                    </UiBadge>
+                    <UiBadge v-if="selectedPoint.policy_kind" variant="muted">
+                      {{ t('decision.policyKind', { kind: selectedPoint.policy_kind }) }}
+                    </UiBadge>
+                    <UiBadge
+                      :variant="
+                        selectedPoint.outcome === 'win'
+                          ? 'success'
+                          : selectedPoint.outcome === 'lose'
+                            ? 'danger'
+                            : 'muted'
+                      "
+                    >
+                      {{ outcomeLabel(selectedPoint.outcome) }}
+                    </UiBadge>
+                    <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
+                      {{
+                        t('decision.qualityLabel', { n: selectedPoint.quality_score.toFixed(2) })
+                      }}
+                      <MetricHint
+                        :plain="t('metricHint.quality.plain')"
+                        :formula="t('metricHint.quality.formula')"
+                      />
+                    </span>
+                    <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
+                      {{
+                        selectedPoint.ev_loss == null
+                          ? t('decision.evLossUnknown')
+                          : t('decision.evLossLabel', { n: selectedPoint.ev_loss.toFixed(2) })
+                      }}
+                      <MetricHint
+                        :plain="t('metricHint.evLoss.plain')"
+                        :formula="t('metricHint.evLoss.formula')"
+                      />
+                    </span>
+                  </div>
+                  <div class="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span class="text-xs text-ink-text-muted">{{ t('decision.annotation') }}</span>
+                    <UiButton
+                      size="sm"
+                      :variant="selectedPoint.annotation === 'good' ? 'primary' : 'secondary'"
+                      :loading="annotating"
+                      @click="setPointAnnotation('good')"
+                    >
+                      {{ t('decision.annotationGood') }}
+                    </UiButton>
+                    <UiButton
+                      size="sm"
+                      :variant="selectedPoint.annotation === 'bad' ? 'primary' : 'secondary'"
+                      :loading="annotating"
+                      @click="setPointAnnotation('bad')"
+                    >
+                      {{ t('decision.annotationBad') }}
+                    </UiButton>
+                    <UiButton
+                      size="sm"
+                      :variant="selectedPoint.annotation === 'doubt' ? 'primary' : 'secondary'"
+                      :loading="annotating"
+                      @click="setPointAnnotation('doubt')"
+                    >
+                      {{ t('decision.annotationDoubt') }}
+                    </UiButton>
+                    <UiButton
+                      size="sm"
+                      variant="ghost"
+                      :loading="annotating"
+                      :disabled="!selectedPoint.annotation"
+                      @click="setPointAnnotation(null)"
+                    >
+                      {{ t('decision.annotationClear') }}
+                    </UiButton>
+                  </div>
+                </div>
+              </div>
+            </section>
+            <details :key="selectedPoint.id" class="border-t border-ink-border pt-4">
+              <summary
+                class="cursor-pointer rounded-ink py-2 text-sm font-medium text-ink-text-secondary focus-visible:outline-2 focus-visible:outline-ink-primary"
+              >
+                {{ t('decision.technicalEvidence') }}
+              </summary>
+              <MoveExplainStrip
+                :legal-actions="selectedPoint.legal_actions"
+                :chosen="selectedPoint.chosen_action"
+                :parser-ok="selectedPoint.parser_ok"
+                :win-probability="selectedPoint.win_probability"
+                :hand-analysis="selectedPoint.hand_analysis"
+              />
+            </details>
           </div>
         </div>
 
@@ -941,10 +982,7 @@ onMounted(async () => {
       </div>
     </div>
 
-    <UiDialog
-      v-model:open="registerOpen"
-      :title="t('experiment.registerTitle')"
-    >
+    <UiDialog v-model:open="registerOpen" :title="t('experiment.registerTitle')">
       <div class="space-y-3">
         <p class="text-sm text-ink-text-secondary">
           {{ t('experiment.registerUsable', { n: registerPreview.usable }) }} ·
@@ -962,7 +1000,9 @@ onMounted(async () => {
         </p>
       </div>
       <template #footer>
-        <UiButton variant="secondary" @click="registerOpen = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton variant="secondary" @click="registerOpen = false">{{
+          t('common.cancel')
+        }}</UiButton>
         <UiButton :loading="registering" @click="submitRegister">
           {{ t('experiment.registerConfirm') }}
         </UiButton>
@@ -970,3 +1010,21 @@ onMounted(async () => {
     </UiDialog>
   </div>
 </template>
+
+<style scoped>
+.decision-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 24px;
+  align-items: start;
+}
+@media (min-width: 1024px) {
+  .decision-split {
+    grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.65fr);
+  }
+  .decision-list {
+    position: sticky;
+    top: 16px;
+  }
+}
+</style>

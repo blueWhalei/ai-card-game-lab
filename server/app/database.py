@@ -35,6 +35,17 @@ CREATE TABLE IF NOT EXISTS experiments (
 
 CREATE INDEX IF NOT EXISTS idx_experiments_created ON experiments(created_at);
 
+CREATE TABLE IF NOT EXISTS experiment_collect_requests (
+    experiment_id TEXT NOT NULL REFERENCES experiments(id) ON DELETE CASCADE,
+    request_key TEXT NOT NULL,
+    requested_count INTEGER NOT NULL,
+    start_index INTEGER NOT NULL,
+    game_count INTEGER NOT NULL,
+    game_ids TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    PRIMARY KEY (experiment_id, request_key)
+);
+
 CREATE TABLE IF NOT EXISTS games (
     id             TEXT PRIMARY KEY,
     game_type      TEXT    NOT NULL,

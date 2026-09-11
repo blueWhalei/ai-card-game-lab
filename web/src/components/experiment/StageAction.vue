@@ -42,64 +42,74 @@ const progress = computed(() => {
 
 const progressPercent = computed(() => {
   if (!progress.value || progress.value.target <= 0) return null
-  return Math.min(
-    100,
-    Math.round((progress.value.shownFinished / progress.value.target) * 100),
-  )
+  return Math.min(100, Math.round((progress.value.shownFinished / progress.value.target) * 100))
 })
 </script>
 
 <template>
-  <section class="ink-section py-ink-6">
-    <p v-if="hasMetric && progress" class="ink-verdict-number" :class="{ 'is-weak': weak }">
-      {{ progress.shownFinished }}
-      <span class="text-title font-normal text-ink-text-muted">
-        / {{ progress.target }}
-      </span>
-    </p>
-    <p v-else-if="hasMetric" class="ink-verdict-number" :class="{ 'is-weak': weak }">
-      {{ metricValue }}
-    </p>
-    <p v-if="hasMetric && metricLabel" class="mt-ink-1 text-caption text-ink-text-muted">
-      {{ metricLabel }}
-      <span v-if="progress && progress.extra > 0" class="ml-ink-2">
-        · {{ t('stage.progressExtraOnly', { extra: progress.extra }) }}
-      </span>
-    </p>
-
-    <div
-      v-if="progressPercent != null"
-      class="mt-ink-3 h-px w-full max-w-md bg-ink-border"
-      role="presentation"
-    >
+  <section
+    class="stage-action ink-section grid gap-ink-6 py-ink-2"
+    :class="{ 'has-metric': hasMetric }"
+  >
+    <div class="min-w-0">
+      <h2 class="ink-verdict-claim max-w-2xl" :class="{ 'is-weak': weak }">{{ claim }}</h2>
+      <p v-if="detail" class="mt-ink-3 max-w-2xl text-body leading-relaxed text-ink-text-secondary">
+        {{ detail }}
+      </p>
       <div
-        class="h-px bg-ink-primary transition-[width] duration-(--ink-duration-content) ease-(--ink-ease-out)"
-        :style="{ width: `${progressPercent}%` }"
-      />
-    </div>
-
-    <h2
-      class="ink-verdict-claim"
-      :class="[{ 'is-weak': weak }, hasMetric ? 'mt-ink-4' : '']"
-    >
-      {{ claim }}
-    </h2>
-    <p v-if="detail" class="mt-ink-2 max-w-2xl text-lead text-ink-text-secondary">
-      {{ detail }}
-    </p>
-
-    <div v-if="actionLabel || $slots.secondary || $slots['before-action']" class="mt-ink-6 flex flex-wrap items-center gap-ink-3">
-      <slot name="before-action" />
-      <UiButton
-        v-if="actionLabel"
-        size="lg"
-        :disabled="actionDisabled"
-        :loading="actionLoading"
-        @click="emit('action')"
+        v-if="actionLabel || $slots.secondary || $slots['before-action']"
+        class="mt-ink-6 flex flex-wrap items-center gap-ink-3"
       >
-        {{ actionLabel }}
-      </UiButton>
-      <slot name="secondary" />
+        <slot name="before-action" />
+        <UiButton
+          v-if="actionLabel"
+          size="lg"
+          :disabled="actionDisabled"
+          :loading="actionLoading"
+          @click="emit('action')"
+          >{{ actionLabel }}</UiButton
+        >
+        <slot name="secondary" />
+      </div>
+    </div>
+    <div v-if="hasMetric" class="stage-metric">
+      <p class="ink-verdict-number" :class="{ 'is-weak': weak }">
+        {{ progress ? progress.shownFinished : metricValue }}
+        <span v-if="progress" class="text-title font-normal text-ink-text-muted">
+          / {{ progress.target }}</span
+        >
+      </p>
+      <p v-if="metricLabel" class="mt-ink-2 text-caption text-ink-text-muted">{{ metricLabel }}</p>
+      <p v-if="progress && progress.extra > 0" class="mt-ink-1 text-caption text-ink-text-muted">
+        {{ t('stage.progressExtraOnly', { extra: progress.extra }) }}
+      </p>
+      <div
+        v-if="progressPercent != null"
+        class="mt-ink-4 h-1 overflow-hidden rounded-full bg-ink-border"
+        role="presentation"
+      >
+        <div
+          class="h-full rounded-full bg-ink-primary transition-[width]"
+          :style="{ width: `${progressPercent}%` }"
+        />
+      </div>
     </div>
   </section>
 </template>
+<style scoped>
+.stage-metric {
+  border-top: 1px solid var(--ink-border);
+  padding-top: var(--ink-space-4);
+}
+@media (min-width: 768px) {
+  .has-metric {
+    grid-template-columns: minmax(0, 1fr) 200px;
+    align-items: center;
+  }
+  .stage-metric {
+    border-top: 0;
+    border-left: 1px solid var(--ink-border);
+    padding: var(--ink-space-4) 0 var(--ink-space-4) var(--ink-space-8);
+  }
+}
+</style>

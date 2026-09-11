@@ -266,7 +266,9 @@ async function loadReplay() {
     actionHistory.value = []
     thinkingHistory.value = []
     Object.keys(playerTokenTotals.value).forEach((key) => delete playerTokenTotals.value[key])
-    Object.keys(playerLastRoundTokens.value).forEach((key) => delete playerLastRoundTokens.value[key])
+    Object.keys(playerLastRoundTokens.value).forEach(
+      (key) => delete playerLastRoundTokens.value[key],
+    )
     replayStepTo(0)
   } catch (e: unknown) {
     showApiError(e, t('game.replayFailed'))
@@ -375,6 +377,12 @@ function replayStepTo(index: number) {
   replayIndex.value = index
 }
 
+function replaySeek(index: number) {
+  replayPause()
+  if (!replayData.value?.rounds.length) return
+  replayStepTo(Math.max(0, Math.min(index, replayData.value.rounds.length - 1)))
+}
+
 function replayNext() {
   if (!replayData.value) return
   if (replayIndex.value < replayData.value.rounds.length - 1) {
@@ -446,7 +454,9 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <div class="relative flex h-screen flex-col overflow-hidden bg-ink-obs-bg text-ink-obs-text">
+  <div
+    class="observer-workspace relative flex h-dvh flex-col overflow-hidden bg-ink-obs-bg text-ink-obs-text"
+  >
     <div v-if="loading" class="absolute inset-0 z-20">
       <UiSpinner overlay :label="t('game.loadingGame')" />
     </div>
@@ -454,11 +464,7 @@ onUnmounted(() => {
     <GameHeaderBar
       :game="game"
       :title="watchTitle"
-      :phase-label="
-        snapshot
-          ? `${t('game.roundN', { n: snapshot.round })}`
-          : undefined
-      "
+      :phase-label="snapshot ? `${t('game.roundN', { n: snapshot.round })}` : undefined"
       :is-connected="isConnected"
       :is-started="isStarted"
       :is-paused="isPaused"
@@ -476,6 +482,7 @@ onUnmounted(() => {
       :replay-index="replayIndex"
       :replay-playing="replayPlaying"
       :replay-speed="replaySpeed"
+      @seek="replaySeek"
       @prev="replayPrev"
       @play="replayPlay"
       @pause="replayPause"
@@ -597,9 +604,9 @@ onUnmounted(() => {
                   }}
                 </span>
               </div>
-              <div v-if="entry.actionType === 'PASS'" class="text-body text-ink-obs-muted">{{
-                t('action.PASS')
-              }}</div>
+              <div v-if="entry.actionType === 'PASS'" class="text-body text-ink-obs-muted">
+                {{ t('action.PASS') }}
+              </div>
               <div v-else class="flex flex-wrap gap-1">
                 <span
                   v-for="(card, j) in entry.cards"

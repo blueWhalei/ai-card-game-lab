@@ -174,7 +174,7 @@ class GameService:
 | `engine/` | 游戏引擎，含规则、状态管理 | `GameEngine` (ABC), `DoudizhuEngine` |
 | `ai/` | LLM 统一调用，提示词构建 | `LLMClient` (ABC), `OpenAICompatibleClient`, `OllamaClient`, `LLMClientFactory` |
 | `collector/` | 对局数据采集与归档 | `JsonlWriter` |
-| `training/` | SFT 导出 + PEFT LoRA + 部署辅助 | `exporter.py`, `sft.py`, `deploy.py`（无项目级 `Trainer` ABC） |
+| `training/` | SFT 导出 + PEFT LoRA + 部署辅助 | `data_quality.py`, `sft.py`, `deploy.py`（无项目级 `Trainer` ABC） |
 
 ### 3.4 基础设施层
 
@@ -208,22 +208,18 @@ class GameService:
   POST /api/v1/games/{id}/start
        │
        ▼
-  GameService.run_game()
+  GameService.start_game() → GameOrchestrationService._run_game_loop()
        │
        ▼ (循环：直到游戏结束)
-  ┌─────────────────────────────────────────────┐
-  │  1. engine.get_current_player(state)        │
-  │  2. engine.get_legal_actions(state, player) │
-  │  3. prompt_builder.build(state)             │
-  │  4. llm_client.chat(prompt)                 │
-  │  5. engine.parse_action(llm_output)         │
-  │  6. collector.record_round(...)             │  ← JSONL + SQLite
-  │  7. ws_manager.broadcast(thinking_data)     │  ← WebSocket 推送
-  │  8. engine.apply_action(state, action)      │
-  └─────────────────────────────────────────────┘
+  1. engine.observe() + present_legal_actions()：生成选手视角与合法动作菜单
+  2. AIService → Policy.decide()：构建提示词、调用模型或基线策略
+  3. Policy 返回事件流，以 ActionChosen(action_id) 结束
+  4. engine.resolve_action()：验证并解析动作；保存决策点与 EV 评估
+  5. engine.apply_action()：推进状态
+  6. 广播回合事件，保存 rounds、JSONL 与 traces/spans
        │
        ▼ (游戏结束)
-  GameService.finish_game()
+  GameOrchestrationService._finish_game()
        │── GameRepository.update_result(...)    ← SQLite
        └── JsonlWriter.end_game(...)          ← JSONL
 ```
@@ -234,14 +230,28 @@ class GameService:
 
 | 存储 | 写入内容 | 用途 |
 |------|----------|------|
-| **JSONL** | 完整对局数据（状态、动作、思考链、模型信息） | 归档、训练数据导出 |
-| **SQLite** | 元数据索引（game_id, type, players, result, timestamp, round_count） | 列表查询、筛选、统计 |
+| **JSONL** | 对局事件与回合记录 | 对局归档、回放 |
+| **SQLite** | 实验、对局、回合、决策点、提示词、traces/spans | 查询、统计、决策分析及训练数据导出 |
 
 ```
-写入时：JSONL（主） + SQLite（索引）同步写入
+写入时：保存 JSONL 事件与 SQLite 结构化记录（两个存储不共享事务）
 查询时：SQLite 查索引 → 按需读取 JSONL 详情
-导出时：根据 SQLite 筛选条件 → 批量读取 JSONL → 生成训练集
+训练导出：筛选 SQLite decision_points → 提取记录的 prompt_messages/action_id → ChatML
 ```
+
+JSONL 路径在创建时选定，执行时从 `games.data_file` 恢复，跨 UTC 日期不重新选目录。回放兼容旧版本拆到多个日期目录的文件，按日期顺序合并。
+
+实验采集先在 SQLite 写事务中预留 games、发牌种子和 `experiment_collect_requests`（迁移 6），再启动后台任务。`GameService.start_game()` 使用带 `status='created'` 条件的原子更新领取任务。相同幂等键只复用原批次；已取消或已结束的对局不会自动重跑。后台进程重启后仍按现有恢复策略将运行中的对局标为 `interrupted`，重试仅继续未启动的对局。
+
+模型接口仅在 400/422 明确拒绝 `response_format` 或 `stream_options` 时去掉对应字段。其他 4xx 不降级；429 单独映射限流错误。策略层直接传播不可重试错误，保留正常的瞬时故障重试与解析补救逻辑。
+
+### 4.3 归档与清理
+
+归档/清理仅选取 `finished`、`failed`、`cancelled` 的对局，保留期按结束时间计算（旧记录缺失结束时间时使用创建时间）。`days_old` 范围为 1–36500 天。
+
+归档在同一 SQLite 写事务中读取 games、rounds、traces、spans 和 decision_points，先完整写入临时压缩文件，再以唯一文件名原子发布，最后提交删除。文件发布失败时保留数据库记录。归档使用同目录硬链接发布，文件系统不支持时操作失败且保留原始数据。现有 `.jsonl.gz` 扩展名继续兼容，但内容是一个包含上述数组的 JSON 对象。
+
+永久清理使用删除前保存的 `games.data_file` 路径清理 JSONL，仅允许 `data/games/` 内的文件。删除归档仅接受本目录的 `.jsonl.gz` 文件名，拒绝路径穿越和符号链接。
 
 ## 5. 依赖注入设计
 

@@ -10,6 +10,10 @@ from typing import Any
 
 import aiosqlite
 
+_ARCHIVABLE = (
+    "status IN ('finished', 'failed', 'cancelled') AND COALESCE(finished_at, created_at) < ?"
+)
+
 
 class ArchiveRepository:
     """Read and delete operations for game archiving."""
@@ -31,7 +35,7 @@ class ArchiveRepository:
 
     async def count_old_games(self, days: int) -> int:
         cutoff = (datetime.now(UTC) - timedelta(days=days)).isoformat()
-        return int(await self._scalar("SELECT COUNT(*) FROM games WHERE created_at < ?", [cutoff]))
+        return int(await self._scalar(f"SELECT COUNT(*) FROM games WHERE {_ARCHIVABLE}", [cutoff]))
 
     async def fetch_old_games(
         self,
@@ -40,12 +44,12 @@ class ArchiveRepository:
     ) -> list[dict[str, Any]]:
         if game_type:
             cursor = await self._db.execute(
-                "SELECT * FROM games WHERE created_at < ? AND game_type = ?",
+                f"SELECT * FROM games WHERE {_ARCHIVABLE} AND game_type = ?",
                 [cutoff, game_type],
             )
         else:
             cursor = await self._db.execute(
-                "SELECT * FROM games WHERE created_at < ?",
+                f"SELECT * FROM games WHERE {_ARCHIVABLE}",
                 [cutoff],
             )
         return [dict(r) for r in await cursor.fetchall()]
@@ -76,6 +80,17 @@ class ArchiveRepository:
         placeholders = ",".join("?" * len(game_ids))
         cursor = await self._db.execute(
             f"SELECT * FROM decision_points WHERE game_id IN ({placeholders})",
+            game_ids,
+        )
+        return [dict(r) for r in await cursor.fetchall()]
+
+    async def fetch_spans_for_games(self, game_ids: list[str]) -> list[dict[str, Any]]:
+        if not game_ids:
+            return []
+        placeholders = ",".join("?" * len(game_ids))
+        cursor = await self._db.execute(
+            f"SELECT * FROM spans WHERE trace_id IN "
+            f"(SELECT id FROM traces WHERE game_id IN ({placeholders}))",
             game_ids,
         )
         return [dict(r) for r in await cursor.fetchall()]

@@ -29,6 +29,13 @@ UNAVAILABLE_ERROR_MARKERS = (
 )
 
 
+def is_non_retryable_provider_error(error: Exception) -> bool:
+    """Never turn a rejected/rate-limited call into another immediate model request."""
+    return isinstance(error, AIRateLimitExceededError) or (
+        isinstance(error, AIProviderError) and not error.retryable
+    )
+
+
 def map_provider_error(provider: str, error: Exception) -> AppError:
     """Turn any exception from a provider call into a typed ``AppError``."""
     if isinstance(error, AppError):

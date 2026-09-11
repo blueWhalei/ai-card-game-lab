@@ -36,6 +36,11 @@ export default {
     miss: 'Miss',
   },
   decision: {
+    datasetTools: 'Dataset & export',
+    evaluationTitle: 'Evaluation & annotation',
+    technicalEvidence: 'Legal actions & parsing details',
+    roundLabel: 'Round {n}',
+
     includeThinking: 'Include thinking',
     datasetNamePh: 'Dataset name (optional)',
     saveDataset: 'Save as training dataset',
@@ -163,7 +168,7 @@ export default {
     scale: 'Scale',
     totalGames: 'Games',
     totalRounds: 'Rounds',
-    avgResponseMs: 'Avg response (ms)',
+    avgResponseMs: 'Average response',
     gameKinds: 'Game types',
     tokenUsage: 'Token usage',
     totalTokens: 'Tokens',
@@ -238,6 +243,17 @@ export default {
     deleteArchive: 'Delete archive file {name}?',
   },
   training: {
+    workspaceHint: 'Create a task from a dataset, then add the trained model as a player.',
+    runtimeDetails: 'Runtime resources',
+    runtimePending: 'Runtime metrics are not available yet.',
+
+    emptyTasksBlockedHint:
+      'Complete the environment checks before training. You can review decision points and prepare a dataset in the meantime.',
+    emptyTasksTitle: 'No training tasks yet',
+    emptyTasksHint:
+      'Save a dataset from decision points, then create a training task. If you already have a dataset, use Create training task above.',
+    reviewDecisions: 'Review trainable decisions',
+
     status: {
       pending: 'Pending',
       exporting: 'Exporting',
@@ -273,15 +289,15 @@ export default {
     batch: 'Batch size',
     epochs: 'Epochs',
     maxSteps: 'Max steps',
-    loraHint: 'Output is a LoRA adapter directory. Without a GPU, CPU quick check limits steps and samples.',
+    loraHint:
+      'Output is a LoRA adapter directory. Without a GPU, CPU quick check limits steps and samples.',
     qlora: '4-bit QLoRA (NVIDIA GPU required)',
     qloraHint:
       'Needs CUDA and bitsandbytes (pip install bitsandbytes; not in the poetry training extra). Leave unchecked for plain LoRA.',
     loadDatasetsFailed: 'Failed to load datasets',
     needTaskName: 'Enter a task name',
     needDataset: 'Select a dataset',
-    noDepsToast:
-      'Training extras are not installed. Run: poetry install --with training',
+    noDepsToast: 'Training extras are not installed. Run: poetry install --with training',
     confirmStartTitle: 'Start training?',
     confirmStartMsg:
       'Without a GPU this runs as a CPU quick check (a few minutes, to verify the pipeline, not playing strength). Low memory will refuse to start.',

@@ -13,6 +13,7 @@ import {
   verdictHeadlineOf,
   gamesNeededForPower,
 } from '@/utils/experimentStage'
+import { experimentOutcomeText } from '@/utils/experimentOutcomes'
 import NameChips from '@/components/common/NameChips.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -95,11 +96,11 @@ function onPrimary(): void {
 
 <template>
   <article
-    class="flex flex-wrap items-center justify-between gap-ink-3 rounded-ink-md border border-ink-border bg-ink-surface px-ink-4 py-ink-3 transition-colors hover:bg-ink-paper-elevated/80"
+    class="flex flex-wrap items-center justify-between gap-ink-4 px-ink-6 py-ink-6 transition-colors hover:bg-ink-paper-elevated"
   >
-    <button type="button" class="min-w-0 flex-1 text-left" @click="emit('open')">
+    <button type="button" class="min-w-0 flex-1 rounded-ink text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink-primary" @click="emit('open')">
       <div class="flex flex-wrap items-center gap-ink-2">
-        <h3 class="truncate text-body font-semibold text-ink-text">{{ experiment.name }}</h3>
+        <h3 class="truncate text-lead font-semibold text-ink-text">{{ experiment.name }}</h3>
         <UiBadge :variant="EXPERIMENT_STATUS_VARIANT[summary.status]" size="xs">
           {{ experimentStatusLabel(summary.status) }}
         </UiBadge>
@@ -108,8 +109,11 @@ function onPrimary(): void {
         </UiBadge>
       </div>
       <p class="mt-ink-1 max-w-2xl text-body text-ink-text-secondary">{{ claim }}</p>
+      <p v-if="summary.total_games > 0" class="mt-ink-1 text-caption text-ink-text-muted">
+        {{ experimentOutcomeText(summary) }}
+      </p>
       <div class="mt-ink-2 flex flex-wrap items-center gap-ink-3 text-caption text-ink-text-muted">
-        <span class="tabular-nums">{{ progress }}</span>
+        <span class="tabular-nums">{{ t('experiment.collectionProgress', { progress }) }}</span>
         <NameChips :names="playerNames" :max="3" />
       </div>
     </button>

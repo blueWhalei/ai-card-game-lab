@@ -133,7 +133,8 @@ class ProviderNotConfiguredError(AppError):
 
 
 class AIProviderError(AppError):
-    def __init__(self, provider: str, detail: str) -> None:
+    def __init__(self, provider: str, detail: str, *, retryable: bool = True) -> None:
+        self.retryable = retryable
         super().__init__(
             message=f"AI provider '{provider}' error: {detail}",
             code="AI_PROVIDER_ERROR",

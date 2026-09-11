@@ -117,11 +117,10 @@ async def conclusion_draft(
     service: ExperimentService = Depends(get_experiment_service),
 ) -> ApiResponse[dict[str, Any]]:
     """Assemble a conclusion draft (does not persist). Confirm via PATCH conclusion."""
-    from app.core.research.conclusion_draft import normalize_draft_locale
-
-    resolved = normalize_draft_locale(locale or accept_language)
     try:
-        draft = await service.draft_conclusion(experiment_id, locale=resolved)
+        draft = await service.draft_conclusion(
+            experiment_id, locale=locale or accept_language or "zh-CN"
+        )
     except ExperimentNotFoundError:
         raise
     return ApiResponse(data=draft)
@@ -152,7 +151,9 @@ async def collect_experiment(
     db: aiosqlite.Connection = Depends(get_db),
     service: ExperimentService = Depends(get_experiment_service),
 ) -> ApiResponse[dict[str, Any]]:
-    result = await service.collect(experiment_id, count=body.count, db=db)
+    result = await service.collect(
+        experiment_id, count=body.count, db=db, idempotency_key=body.idempotency_key
+    )
     return ApiResponse(data=result)
 
 

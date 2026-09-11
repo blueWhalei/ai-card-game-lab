@@ -72,7 +72,7 @@ function go(path: string): void {
       :class="
         cn(
           'sticky top-0 hidden h-screen shrink-0 flex-col border-r border-ink-border bg-ink-paper-elevated transition-[width] duration-200 ease-out md:flex',
-          isCollapsed ? 'w-16' : 'w-64',
+          isCollapsed ? 'w-16' : 'w-56',
         )
       "
     >

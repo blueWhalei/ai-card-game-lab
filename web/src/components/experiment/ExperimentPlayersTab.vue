@@ -2,6 +2,7 @@
 import { useI18n } from 'vue-i18n'
 import type { ExperimentSummary } from '@/api/experimentApi'
 import { formatWinRate, formatWinRateCi } from '@/utils/experimentWorkbench'
+import { formatDuration } from '@/utils/format'
 
 defineProps<{
   summary: ExperimentSummary
@@ -12,7 +13,7 @@ const { t } = useI18n()
 
 function formatAvgMs(ms: number, traceCount: number): string {
   if (traceCount <= 0) return t('common.dash')
-  return `${Math.round(ms)}ms`
+  return formatDuration(ms)
 }
 </script>
 
@@ -47,8 +48,18 @@ function formatAvgMs(ms: number, traceCount: number): string {
               {{ configLabel(stat.player_id) }}
             </td>
             <td class="px-3 py-2 tabular-nums">{{ stat.wins }}</td>
-            <td class="px-3 py-2 tabular-nums">{{ formatWinRate(stat.win_rate) }}</td>
-            <td class="px-3 py-2 tabular-nums">{{ formatWinRateCi(stat.win_rate_ci) }}</td>
+            <td class="px-3 py-2 tabular-nums">
+              {{
+                summary.games_with_winner > 0
+                  ? formatWinRate(stat.win_rate)
+                  : t('common.noOutcomes')
+              }}
+            </td>
+            <td class="px-3 py-2 tabular-nums">
+              {{
+                summary.games_with_winner > 0 ? formatWinRateCi(stat.win_rate_ci) : t('common.dash')
+              }}
+            </td>
             <td class="px-3 py-2 tabular-nums">
               <template v-if="(stat.games_as_landlord ?? 0) > 0">
                 {{ formatWinRate(stat.landlord_win_rate ?? 0) }}

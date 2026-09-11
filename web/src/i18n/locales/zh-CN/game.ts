@@ -1,5 +1,8 @@
 export default {
   game: {
+    replayPosition: '回放位置',
+    replaySpeed: '回放速度',
+
     type: {
       doudizhu: '斗地主',
     },

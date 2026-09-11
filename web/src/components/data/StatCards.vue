@@ -9,6 +9,7 @@ import { TooltipComponent, LegendComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
 import { useDataStore } from '@/stores/useDataStore'
 import { showApiError } from '@/utils/error'
+import { formatDuration } from '@/utils/format'
 import KpiStrip from '@/components/common/KpiStrip.vue'
 import type { KpiItem } from '@/components/common/KpiStrip.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
@@ -45,6 +46,7 @@ const hasWinsByRole = computed(() => Object.keys(stats.value?.wins_by_role ?? {}
 const roleLabels = computed((): Record<string, string> => ({
   landlord: t('game.landlord'),
   peasant: t('game.peasant'),
+  farmer: t('game.peasant'),
   no_bid: t('game.noBid'),
 }))
 
@@ -62,7 +64,7 @@ const corpusKpis = computed((): KpiItem[] => {
     {
       id: 'avgMs',
       label: t('data.avgResponseMs'),
-      value: String(Math.round(s.avg_response_time_ms)),
+      value: s.total_rounds > 0 ? formatDuration(s.avg_response_time_ms) : t('common.dash'),
     },
   ]
 })

@@ -1,5 +1,8 @@
 export default {
   game: {
+    replayPosition: 'Replay position',
+    replaySpeed: 'Playback speed',
+
     type: {
       doudizhu: 'Dou Dizhu',
     },

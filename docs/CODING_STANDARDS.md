@@ -39,7 +39,7 @@ def search(self, query: str) -> List[Dict[str, Any]]:
 - 使用 `list[...]`, `dict[...]`, `tuple[...]` 等内置泛型，不要从 `typing` 导入 `List` / `Dict` / `Optional` / `Union`
 - 联合类型使用 `X | Y` 语法，不用 `Union[X, Y]`
 - 可选参数使用 `X | None`，不用 `Optional[X]`
-- 复杂类型使用 `TypeAlias` 或 `type` 语句定义别名
+- 复杂类型使用 `TypeAlias` 定义别名；最低版本为 Python 3.11，不使用 Python 3.12 才支持的 `type` 别名语句
 - 回调/函数类型使用 `Callable` 或 `Protocol`
 
 ### 1.3 代码格式化与检查
@@ -184,14 +184,14 @@ async def train_model(self, config: TrainingConfig) -> str:
 ```python
 # 正确 ✓
 try:
-    action = engine.parse_action(llm_output, legal_actions)
+    action = engine.resolve_action(state, player_id, action_id)
 except InvalidActionError as e:
     logger.warning("LLM produced invalid action", error=str(e), player=player_id)
     action = legal_actions[0]  # fallback 到第一个合法动作
 
 # 错误 ✗ — 裸 except，吞掉所有异常
 try:
-    action = engine.parse_action(llm_output, legal_actions)
+    action = engine.resolve_action(state, player_id, action_id)
 except:
     action = legal_actions[0]
 ```
@@ -226,18 +226,19 @@ class GameEngine(ABC):
     """
 
     @abstractmethod
-    def parse_action(self, llm_output: str, legal_actions: list[GameAction]) -> GameAction:
-        """解析 LLM 输出为合法游戏动作。
+    def resolve_action(self, state: GameState, player_id: str, action_id: str) -> GameAction:
+        """将选手选择的动作 ID 解析为当前合法游戏动作。
 
         Args:
-            llm_output: LLM 返回的原始文本。
-            legal_actions: 当前状态下的合法动作列表。
+            state: 当前游戏状态。
+            player_id: 当前选手 ID。
+            action_id: 模型从合法动作菜单选择的 ID。
 
         Returns:
             匹配的合法动作。
 
         Raises:
-            InvalidActionError: LLM 输出无法映射到任何合法动作。
+            InvalidActionError: 动作 ID 不在当前合法集合中。
         """
 ```
 
@@ -276,6 +277,8 @@ function getGame(id: string): Promise<GameState> { ... }
 // 错误 ✗
 function getGame(id: any): any { ... }
 ```
+
+测试类型检查通过 `web/tsconfig.test.json` 纳入 `npm run type-check` 和构建；覆盖 Vitest 单元测试与 Playwright E2E 测试。禁止通过排除失败测试或放宽 strict 来规避接口不一致。
 
 ### 2.2 Vue 组件规范
 
@@ -400,7 +403,7 @@ export const gameApi = {
 
 ### 2.7 文案与 i18n
 
-- 所有面向用户的文案走 `web/src/i18n/locales/zh-CN.ts` 与 `en.ts`，组件内禁止硬编码中文/英文（调试日志除外）
+- 所有面向用户的文案走 `web/src/i18n/locales/{zh-CN,en}/` 下的模块（顶层同名文件仅重新导出），组件内禁止硬编码中文/英文（调试日志除外）
 - 中文产品用语与 UI 一致：如 **选手配置**、**试玩对局**、**实验详情页**、**分析**；避免英译腔造词（如「跑表台」）
 - 技术专名可保留英文：Ollama、LoRA、ChatML、API 密钥、P50/P95、`.env` 等
 - 新增页面或按钮时同步更新中英两套 locale

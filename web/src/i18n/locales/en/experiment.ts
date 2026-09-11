@@ -1,5 +1,17 @@
 export default {
   experiment: {
+    libraryCount: '{n} experiments',
+    collectionProgress: 'Collected {progress}',
+    outcomeCounts: {
+      finished: '{n} completed',
+      no_bid: '{n} no-bid games',
+      cancelled: '{n} cancelled',
+      failed: '{n} failed',
+      interrupted: '{n} interrupted',
+    },
+    decidedCount: '{n} decided games',
+    analysisLinks: 'Analyze this experiment',
+
     title: 'Experiments',
     compare: 'Compare experiments',
     compareMany: 'Compare several experiments',
@@ -29,7 +41,7 @@ export default {
     status: {
       pending_collect: 'Ready to start',
       collecting: 'In play',
-      ready_review: 'Completed',
+      ready_review: 'Collection ended',
       ready_more: 'Can continue',
     },
     startGames: 'Start experiment',
@@ -83,8 +95,7 @@ export default {
     protocolTitle: 'Experiment protocol',
     protocolDrift: 'Live player configs have changed; this experiment still uses the snapshot.',
     protocolDriftShort: 'Config drifted',
-    protocolPair:
-      'Paired deals · source {id} · seeds {seeds} · paired games {paired}/{total}',
+    protocolPair: 'Paired deals · source {id} · seeds {seeds} · paired games {paired}/{total}',
     protocolSeeds: '{n} deal seeds recorded',
     protocolSeedsShort: '{n} seeds',
     protocolPairedShort: 'Paired {paired}/{total}',
@@ -147,7 +158,8 @@ export default {
     importedPack: 'Imported: {created} player(s) created · {reused} reused',
     importFailed: 'Import failed',
     importInvalidJson: 'File is not valid JSON',
-    importMissingProviders: 'Providers not ready on this machine: {ids}. Set keys in .env or start Ollama.',
+    importMissingProviders:
+      'Providers not ready on this machine: {ids}. Set keys in .env or start Ollama.',
     importOllamaTags: 'Need local Ollama tags: {tags}',
     cloneExperiment: 'Clone experiment',
     cloneTitle: 'Clone experiment',
@@ -197,7 +209,8 @@ export default {
     wizardNext: 'Next',
     wizardProtocolIntro: 'Copies protocol fingerprint and deal seeds from source {id}.',
     wizardSeedCount: '{n} deal seed(s)',
-    wizardConfirmIntro: 'You will open the control experiment detail page; games do not start automatically.',
+    wizardConfirmIntro:
+      'You will open the control experiment detail page; games do not start automatically.',
     openCollectAfter: 'Start games after creating',
     submit: 'Create control',
   },
@@ -257,6 +270,7 @@ export default {
       action: 'Watch',
     },
     harvest: {
+      readyClaim: 'Your training data is ready',
       metricLabel: 'Trainable decisions',
       claim: 'These games produced {n} trainable decisions',
       detail: '{n} more were excluded for format or outcome reasons.',
@@ -341,11 +355,16 @@ export default {
     progressWithExtra: '{ratio} · {extra} beyond the target',
     progressExtraOnly: '{extra} beyond the target',
     diffLabel: 'Provisional Δ',
-    diffSoFar:
-      'Provisional Δ {delta} (direction: {claim}) — not enough evidence to conclude.',
+    diffSoFar: 'Provisional Δ {delta} (direction: {claim}) — not enough evidence to conclude.',
     sectionPlayers: 'Player performance',
   },
   config: {
+    libraryCount: '{n} players',
+    transfer: 'Import & export',
+    actionsFor: 'Actions for {name}',
+
+    finishedGames: '{n} completed games',
+    noFinishedGames: 'No completed games yet',
     add: 'Add player',
     emptyTitle: 'No player configs yet',
     empty: 'No player configs yet. Use the button above to create one.',

@@ -37,8 +37,12 @@ function controlProgressLabel(control: ExperimentControlProgress): string {
   <section v-if="events.length > 0 || controls.length > 0" class="ink-section">
     <h2 class="ink-section-title">{{ t('stage.timelineTitle') }}</h2>
 
-    <ol class="mt-ink-3 space-y-ink-2">
-      <li v-for="event in events" :key="`${event.id}-${event.at}`" class="flex items-baseline gap-ink-3">
+    <ol class="mt-ink-3 grid gap-ink-4 sm:grid-cols-2 lg:grid-cols-3">
+      <li
+        v-for="event in events"
+        :key="`${event.id}-${event.at}`"
+        class="flex flex-col gap-ink-1 border-l border-ink-border pl-ink-3"
+      >
         <span class="w-44 shrink-0 text-caption tabular-nums text-ink-text-muted">
           {{ formatDateTime(event.at) }}
         </span>
@@ -47,7 +51,11 @@ function controlProgressLabel(control: ExperimentControlProgress): string {
     </ol>
 
     <ul v-if="controls.length > 0" class="mt-ink-4 space-y-ink-2">
-      <li v-for="control in controls" :key="control.id" class="flex items-baseline gap-ink-3">
+      <li
+        v-for="control in controls"
+        :key="control.id"
+        class="flex flex-col gap-ink-1 border-l border-ink-border pl-ink-3"
+      >
         <span class="w-24 shrink-0 text-caption text-ink-text-muted">
           {{ t('stage.controlLabel') }}
         </span>

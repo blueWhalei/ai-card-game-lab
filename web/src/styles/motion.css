@@ -54,10 +54,14 @@
 @keyframes ink-obs-glow {
   0%,
   100% {
-    box-shadow: 0 0 0 1px var(--ink-obs-accent), 0 0 10px var(--ink-obs-pulse);
+    box-shadow:
+      0 0 0 1px var(--ink-obs-accent),
+      0 0 10px var(--ink-obs-pulse);
   }
   50% {
-    box-shadow: 0 0 0 1px var(--ink-obs-accent), 0 0 18px var(--ink-obs-pulse);
+    box-shadow:
+      0 0 0 1px var(--ink-obs-accent),
+      0 0 18px var(--ink-obs-pulse);
   }
 }
 
@@ -181,7 +185,9 @@
 }
 
 .ink-obs-glow {
-  box-shadow: 0 0 0 1px var(--ink-obs-accent), 0 0 10px var(--ink-obs-pulse);
+  box-shadow:
+    0 0 0 1px var(--ink-obs-accent),
+    0 0 10px var(--ink-obs-pulse);
   animation: ink-obs-glow 1.6s var(--ink-ease-out) infinite;
 }
 
@@ -222,5 +228,16 @@
   .ink-page-enter-from {
     opacity: 1;
     transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

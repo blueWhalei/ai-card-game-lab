@@ -2,20 +2,20 @@
   color-scheme: light;
 
   /*
-   * Ink Lab — cool lab stone (not warm cream / terracotta).
+   * Ink Lab — neutral research surfaces with a restrained teal accent.
    * All chrome colors are semantic tokens so light/dark can swap via data-theme.
    */
-  --ink-paper: #f2f4f3;
-  --ink-paper-elevated: #f7f8f7;
+  --ink-paper: #f5f5f7;
+  --ink-paper-elevated: #fafafa;
   --ink-surface: #ffffff;
-  --ink-surface-muted: #e8ebe9;
+  --ink-surface-muted: #ededf0;
   --ink-border: rgba(26, 34, 32, 0.1);
   --ink-border-strong: rgba(26, 34, 32, 0.2);
 
-  --ink-text: #1a2220;
+  --ink-text: #1d1d1f;
   /* Secondary / muted darkened for WCAG-friendlier body copy on paper */
-  --ink-text-secondary: #3a4441;
-  --ink-text-muted: #52605c;
+  --ink-text-secondary: #48484d;
+  --ink-text-muted: #626269;
   --ink-text-inverse: #f2f4f3;
 
   /* Teal / slate primary — lab signal (not Apple blue) */
@@ -44,8 +44,8 @@
   --ink-evidence-weight-weak: 400;
 
   --ink-radius-sm: 6px;
-  --ink-radius: 8px;
-  --ink-radius-md: 10px;
+  --ink-radius: 10px;
+  --ink-radius-md: 14px;
   /* Two elevations only: raised controls (switch thumb, segmented pill) and
    * floating layers (dialog, popover, drawer). Page sections use neither. */
   --ink-shadow: 0 1px 2px rgba(26, 34, 32, 0.05);
@@ -100,20 +100,20 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --ink-paper: #121816;
-  --ink-paper-elevated: #1a211e;
-  --ink-surface: #222a27;
-  --ink-surface-muted: #2a3330;
+  --ink-paper: #18181b;
+  --ink-paper-elevated: #202023;
+  --ink-surface: #242427;
+  --ink-surface-muted: #303034;
   --ink-border: rgba(230, 235, 233, 0.1);
   --ink-border-strong: rgba(230, 235, 233, 0.2);
 
-  --ink-text: #e6ebe9;
-  --ink-text-secondary: #c0cbc6;
-  --ink-text-muted: #a8b5b0;
+  --ink-text: #f5f5f7;
+  --ink-text-secondary: #d0d0d5;
+  --ink-text-muted: #aaaab2;
   --ink-text-inverse: #121816;
 
-  --ink-primary: #3d9b86;
-  --ink-primary-hover: #4aaf98;
+  --ink-primary: #67c5b0;
+  --ink-primary-hover: #83d6c3;
   --ink-primary-muted: rgba(61, 155, 134, 0.18);
   --ink-primary-fg: #0e1513;
 

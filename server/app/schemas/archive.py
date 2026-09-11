@@ -1,16 +1,16 @@
 """Data archiving and cleanup schemas."""
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class ArchiveRequest(BaseModel):
-    days_old: int = 30
+    days_old: int = Field(default=30, ge=1, le=36500)
     game_type: str | None = None
     dry_run: bool = True
 
 
 class CleanupRequest(BaseModel):
-    days_old: int = 90
+    days_old: int = Field(default=90, ge=1, le=36500)
     game_type: str | None = None
     dry_run: bool = True
 

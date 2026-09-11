@@ -19,10 +19,10 @@ const { t } = useI18n()
 const stats = ref<RuntimeStats | null>(null)
 let pollTimer: ReturnType<typeof setInterval> | null = null
 
-const ACTIVE_STATUSES = ['pending', 'exporting', 'training']
+const ACTIVE_STATUSES = ['training', 'exporting', 'pending']
 
 const activeTask = computed<TrainingTask | null>(() => {
-  // Prefer the most recent task that is currently active.
+  // Surface running work before queued work.
   for (const status of ACTIVE_STATUSES) {
     const found = props.tasks.find((task) => task.status === status)
     if (found) return found
@@ -105,13 +105,13 @@ function handleCancel() {
 <template>
   <div
     v-if="hasActiveTraining"
-    class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-4"
+    class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-6"
   >
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
+      <div class="flex min-w-0 flex-wrap items-center gap-2">
         <span class="text-sm font-semibold text-ink-text">{{ t('training.liveTitle') }}</span>
         <UiBadge variant="muted">{{ taskStatusLabel }}</UiBadge>
-        <span v-if="activeTask" class="text-xs text-ink-text-muted">
+        <span v-if="activeTask" class="break-all text-xs text-ink-text-muted">
           {{ activeTask.name }} · {{ activeTask.base_model }}
         </span>
       </div>
@@ -134,33 +134,41 @@ function handleCancel() {
       <UiProgress :value="progressPercent" />
     </div>
 
-    <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div>
-        <div class="mb-1 flex items-center justify-between text-xs text-ink-text-muted">
-          <span>{{ t('training.cpu') }}</span>
-          <span>{{ cpuPercent }}%</span>
+    <details class="border-t border-ink-border pt-3">
+      <summary class="cursor-pointer py-2 text-caption text-ink-text-secondary">
+        {{ t('training.runtimeDetails') }}
+      </summary>
+      <div v-if="stats" class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <div class="mb-1 flex items-center justify-between text-xs text-ink-text-muted">
+            <span>{{ t('training.cpu') }}</span>
+            <span>{{ cpuPercent }}%</span>
+          </div>
+          <UiProgress :value="cpuPercent" />
         </div>
-        <UiProgress :value="cpuPercent" />
+        <div>
+          <div
+            class="mb-1 flex items-center justify-between text-xs"
+            :class="memoryLow ? 'text-ink-accent' : 'text-ink-text-muted'"
+          >
+            <span>{{ t('training.memory') }}</span>
+            <span>
+              {{ memoryUsedMb }} MB / {{ memoryAvailMb }} MB
+              <span class="text-ink-text-muted">{{
+                t('training.memoryTotal', { n: memoryTotalMb })
+              }}</span>
+            </span>
+          </div>
+          <UiProgress
+            :value="memoryTotalMb > 0 ? Math.round((memoryUsedMb / memoryTotalMb) * 100) : 0"
+            :class="memoryLow ? 'bg-ink-accent-muted' : ''"
+          />
+          <div v-if="memoryLow" class="mt-1 text-xs text-ink-accent">
+            {{ t('training.lowMemory') }}
+          </div>
+        </div>
       </div>
-      <div>
-        <div
-          class="mb-1 flex items-center justify-between text-xs"
-          :class="memoryLow ? 'text-ink-accent' : 'text-ink-text-muted'"
-        >
-          <span>{{ t('training.memory') }}</span>
-          <span>
-            {{ memoryUsedMb }} MB / {{ memoryAvailMb }} MB
-            <span class="text-ink-text-muted">{{ t('training.memoryTotal', { n: memoryTotalMb }) }}</span>
-          </span>
-        </div>
-        <UiProgress
-          :value="memoryTotalMb > 0 ? Math.round((memoryUsedMb / memoryTotalMb) * 100) : 0"
-          :class="memoryLow ? 'bg-ink-accent-muted' : ''"
-        />
-        <div v-if="memoryLow" class="mt-1 text-xs text-ink-accent">
-          {{ t('training.lowMemory') }}
-        </div>
-      </div>
-    </div>
+      <p v-else class="py-2 text-caption text-ink-text-muted">{{ t('training.runtimePending') }}</p>
+    </details>
   </div>
 </template>

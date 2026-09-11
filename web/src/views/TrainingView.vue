@@ -20,11 +20,7 @@ import type { TableColumn } from '@/components/ui/Table.vue'
 import { systemApi, type PreflightResult } from '@/api/systemApi'
 import { experimentConfigApi } from '@/api/experimentConfigApi'
 import type { ModelItem } from '@/api/trainingApi'
-import {
-  configIdForModel,
-  configNameForModel,
-  ollamaTagForModel,
-} from '@/utils/adapterConfig'
+import { configIdForModel, configNameForModel, ollamaTagForModel } from '@/utils/adapterConfig'
 import TrainingLivePanel from '@/components/training/TrainingLivePanel.vue'
 import TrainingModelsPanel, {
   type ModelBusyAction,
@@ -89,6 +85,14 @@ const trainBlockDetail = computed(() => {
 const trainWarnChecks = computed(() =>
   (preflight.value?.checks ?? []).filter((c) => !c.ok && c.severity === 'warn'),
 )
+
+function reviewDatasetDecisions(): void {
+  showCreateDialog.value = false
+  void router.push({
+    path: '/pipeline/decisions',
+    query: experimentIdFilter.value ? { experiment_id: experimentIdFilter.value } : undefined,
+  })
+}
 
 function goFixTraining(): void {
   void router.push(trainingDepsAvailable.value ? '/settings' : '/guide')
@@ -159,28 +163,24 @@ const datasetOptions = computed(() =>
 
 type TaskRow = (typeof store.tasks)[number] & Record<string, unknown>
 
-const taskColumns = computed(
-  (): TableColumn<TaskRow>[] => [
-    { key: 'name', label: t('training.colTaskName') },
-    { key: 'base_model', label: t('training.colBase'), class: 'w-48' },
-    { key: 'status', label: t('common.status'), class: 'w-40' },
-    { key: 'progress', label: t('common.progress'), class: 'w-40' },
-    { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
-  ],
-)
+const taskColumns = computed((): TableColumn<TaskRow>[] => [
+  { key: 'name', label: t('training.colTaskName') },
+  { key: 'base_model', label: t('training.colBase'), class: 'w-48' },
+  { key: 'status', label: t('common.status'), class: 'w-40' },
+  { key: 'progress', label: t('common.progress'), class: 'w-40' },
+  { key: 'created_at', label: t('common.createdAt'), class: 'w-44' },
+])
 
 const taskRows = computed(() => store.tasks as TaskRow[])
 
 type ModelRow = ModelItem & Record<string, unknown>
 
-const modelColumns = computed(
-  (): TableColumn<ModelRow>[] => [
-    { key: 'name', label: t('common.name'), class: 'w-[28%]' },
-    { key: 'base_model', label: t('training.colBaseShort'), class: 'w-[18%]' },
-    { key: 'model_path', label: t('common.path'), class: 'w-[14%]' },
-    { key: 'created_at', label: t('common.createdAt'), class: 'w-[16%]' },
-  ],
-)
+const modelColumns = computed((): TableColumn<ModelRow>[] => [
+  { key: 'name', label: t('common.name'), class: 'w-[28%]' },
+  { key: 'base_model', label: t('training.colBaseShort'), class: 'w-[18%]' },
+  { key: 'model_path', label: t('common.path'), class: 'w-[14%]' },
+  { key: 'created_at', label: t('common.createdAt'), class: 'w-[16%]' },
+])
 
 const modelRows = computed(() => store.models as ModelRow[])
 
@@ -324,10 +324,7 @@ async function handleExportModel(id: string) {
   try {
     const result = await store.exportModel(id, { merge: true, try_create: false })
     const merged = result.merged === true
-    toast.success(
-      merged ? t('training.exportedMerged') : t('training.exportedScript'),
-      6000,
-    )
+    toast.success(merged ? t('training.exportedMerged') : t('training.exportedScript'), 6000)
   } catch (e: unknown) {
     showApiError(e, t('training.exportFailed'))
   } finally {
@@ -509,20 +506,17 @@ onUnmounted(() => {
     pollTimer = null
   }
 })
-
 </script>
 
 <template>
-  <div class="page-container">
-    <div v-if="trainingEnvLoaded && trainBlocked" class="ink-section mb-5 py-ink-4">
+  <div class="page-container research-page">
+    <div
+      v-if="trainingEnvLoaded && trainBlocked"
+      class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-6 md:p-8"
+    >
       <h2 class="ink-verdict-claim is-weak">{{ t('training.blockedClaim') }}</h2>
       <p class="mt-ink-2 max-w-2xl text-lead text-ink-text-secondary">
         {{ trainBlockDetail }}
-        <template v-if="!trainingDepsAvailable">
-          <code class="ml-1 rounded bg-ink-surface-muted px-1.5 py-0.5 text-caption">
-            cd server && poetry install --with training
-          </code>
-        </template>
       </p>
       <div class="mt-ink-4">
         <UiButton size="lg" @click="goFixTraining">
@@ -534,7 +528,8 @@ onUnmounted(() => {
         </UiButton>
       </div>
     </div>
-    <div v-else class="mb-5 flex justify-end">
+    <div v-else class="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <p class="max-w-xl text-body text-ink-text-secondary">{{ t('training.workspaceHint') }}</p>
       <UiButton
         class="shrink-0 whitespace-nowrap"
         :disabled="!trainingEnvLoaded"
@@ -550,7 +545,11 @@ onUnmounted(() => {
       :checks="trainWarnChecks"
     />
 
-    <div class="mb-6 flex gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1 w-fit">
+    <div
+      role="group"
+      :aria-label="t('nav.training')"
+      class="mb-6 flex w-fit max-w-full flex-wrap gap-1 rounded-ink border border-ink-border bg-ink-surface-muted p-1"
+    >
       <button
         type="button"
         class="rounded-[6px] px-4 py-2 text-base font-medium transition-colors"
@@ -559,6 +558,7 @@ onUnmounted(() => {
             ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
             : 'text-ink-text-muted hover:text-ink-text'
         "
+        :aria-pressed="activeTab === 'tasks'"
         @click="setTab('tasks')"
       >
         {{ t('training.tasks') }}
@@ -571,22 +571,20 @@ onUnmounted(() => {
             ? 'bg-ink-surface text-ink-text shadow-[var(--ink-shadow)]'
             : 'text-ink-text-muted hover:text-ink-text'
         "
+        :aria-pressed="activeTab === 'models'"
         @click="setTab('models')"
       >
         {{ t('training.models') }}
       </button>
     </div>
 
-    <TrainingLivePanel
-      :tasks="store.tasks"
-      :cancelling="cancelling"
-      @cancel="handleCancelTask"
-    />
+    <TrainingLivePanel :tasks="store.tasks" :cancelling="cancelling" @cancel="handleCancelTask" />
 
     <TrainingTasksPanel
       v-if="activeTab === 'tasks'"
       :columns="taskColumns"
       :rows="taskRows"
+      :can-create="trainingEnvLoaded && !trainBlocked"
       :loading="store.isLoading"
       :status-variant="statusVariant"
       :format-progress="formatProgress"
@@ -616,7 +614,6 @@ onUnmounted(() => {
       @delete="handleDeleteModel"
     />
 
-
     <UiDialog
       :open="showCreateDialog"
       :title="t('training.createTask')"
@@ -628,7 +625,12 @@ onUnmounted(() => {
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
             {{ t('training.taskName') }} <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="createForm.name" :placeholder="t('training.taskNamePh')" class="w-full" />
+          <UiInput
+            v-model="createForm.name"
+            :aria-label="t('training.taskName')"
+            :placeholder="t('training.taskNamePh')"
+            class="w-full"
+          />
         </div>
         <div>
           <label class="mb-1.5 block text-sm font-medium text-ink-text">
@@ -636,26 +638,26 @@ onUnmounted(() => {
           </label>
           <UiSelect
             v-model="createForm.dataset_id"
+            :aria-label="t('training.dataset')"
             :options="datasetOptions"
             :placeholder="t('training.pickDataset')"
             class="w-full"
           />
           <div v-if="datasets.length === 0" class="mt-2 text-xs text-ink-accent">
             {{ t('training.noDatasetPrefix') }}
-            <button
-              type="button"
-              class="underline"
-              @click="showCreateDialog = false; router.push('/decisions')"
-            >
+            <button type="button" class="underline" @click="reviewDatasetDecisions">
               {{ t('nav.decisions') }}
             </button>
             {{ t('training.noDatasetSuffix') }}
           </div>
         </div>
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.baseModel') }}</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{
+            t('training.baseModel')
+          }}</label>
           <UiSelect
             v-model="createForm.base_model"
+            :aria-label="t('training.baseModel')"
             :options="baseModelOptions"
             class="w-full"
           />
@@ -673,8 +675,10 @@ onUnmounted(() => {
           </summary>
           <div class="space-y-4 border-t border-ink-border px-3 py-3">
             <div>
-              <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('training.params') }}</label>
-              <div class="grid grid-cols-3 gap-3">
+              <label class="mb-1.5 block text-sm font-medium text-ink-text">{{
+                t('training.params')
+              }}</label>
+              <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
                 <div>
                   <div class="mb-1 text-xs text-ink-text-muted">{{ t('training.lr') }}</div>
                   <UiInputNumber
@@ -742,11 +746,10 @@ onUnmounted(() => {
         </details>
       </div>
       <template #footer>
-        <UiButton variant="secondary" @click="showCreateDialog = false">{{ t('common.cancel') }}</UiButton>
-        <UiButton
-          :disabled="!trainingEnvLoaded || !trainingDepsAvailable"
-          @click="handleCreate"
-        >
+        <UiButton variant="secondary" @click="showCreateDialog = false">{{
+          t('common.cancel')
+        }}</UiButton>
+        <UiButton :disabled="!trainingEnvLoaded || !trainingDepsAvailable" @click="handleCreate">
           {{ t('common.create') }}
         </UiButton>
       </template>

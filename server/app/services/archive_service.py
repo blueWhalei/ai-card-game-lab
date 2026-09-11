@@ -11,9 +11,12 @@ from __future__ import annotations
 import asyncio
 import gzip
 import json
+import os
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Any
+from uuid import uuid4
 
 import structlog
 
@@ -68,6 +71,10 @@ class ArchiveService:
         cutoff_str = cutoff.isoformat()
 
         async with connect_sqlite(self._sqlite_path) as db:
+            # Keep selection, archive snapshot and deletion in one write transaction.
+            # This also serializes archive/cleanup requests across processes.
+            if not request.dry_run:
+                await db.execute("BEGIN IMMEDIATE")
             repo = ArchiveRepository(db)
 
             games = await repo.fetch_old_games(cutoff_str, request.game_type)
@@ -85,6 +92,7 @@ class ArchiveService:
             rounds = await repo.fetch_rounds_for_games(game_ids)
             traces = await repo.fetch_traces_for_games(game_ids)
             decisions = await repo.fetch_decisions_for_games(game_ids)
+            spans = await repo.fetch_spans_for_games(game_ids)
 
             if request.dry_run:
                 return ArchiveResult(
@@ -96,7 +104,9 @@ class ArchiveService:
                     freed_bytes=0,
                 )
 
-            archive_file = await self._write_archive(games, rounds, traces, decisions, cutoff_str)
+            archive_file = await self._write_archive(
+                games, rounds, traces, decisions, spans, cutoff_str
+            )
 
             db_size_before = Path(self._sqlite_path).stat().st_size
 
@@ -128,6 +138,8 @@ class ArchiveService:
         cutoff_str = cutoff.isoformat()
 
         async with connect_sqlite(self._sqlite_path) as db:
+            if not request.dry_run:
+                await db.execute("BEGIN IMMEDIATE")
             repo = ArchiveRepository(db)
 
             old_games = await repo.fetch_old_games(cutoff_str, request.game_type)
@@ -165,7 +177,7 @@ class ArchiveService:
             db_size_after = Path(self._sqlite_path).stat().st_size
             freed_bytes = db_size_before - db_size_after
 
-            jsonl_deleted = await self._cleanup_jsonl_files(game_ids)
+            jsonl_deleted = await asyncio.to_thread(self._cleanup_jsonl_files, old_games)
 
             logger.info(
                 "data_cleaned_up",
@@ -198,11 +210,26 @@ class ArchiveService:
 
     async def delete_archive(self, filename: str) -> bool:
         """Delete an archive file."""
-        archive_path = self._archive_dir / filename
-        if not archive_path.exists() or not archive_path.is_relative_to(self._archive_dir):
+        deleted = await asyncio.to_thread(self._delete_archive_file, filename)
+        if deleted:
+            logger.info("archive_deleted", filename=filename)
+        return deleted
+
+    def _delete_archive_file(self, filename: str) -> bool:
+        # Reject Windows separators/ADS on every platform, not only the current OS.
+        if any(char in filename for char in ("/", "\\", ":", "\0")):
             return False
-        archive_path.unlink()
-        logger.info("archive_deleted", filename=filename)
+        if not filename.endswith(".jsonl.gz"):
+            return False
+        archive_path = self._archive_dir / filename
+        if (
+            archive_path.is_symlink()
+            or archive_path.resolve().parent != self._archive_dir.resolve()
+        ):
+            return False
+        if not archive_path.is_file():
+            return False
+        archive_path.unlink(missing_ok=True)
         return True
 
     async def _write_archive(
@@ -211,11 +238,12 @@ class ArchiveService:
         rounds: list[dict[str, Any]],
         traces: list[dict[str, Any]],
         decisions: list[dict[str, Any]],
+        spans: list[dict[str, Any]],
         cutoff: str,
     ) -> Path:
         """Write archive data to a compressed JSONL file."""
         timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
-        archive_file = self._archive_dir / f"archive_{timestamp}.jsonl.gz"
+        archive_file = self._archive_dir / f"archive_{timestamp}_{uuid4().hex}.jsonl.gz"
 
         archive_data = {
             "metadata": {
@@ -225,27 +253,34 @@ class ArchiveService:
                 "rounds_count": len(rounds),
                 "traces_count": len(traces),
                 "decisions_count": len(decisions),
+                "spans_count": len(spans),
             },
             "games": games,
             "rounds": rounds,
             "traces": traces,
             "decisions": decisions,
+            "spans": spans,
         }
 
         await asyncio.to_thread(_write_gzip_json, archive_file, archive_data)
 
         return archive_file
 
-    async def _cleanup_jsonl_files(self, game_ids: list[str]) -> int:
-        """Remove JSONL files for archived game IDs."""
-        games_dir = self._data_dir / "games"
-        if not games_dir.exists():
-            return 0
-
+    def _cleanup_jsonl_files(self, games: list[dict[str, Any]]) -> int:
+        """Use persisted paths, including date directories, before discarding rows."""
+        games_dir = (self._data_dir / "games").resolve()
         deleted = 0
-        for game_id in game_ids:
-            jsonl_file = games_dir / f"{game_id}.jsonl"
-            if jsonl_file.exists():
+        for game in games:
+            relative = Path(str(game.get("data_file") or ""))
+            jsonl_file = self._data_dir / relative
+            resolved = jsonl_file.resolve()
+            if (
+                not relative.is_absolute()
+                and resolved.is_relative_to(games_dir)
+                and not jsonl_file.is_symlink()
+                and resolved.suffix == ".jsonl"
+                and jsonl_file.is_file()
+            ):
                 jsonl_file.unlink()
                 deleted += 1
 
@@ -253,6 +288,17 @@ class ArchiveService:
 
 
 def _write_gzip_json(path: Path, data: dict[str, Any]) -> None:
-    """Write JSON data to a gzip file (called via asyncio.to_thread)."""
-    with gzip.open(path, "wt", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+    """Publish a complete archive atomically, refusing to overwrite an existing file."""
+    temporary: Path | None = None
+    try:
+        with NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as raw:
+            temporary = Path(raw.name)
+            with gzip.GzipFile(fileobj=raw, mode="wb") as compressed:
+                compressed.write(json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8"))
+            raw.flush()
+            os.fsync(raw.fileno())
+        # Same-directory hard link is atomic and fails if the destination exists.
+        os.link(temporary, path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)

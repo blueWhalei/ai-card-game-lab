@@ -15,6 +15,8 @@ import {
 } from '@/api/experimentConfigApi'
 import { formatPercentage } from '@/utils/format'
 import { downloadJson, pickJsonFile } from '@/utils/jsonFile'
+import UiDropdownMenu from '@/components/ui/DropdownMenu.vue'
+import { Icon } from '@iconify/vue'
 import UiButton from '@/components/ui/Button.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
@@ -177,8 +179,7 @@ async function handleSubmit() {
     return
   }
   const policyKind = form.value.policy_kind ?? 'llm'
-  const usesLlm =
-    policyKind === 'llm' || policyKind === 'tool_loop' || policyKind === 'search'
+  const usesLlm = policyKind === 'llm' || policyKind === 'tool_loop' || policyKind === 'search'
   try {
     if (isEditing.value) {
       const updateData: UpdateExperimentConfigRequest = {
@@ -269,23 +270,28 @@ async function importPack(): Promise<void> {
 </script>
 
 <template>
-  <div class="page-container">
-    <div class="mb-5 flex flex-wrap items-center justify-end gap-2">
-      <UiButton variant="secondary" :loading="packing" @click="importPack">
-        {{ t('config.importPack') }}
-      </UiButton>
-      <UiButton variant="secondary" :loading="packing" @click="exportPack">
-        {{ t('config.exportPack') }}
-      </UiButton>
-      <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
+  <div class="page-container research-page">
+    <div class="mb-6 flex flex-wrap items-center justify-between gap-3">
+      <p class="text-body text-ink-text-secondary">
+        {{ loading ? t('common.loading') : t('config.libraryCount', { n: configs.length }) }}
+      </p>
+      <div class="flex flex-wrap items-center gap-2">
+        <UiDropdownMenu
+          :items="[
+            { id: 'import', label: t('config.importPack'), disabled: packing },
+            { id: 'export', label: t('config.exportPack'), disabled: packing },
+          ]"
+          @select="$event === 'import' ? importPack() : exportPack()"
+        >
+          <UiButton variant="secondary" :loading="packing">{{ t('config.transfer') }}</UiButton>
+        </UiDropdownMenu>
+        <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
+      </div>
     </div>
 
     <div class="relative min-h-[200px]">
       <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
-      <EmptyState
-        v-else-if="configs.length === 0"
-        :title="t('config.emptyTitle')"
-      >
+      <EmptyState v-else-if="configs.length === 0" :title="t('config.emptyTitle')">
         <template #action>
           <UiButton @click="openCreateDialog">{{ t('config.add') }}</UiButton>
           <UiButton variant="secondary" :loading="packing" @click="importPack">
@@ -293,16 +299,16 @@ async function importPack(): Promise<void> {
           </UiButton>
         </template>
       </EmptyState>
-      <ul v-else class="grid gap-ink-3 sm:grid-cols-2 xl:grid-cols-3">
+      <ul v-else class="grid gap-ink-3 md:grid-cols-2">
         <li
           v-for="row in configs"
           :key="row.id"
-          class="rounded-ink-md border border-ink-border bg-ink-surface px-ink-4 py-ink-3"
+          class="rounded-ink-md border border-ink-border bg-ink-surface p-ink-6"
         >
           <div class="flex items-start justify-between gap-ink-2">
             <div class="min-w-0">
-              <h3 class="truncate text-body font-semibold text-ink-text">{{ row.name }}</h3>
-              <p class="mt-ink-1 truncate text-caption text-ink-text-secondary">
+              <h3 class="break-words text-lead font-semibold text-ink-text">{{ row.name }}</h3>
+              <p class="mt-ink-2 break-all text-caption text-ink-text-secondary">
                 <template v-if="isBaselineKind(row.policy_kind)">
                   {{ policyLabel(row.policy_kind) }}
                 </template>
@@ -322,31 +328,36 @@ async function importPack(): Promise<void> {
                 {{ t('config.policyKindHint') }}
               </p>
             </div>
-            <div class="flex shrink-0 items-center gap-ink-2 text-caption">
-              <button
-                type="button"
-                class="text-ink-text-secondary hover:text-ink-text hover:underline"
-                @click="openEditDialog(row)"
-              >
-                {{ t('common.edit') }}
-              </button>
-              <button
-                type="button"
-                class="text-ink-text-secondary hover:text-ink-danger hover:underline"
-                @click="handleDelete(row)"
-              >
-                {{ t('common.delete') }}
-              </button>
-            </div>
+            <UiDropdownMenu
+              :items="[
+                { id: 'edit', label: t('common.edit') },
+                { id: 'delete', label: t('common.delete'), danger: true },
+              ]"
+              @select="$event === 'edit' ? openEditDialog(row) : handleDelete(row)"
+            >
+              <UiButton
+                variant="ghost"
+                size="sm"
+                class="shrink-0"
+                :aria-label="t('config.actionsFor', { name: row.name })"
+                ><Icon icon="lucide:more-horizontal" class="h-4 w-4"
+              /></UiButton>
+            </UiDropdownMenu>
           </div>
-          <div class="mt-ink-3 flex flex-wrap items-baseline gap-ink-3 text-caption text-ink-text-muted">
-            <span class="tabular-nums">
-              {{ t('common.games') }} {{ getConfigStats(row.id).games_played }}
+          <div
+            class="mt-ink-4 flex flex-wrap items-baseline gap-ink-3 border-t border-ink-border pt-ink-4 text-caption text-ink-text-muted"
+          >
+            <span v-if="getConfigStats(row.id).games_played > 0" class="tabular-nums">
+              {{ t('config.finishedGames', { n: getConfigStats(row.id).games_played }) }}
             </span>
-            <span class="tabular-nums text-ink-text-secondary">
+            <span
+              v-if="getConfigStats(row.id).games_played > 0"
+              class="tabular-nums text-ink-text-secondary"
+            >
               {{ t('common.winRate') }}
               {{ formatPercentage(getConfigStats(row.id).win_rate) }}
             </span>
+            <span v-else>{{ t('config.noFinishedGames') }}</span>
             <button
               v-if="getConfigStats(row.id).last_game_id"
               type="button"
@@ -371,18 +382,31 @@ async function importPack(): Promise<void> {
           <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('config.playerId') }} <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="form.id" :placeholder="t('config.idPlaceholder')" class="w-full" />
+          <UiInput
+            v-model="form.id"
+            :aria-label="t('config.playerId')"
+            :placeholder="t('config.idPlaceholder')"
+            class="w-full"
+          />
         </div>
         <div>
           <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('common.name') }} <span class="text-ink-danger">*</span>
           </label>
-          <UiInput v-model="form.name" :placeholder="t('config.namePlaceholder')" class="w-full" />
+          <UiInput
+            v-model="form.name"
+            :aria-label="t('common.name')"
+            :placeholder="t('config.namePlaceholder')"
+            class="w-full"
+          />
         </div>
         <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+            t('common.notes')
+          }}</label>
           <UiTextarea
             v-model="form.notes"
+            :aria-label="t('common.notes')"
             :rows="2"
             :placeholder="t('config.notesPlaceholder')"
             class="w-full"
@@ -390,8 +414,11 @@ async function importPack(): Promise<void> {
         </div>
 
         <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.policyKind') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+            t('config.policyKind')
+          }}</label>
           <UiSelect
+            :aria-label="t('config.policyKind')"
             :model-value="form.policy_kind ?? 'llm'"
             :options="policyKindOptions"
             class="w-full"
@@ -402,27 +429,36 @@ async function importPack(): Promise<void> {
           </p>
         </div>
 
-        <div v-if="!isBaselineForm && form.model_config_data" class="rounded-ink-md bg-ink-surface-muted p-ink-4">
+        <div
+          v-if="!isBaselineForm && form.model_config_data"
+          class="rounded-ink-md bg-ink-surface-muted p-ink-4"
+        >
           <h4 class="mb-ink-3 font-medium text-ink-text">{{ t('config.modelSection') }}</h4>
           <div class="space-y-ink-3">
             <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.provider') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+                t('config.provider')
+              }}</label>
               <UiSelect
                 v-model="form.model_config_data.provider"
+                :aria-label="t('config.provider')"
                 :options="providerOptions"
                 class="w-full"
                 @update:model-value="onProviderChange"
               />
             </div>
             <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('config.modelName') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+                t('config.modelName')
+              }}</label>
               <UiInput
                 v-model="form.model_config_data.model_name"
+                :aria-label="t('config.modelName')"
                 placeholder="gpt-4o-mini"
                 class="w-full"
               />
             </div>
-            <div class="grid grid-cols-3 gap-ink-3">
+            <div class="grid grid-cols-1 gap-ink-3 sm:grid-cols-3">
               <div>
                 <label class="mb-1.5 block text-body font-medium text-ink-text">Temperature</label>
                 <UiInputNumber
@@ -462,8 +498,12 @@ async function importPack(): Promise<void> {
       </div>
 
       <template #footer>
-        <UiButton variant="secondary" @click="dialogVisible = false">{{ t('common.cancel') }}</UiButton>
-        <UiButton @click="handleSubmit">{{ isEditing ? t('common.save') : t('common.create') }}</UiButton>
+        <UiButton variant="secondary" @click="dialogVisible = false">{{
+          t('common.cancel')
+        }}</UiButton>
+        <UiButton @click="handleSubmit">{{
+          isEditing ? t('common.save') : t('common.create')
+        }}</UiButton>
       </template>
     </UiDialog>
   </div>

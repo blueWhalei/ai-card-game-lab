@@ -750,6 +750,8 @@ export function useExperimentDetail() {
         return t('experiment.gameStatus.interrupted')
       case 'failed':
         return t('experiment.gameStatus.failed')
+      case 'cancelled':
+        return t('game.status.cancelled')
       default:
         return status
     }

@@ -51,7 +51,7 @@ function clearScope(): void {
 
 <template>
   <div>
-    <div class="w-full max-w-[1680px] px-6 pt-4 md:px-8 xl:px-10">
+    <div class="mx-auto w-full max-w-[1440px] px-4 pt-4 md:px-8 xl:px-10">
       <ExperimentContextBar
         v-if="experimentId"
         :experiment-id="experimentId"

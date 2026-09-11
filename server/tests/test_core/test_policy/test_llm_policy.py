@@ -312,3 +312,32 @@ async def test_an_empty_action_list_is_refused(engine: DoudizhuEngine) -> None:
 
     with pytest.raises(InvalidActionError):
         await policy.decide_action(observation, [], Budget(), ctx)
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("kind", ["llm", "tool_loop", "search"])
+@pytest.mark.parametrize("limited", [False, True])
+async def test_nonretryable_failure_stops_all_policy_calls(
+    engine: DoudizhuEngine, stream: bool, kind: str, limited: bool
+) -> None:
+    from app.core.policy.search import SearchAugmentedPolicy
+    from app.core.policy.tool_loop import ToolLoopPolicy
+    from app.utils.exceptions import AIRateLimitExceededError
+
+    error = (
+        AIRateLimitExceededError("scripted", "HTTP 429")
+        if limited
+        else AIProviderError("scripted", "HTTP 401", retryable=False)
+    )
+    client = ScriptedClient([error], stream_replies=[error])
+    policy_class = {"llm": LLMPolicy, "tool_loop": ToolLoopPolicy, "search": SearchAugmentedPolicy}[
+        kind
+    ]
+    policy = policy_class(client, provider="scripted", model_name="model", stream=stream)
+    observation, legal, ctx = _setup(engine)
+    with pytest.raises(type(error)):
+        _ = [
+            event async for event in policy.decide(observation, legal, Budget(max_llm_calls=3), ctx)
+        ]
+    assert len(client.stream_calls) == int(stream)
+    assert len(client.chat_calls) == int(not stream)

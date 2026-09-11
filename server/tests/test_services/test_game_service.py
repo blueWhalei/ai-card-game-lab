@@ -45,6 +45,24 @@ class TestGameServiceInitialization:
 
 
 class TestGameServicePlayerValidation:
+    @pytest.mark.parametrize("kind", ["heuristic", "random", "first"])
+    @pytest.mark.parametrize("provider", ["baseline", "openai"])
+    def test_baseline_does_not_require_provider(
+        self,
+        game_service: GameService,
+        experiment_config_service: MagicMock,
+        kind: str,
+        provider: str,
+    ) -> None:
+        experiment_config_service.get_config.side_effect = lambda pid: {
+            "id": pid,
+            "policy_kind": kind,
+            "model_config": {"provider": provider},
+        }
+        with patch("app.services.game_service.is_provider_configured", return_value=False) as probe:
+            game_service._validate_player_ids(["baseline_player"])
+        probe.assert_not_called()
+
     def test_unknown_player_ids_rejected(
         self,
         game_service: GameService,

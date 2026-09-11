@@ -197,6 +197,14 @@ POST   /api/v1/experiments/{id}/collect      # 按协议快照批量开局（座
 POST   /api/v1/experiments/{id}/cancel-collect  # 停止对局：取消本实验所有活跃对局（created/running/paused/pending → cancelled）
 ```
 
+采集请求体为 `{"count": 2, "idempotency_key": "调用方生成的唯一请求键"}`。`count` 为 1–50；请求键可选、长度 1–128，同一实验内唯一。未提供键表示每次请求都是新批次。
+
+- 响应不确定或启动中途失败时，重试必须复用原键和原 `count`；服务返回原批次 `game_ids`，仅尝试启动仍为 `created` 的对局。
+- 同一键更换 `count` 返回 HTTP 409，错误码 `COLLECT_IDEMPOTENCY_CONFLICT`。
+- 预留阶段事务内保存整批 games、种子协议与请求记录，失败整体回滚且不启动模型调用。启动发生在事务提交后；启动失败不撤销已开始的对局，也不重新分配种子。
+- 已完成、已取消、已中断或已归档的原批次不会因重试再次开局。新批次必须使用新键。请求记录随实验保留，归档对局不会重置预留序号。
+- 前端阻止重复提交，并在 sessionStorage 中保留失败请求的键，收到成功响应后清除。HTTP 201 的 `count` 是原批次大小，运行结果请查询实验详情。
+
 `GET /api/v1/experiments` 每条附带与详情同形的 `next_step`，以及可选的精简 `delta`（存在对照实验时）：`verdict_key` / `can_conclude` / `landlord_win_rate_diff` / `paired_n` / `inconclusive_reason` / `this_decisive_n` / `peer_decisive_n` / 对照身份字段；**不含** `scenario_diffs` 与完整置信区间矩阵。首页用它渲染「一句状态 + 下一步」，不必逐条拉详情。进度展示（列表 / 详情 / 对比选择器）用前端 `formatExperimentProgress`：分子不超过 `target_games`，超额写成「多跑了 N 局」，不要直接显示 `14/10` 这类未加说明的超额比。
 
 `GET /api/v1/experiments/{id}` 的 `games[]` 带 `progress`：`{ phase, round, player_id }`。`phase` 为 `queued` / `bidding` / `playing` / `endgame`（来自该局最近一条决策点；尚无决策则为 `queued`）。详情进行中列表用一句进度文案展示，不另加 KPI 列。

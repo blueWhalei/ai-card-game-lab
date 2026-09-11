@@ -3,11 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
-import {
-  experimentApi,
-  type CollectMode,
-  type Experiment,
-} from '@/api/experimentApi'
+import { experimentApi, type CollectMode, type Experiment } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import {
   defaultEngineId,
@@ -268,25 +264,30 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="page-container space-y-ink-6">
-    <div class="flex flex-wrap items-center justify-end gap-ink-2">
-      <UiButton
-        variant="secondary"
-        data-testid="load-demo-experiment"
-        :loading="seedingDemo"
-        @click="loadDemo"
-      >
-        {{ t('experiment.loadDemo') }}
-      </UiButton>
-      <UiDropdownMenu :items="moreMenuItems" @select="onMoreSelect">
-        <UiButton variant="ghost" size="icon" :aria-label="t('common.more')" :loading="importing">
-          <Icon icon="lucide:ellipsis" class="h-4 w-4" />
+  <div class="page-container research-page space-y-ink-6">
+    <div class="flex flex-wrap items-center justify-between gap-ink-4">
+      <p class="text-body text-ink-text-muted">
+        {{ t('experiment.libraryCount', { n: experiments.length }) }}
+      </p>
+      <div class="flex flex-wrap items-center gap-ink-2">
+        <UiButton
+          variant="ghost"
+          data-testid="load-demo-experiment"
+          :loading="seedingDemo"
+          @click="loadDemo"
+        >
+          {{ t('experiment.loadDemo') }}
         </UiButton>
-      </UiDropdownMenu>
-      <UiButton @click="openCreate">
-        <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
-        {{ t('experiment.create') }}
-      </UiButton>
+        <UiDropdownMenu :items="moreMenuItems" @select="onMoreSelect">
+          <UiButton variant="ghost" size="icon" :aria-label="t('common.more')" :loading="importing">
+            <Icon icon="lucide:ellipsis" class="h-4 w-4" />
+          </UiButton>
+        </UiDropdownMenu>
+        <UiButton @click="openCreate">
+          <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
+          {{ t('experiment.create') }}
+        </UiButton>
+      </div>
     </div>
 
     <FirstRunStepper
@@ -327,7 +328,10 @@ onMounted(() => {
       </template>
     </EmptyState>
 
-    <div v-else-if="experiments.length > 0" class="space-y-ink-3">
+    <div
+      v-else-if="experiments.length > 0"
+      class="overflow-hidden rounded-ink-md border border-ink-border bg-ink-surface divide-y divide-ink-border"
+    >
       <ExperimentListRow
         v-for="exp in experiments"
         :key="exp.id"
@@ -338,14 +342,12 @@ onMounted(() => {
       />
     </div>
 
-    <UiDialog
-      v-model:open="createOpen"
-      size="lg"
-      :title="t('experiment.createTitle')"
-    >
+    <UiDialog v-model:open="createOpen" size="lg" :title="t('experiment.createTitle')">
       <div class="grid gap-ink-4 sm:grid-cols-2">
         <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.name') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+            t('common.name')
+          }}</label>
           <UiInput
             v-model="formName"
             :placeholder="t('experiment.namePlaceholder')"
@@ -359,7 +361,9 @@ onMounted(() => {
           <UiInputNumber v-model="formTarget" :min="1" :max="50" />
         </div>
         <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.collectMode') }}</label>
+          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+            t('experiment.collectMode')
+          }}</label>
           <div class="flex flex-wrap gap-ink-2">
             <UiButton
               size="sm"
@@ -379,7 +383,10 @@ onMounted(() => {
               {{ t('experiment.collectModeBenchmark') }}
             </UiButton>
           </div>
-          <p v-if="formCollectMode === 'benchmark'" class="mt-1.5 text-caption text-ink-text-secondary">
+          <p
+            v-if="formCollectMode === 'benchmark'"
+            class="mt-1.5 text-caption text-ink-text-secondary"
+          >
             {{ t('experiment.collectModeBenchmarkHint') }}
           </p>
         </div>
@@ -387,7 +394,10 @@ onMounted(() => {
           <label class="mb-1.5 block text-body font-medium text-ink-text">
             {{ t('experiment.promptVersion') }}
           </label>
-          <UiInput v-model="formPromptVersion" :placeholder="t('experiment.promptVersionPlaceholder')" />
+          <UiInput
+            v-model="formPromptVersion"
+            :placeholder="t('experiment.promptVersionPlaceholder')"
+          />
           <p class="mt-1.5 text-caption text-ink-text-secondary">
             {{ t('experiment.promptVersionHint') }}
           </p>
@@ -435,7 +445,9 @@ onMounted(() => {
           </button>
           <div v-if="createMoreOpen" class="mt-ink-3 grid gap-ink-4 sm:grid-cols-2">
             <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.hypothesis') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+                t('experiment.hypothesis')
+              }}</label>
               <UiTextarea
                 v-model="formHypothesis"
                 :rows="3"
@@ -444,7 +456,9 @@ onMounted(() => {
               />
             </div>
             <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('common.notes') }}</label>
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+                t('common.notes')
+              }}</label>
               <UiTextarea
                 v-model="formNotes"
                 :rows="3"
@@ -453,14 +467,22 @@ onMounted(() => {
               />
             </div>
             <div class="sm:col-span-2">
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{ t('experiment.tags') }}</label>
-              <UiInput v-model="formTags" :placeholder="t('experiment.tagsPlaceholder')" class="w-full" />
+              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
+                t('experiment.tags')
+              }}</label>
+              <UiInput
+                v-model="formTags"
+                :placeholder="t('experiment.tagsPlaceholder')"
+                class="w-full"
+              />
             </div>
           </div>
         </div>
       </div>
       <template #footer>
-        <UiButton variant="secondary" @click="createOpen = false">{{ t('common.cancel') }}</UiButton>
+        <UiButton variant="secondary" @click="createOpen = false">{{
+          t('common.cancel')
+        }}</UiButton>
         <UiButton :disabled="!canSubmit" :loading="creating" @click="submitCreate">
           {{ t('experiment.createAndOpen') }}
         </UiButton>

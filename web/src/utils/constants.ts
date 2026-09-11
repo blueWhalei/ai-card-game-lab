@@ -12,7 +12,7 @@ export const GAME_STATUS_VARIANT: Record<string, string> = {
   created: 'info',
   running: 'success',
   paused: 'warning',
-  finished: 'danger',
+  finished: 'info',
   failed: 'danger',
   cancelled: 'info',
   interrupted: 'warning',

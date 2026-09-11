@@ -20,6 +20,7 @@ class JsonlWriter:
 
     def __init__(self, data_dir: str) -> None:
         self._data_dir = Path(data_dir)
+        self._paths: dict[str, Path] = {}
 
     @property
     def data_dir(self) -> Path:
@@ -27,10 +28,40 @@ class JsonlWriter:
         return self._data_dir
 
     def _game_file_path(self, game_id: str) -> Path:
+        if game_id in self._paths:
+            return self._paths[game_id]
+        # A new writer (e.g. after restart) reuses an existing game's first file.
+        existing = sorted((self._data_dir / "games").glob(f"*/{game_id}.jsonl"))
+        if existing:
+            self._paths[game_id] = existing[0]
+            return existing[0]
         today = datetime.now(tz=UTC).strftime("%Y-%m-%d")
         directory = self._data_dir / "games" / today
         directory.mkdir(parents=True, exist_ok=True)
-        return directory / f"{game_id}.jsonl"
+        path = directory / f"{game_id}.jsonl"
+        self._paths[game_id] = path
+        return path
+
+    def bind_game_file(self, game_id: str, data_file: str) -> None:
+        """Restore the path persisted at creation, including across UTC midnight."""
+        path = (self._data_dir / data_file).resolve()
+        if not path.is_relative_to((self._data_dir / "games").resolve()):
+            raise ValueError("Game file must stay inside the games directory")
+        if path.name != f"{game_id}.jsonl":
+            raise ValueError("Game file does not match game id")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        self._paths[game_id] = path
+
+    def release_game(self, game_id: str) -> None:
+        self._paths.pop(game_id, None)
+
+    def prepare_game_file(self, game_id: str) -> str:
+        """Choose a stable path without writing records before a reservation commits."""
+        return str(self._game_file_path(game_id).relative_to(self._data_dir))
+
+    def ensure_started(self, game_id: str, game_type: str, player_ids: list[str]) -> None:
+        if not self._game_file_path(game_id).exists():
+            self.start_game(game_id, game_type, player_ids)
 
     def _write_line(self, game_id: str, record: dict[str, Any]) -> None:
         path = self._game_file_path(game_id)
@@ -58,9 +89,9 @@ class JsonlWriter:
 
     def record_round(self, game_id: str, data: dict[str, Any]) -> None:
         """Append a round record to the game's JSONL file."""
-        data["type"] = "round"
-        data["timestamp"] = datetime.now(tz=UTC).isoformat()
-        self._write_line(game_id, data)
+        self._write_line(
+            game_id, {**data, "type": "round", "timestamp": datetime.now(tz=UTC).isoformat()}
+        )
 
     def end_game(self, game_id: str, summary: dict[str, Any]) -> None:
         """Write the game_end record."""
@@ -71,4 +102,5 @@ class JsonlWriter:
             "timestamp": datetime.now(tz=UTC).isoformat(),
         }
         self._write_line(game_id, record)
+        self.release_game(game_id)
         logger.info("jsonl_game_ended", game_id=game_id)

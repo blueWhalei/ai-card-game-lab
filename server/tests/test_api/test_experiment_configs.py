@@ -10,6 +10,34 @@ from app.dependencies import get_experiment_config_service
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
 
 
+async def test_direct_json_is_saved_and_frozen(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/experiment-configs",
+        json={
+            "id": "direct_json",
+            "name": "Direct JSON",
+            "model_config_data": {
+                "provider": "deepseek",
+                "model_name": "deepseek-v4-flash",
+                "deepseek_direct_json": True,
+                "max_tokens": 512,
+            },
+        },
+    )
+    assert response.status_code == 201
+    saved = await client.get("/api/v1/experiment-configs/direct_json")
+    assert saved.json()["data"]["model_config"]["deepseek_direct_json"] is True
+    experiment = await client.post(
+        "/api/v1/experiments",
+        json={"name": "direct", "player_ids": ["direct_json", "cfg_temp_06", "cfg_temp_12"]},
+    )
+    assert experiment.status_code == 201
+    from app.core.task_protocol import protocol_players
+
+    players = protocol_players(experiment.json()["data"]["protocol"])
+    assert players[0]["model_config"]["deepseek_direct_json"] is True
+
+
 async def test_list_and_stats(client: AsyncClient) -> None:
     response = await client.get("/api/v1/experiment-configs")
     assert response.status_code == 200

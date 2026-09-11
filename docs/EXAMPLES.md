@@ -12,7 +12,9 @@
 
 ## 1. 如何添加新游戏引擎
 
-本示例演示如何添加一个简单的"猜数字"游戏引擎。
+本示例演示如何添加一个简单的"猜数字"游戏引擎。状态类与引擎代码由 `server/tests/test_core/test_documentation_contracts.py` 加载执行，验证合法动作 ID、状态转换和观察信息。
+
+当前协议由 Policy 选择引擎提供的 `action_id`，再通过 `resolve_action()` 获取动作。新引擎不实现自由文本 `parse_action()`；合法动作必须包含执行所需的参数。
 
 ### 1.1 创建游戏引擎目录
 
@@ -46,7 +48,6 @@ from app.core.engine.base import GameState
 class GuessNumberState(GameState):
     """猜数字游戏状态"""
 
-    game_type: str = "guess_number"
     target_number: int = 0
     guesses: list[dict[str, Any]] = field(default_factory=list)
     current_range: tuple[int, int] = (1, 100)
@@ -59,7 +60,7 @@ class GuessNumberState(GameState):
 
 ```python
 import random
-import re
+from dataclasses import replace
 from typing import Any
 
 from app.core.engine.base import EngineCapability, GameAction, GameEngine, GameState
@@ -68,7 +69,7 @@ from app.utils.exceptions import InvalidActionError
 
 
 class GuessNumberEngine(GameEngine):
-    """猜数字游戏引擎"""
+    """猜数字：合法动作中的 target 是数字的字符串表示。"""
 
     @property
     def game_type(self) -> str:
@@ -85,78 +86,77 @@ class GuessNumberEngine(GameEngine):
     @property
     def capability(self) -> EngineCapability:
         return EngineCapability(
-            game_type="guess_number",
-            min_players=2,
-            max_players=4,
+            game_type=self.game_type,
+            display_name="猜数字",
+            min_players=self.min_players,
+            max_players=self.max_players,
             engine_version="1",
             phases=("playing",),
             prompt_keys={"playing": "guess_number_playing"},
             supports_deal_seed=False,
-            roles=(),
             eval_metric_ids=("parser_success", "train_usable", "latency_p50_p95"),
-            decision_schema_version=1,
-            rules_ref=None,
         )
+
+    @staticmethod
+    def _state(state: GameState) -> GuessNumberState:
+        if not isinstance(state, GuessNumberState):
+            raise InvalidActionError("state", "需要 GuessNumberState")
+        return state
 
     def initialize(self, player_ids: list[str], **params: Any) -> GameState:
-        target = random.randint(1, 100)
+        if not self.min_players <= len(player_ids) <= self.max_players:
+            raise InvalidActionError("players", "需要 2–4 位选手")
+        max_attempts = int(params.get("max_attempts", 10))
+        if max_attempts < 1:
+            raise InvalidActionError("max_attempts", "尝试次数必须大于零")
         return GuessNumberState(
-            game_type="guess_number",
+            game_type=self.game_type,
             round=1,
-            player_ids=player_ids,
+            player_ids=list(player_ids),
             current_player=player_ids[0],
             is_terminal=False,
-            target_number=target,
-            guesses=[],
-            current_range=(1, 100),
-            max_attempts=params.get("max_attempts", 10),
+            target_number=random.randint(1, 100),
+            max_attempts=max_attempts,
         )
 
-    def get_legal_actions(self, state: GuessNumberState, player_id: str) -> list[GameAction]:
-        if state.is_terminal or player_id != state.current_player:
+    def get_legal_actions(self, state: GameState, player_id: str) -> list[GameAction]:
+        game = self._state(state)
+        if game.is_terminal or player_id != game.current_player:
             return []
-        return [GameAction(player_id=player_id, action_type="guess")]
+        low, high = game.current_range
+        return [
+            GameAction(player_id=player_id, action_type="guess", target=str(number))
+            for number in range(low, high + 1)
+        ]
 
-    def apply_action(self, state: GuessNumberState, action: GameAction) -> GameState:
-        if action.action_type != "guess":
-            raise InvalidActionError(action.action_type, "只能执行 guess 动作")
-
-        guess = action.target
-        if guess is None:
-            raise InvalidActionError(action.action_type, "必须指定猜测的数字")
-
-        new_guesses = state.guesses.copy()
-        new_guesses.append({
+    def apply_action(self, state: GameState, action: GameAction) -> GameState:
+        game = self._state(state)
+        if action not in self.get_legal_actions(game, action.player_id):
+            raise InvalidActionError(action.action_type, "不是当前选手的合法猜测")
+        assert action.target is not None
+        guess = int(action.target)
+        correct = guess == game.target_number
+        guesses = [*game.guesses, {
             "player": action.player_id,
             "guess": guess,
-            "result": "correct" if guess == state.target_number
-            else "higher" if guess < state.target_number
-            else "lower",
-        })
-
-        is_correct = guess == state.target_number
-        is_over = is_correct or len(new_guesses) >= state.max_attempts
-
-        new_range = state.current_range
-        if not is_correct:
-            if guess < state.target_number:
-                new_range = (max(state.current_range[0], guess + 1), state.current_range[1])
+            "result": "correct" if correct else "higher" if guess < game.target_number else "lower",
+        }]
+        over = correct or len(guesses) >= game.max_attempts
+        low, high = game.current_range
+        if not correct:
+            if guess < game.target_number:
+                low = guess + 1
             else:
-                new_range = (state.current_range[0], min(state.current_range[1], guess - 1))
-
-        next_player_idx = (state.player_ids.index(state.current_player) + 1) % len(state.player_ids)
-
-        return GuessNumberState(
-            game_type=state.game_type,
-            round=state.round + 1,
-            player_ids=state.player_ids,
-            current_player=state.player_ids[next_player_idx] if not is_over else state.current_player,
-            is_terminal=is_over,
-            winner=action.player_id if is_correct else None,
-            target_number=state.target_number,
-            guesses=new_guesses,
-            current_range=new_range,
-            max_attempts=state.max_attempts,
+                high = guess - 1
+        next_index = (game.player_ids.index(game.current_player) + 1) % len(game.player_ids)
+        return replace(
+            game,
+            round=game.round + 1,
+            current_player=game.current_player if over else game.player_ids[next_index],
+            is_terminal=over,
+            winner=action.player_id if correct else None,
+            guesses=guesses,
+            current_range=(low, high),
         )
 
     def is_terminal(self, state: GameState) -> bool:
@@ -168,50 +168,27 @@ class GuessNumberEngine(GameEngine):
     def get_current_player(self, state: GameState) -> str:
         return state.current_player
 
-    def format_for_prompt(self, state: GuessNumberState, player_id: str) -> str:
-        return f"""你正在玩猜数字游戏。
+    def format_for_prompt(self, state: GameState, player_id: str) -> str:
+        game = self._state(state)
+        return (
+            f"你是 {player_id}，正在玩猜数字。范围：{game.current_range}。"
+            f"剩余次数：{game.max_attempts - len(game.guesses)}。"
+            f"历史猜测：{game.guesses}。请从提供的合法动作菜单选择 action_id。"
+        )
 
-当前范围: {state.current_range[0]} - {state.current_range[1]}
-剩余尝试次数: {state.max_attempts - len(state.guesses)}
-
-历史猜测:
-{self._format_guesses(state.guesses)}
-
-请猜一个 {state.current_range[0]} 到 {state.current_range[1]} 之间的数字。
-回复格式: 我猜 XX"""
-
-    def _format_guesses(self, guesses: list[dict[str, Any]]) -> str:
-        if not guesses:
-            return "暂无"
-        lines = []
-        for g in guesses:
-            lines.append(f"  - {g['player']}: {g['guess']} ({g['result']})")
-        return "\n".join(lines)
-
-    def parse_action(self, llm_output: str, legal_actions: list[GameAction]) -> GameAction:
-        match = re.search(r"(\d+)", llm_output)
-        if not match:
-            raise InvalidActionError("parse", f"无法从输出中解析数字: {llm_output}")
-
-        guess = int(match.group(1))
-        if legal_actions:
-            return GameAction(
-                player_id=legal_actions[0].player_id,
-                action_type="guess",
-                target=guess,
-            )
-        raise InvalidActionError("parse", "没有合法动作")
-
-    def get_public_info(self, state: GuessNumberState, viewer_id: str) -> dict[str, Any]:
+    def get_public_info(
+        self, state: GameState, viewer_id: str, is_observer: bool = False
+    ) -> dict[str, Any]:
+        game = self._state(state)
         return {
-            "game_type": state.game_type,
-            "round": state.round,
-            "current_player": state.current_player,
-            "current_range": state.current_range,
-            "guesses": state.guesses,
-            "remaining_attempts": state.max_attempts - len(state.guesses),
-            "is_terminal": state.is_terminal,
-            "winner": state.winner,
+            "game_type": game.game_type,
+            "round": game.round,
+            "current_player": game.current_player,
+            "current_range": game.current_range,
+            "guesses": [dict(guess) for guess in game.guesses],
+            "remaining_attempts": game.max_attempts - len(game.guesses),
+            "is_terminal": game.is_terminal,
+            "winner": game.winner,
         }
 ```
 

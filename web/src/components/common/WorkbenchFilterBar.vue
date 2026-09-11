@@ -28,6 +28,7 @@ export type WorkbenchLocalFilters = {
 const props = withDefaults(
   defineProps<{
     mode: 'decision' | 'trace'
+    hideExperimentScope?: boolean
     /** Fallback player ids when not in an experiment (e.g. from loaded list). */
     playerCandidates?: string[]
     /** Fallback model ids from loaded traces. */
@@ -114,8 +115,7 @@ const canClearScope = computed(() => {
   return hasScope.value
 })
 
-const configName = (id: string): string =>
-  configs.value.find((c) => c.id === id)?.name ?? id
+const configName = (id: string): string => configs.value.find((c) => c.id === id)?.name ?? id
 
 const ALL = '__all__'
 
@@ -190,7 +190,10 @@ const modelOptions = computed((): SelectOption[] => {
 
 function patchLocal(patch: WorkbenchLocalFilters): void {
   const next: WorkbenchLocalFilters = { ...props.filters }
-  for (const [k, v] of Object.entries(patch) as [keyof WorkbenchLocalFilters, string | undefined][]) {
+  for (const [k, v] of Object.entries(patch) as [
+    keyof WorkbenchLocalFilters,
+    string | undefined,
+  ][]) {
     if (v === undefined || v === '') delete next[k]
     else next[k] = v
   }
@@ -375,11 +378,7 @@ onMounted(() => {
   ) {
     patchQuery({ train_usable: 'true' })
   }
-  if (
-    props.mode === 'decision' &&
-    localMode.value &&
-    props.filters?.train_usable === undefined
-  ) {
+  if (props.mode === 'decision' && localMode.value && props.filters?.train_usable === undefined) {
     patchLocal({ train_usable: 'true' })
   }
 })
@@ -390,7 +389,10 @@ onMounted(() => {
     <div
       class="flex flex-wrap items-center gap-2 rounded-ink-md border border-ink-border bg-ink-surface px-3 py-2.5"
     >
-      <div class="flex min-w-0 flex-wrap items-center gap-2">
+      <div
+        v-if="!(hideExperimentScope && experimentId && !gameId)"
+        class="flex min-w-0 flex-wrap items-center gap-2"
+      >
         <span class="text-xs text-ink-text-muted">{{ t('filter.scope') }}</span>
         <UiBadge
           :variant="hasScope ? 'accent' : 'muted'"
@@ -404,7 +406,10 @@ onMounted(() => {
         </UiButton>
       </div>
 
-      <div class="mx-1 hidden h-5 w-px bg-ink-border sm:block" />
+      <div
+        v-if="!(hideExperimentScope && experimentId && !gameId)"
+        class="mx-1 hidden h-5 w-px bg-ink-border sm:block"
+      />
 
       <UiSelect
         :model-value="playerId || ALL"

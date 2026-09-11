@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 import structlog
 
 from app.core.ai.action_menu import render_menu
-from app.core.ai.errors import map_provider_error
+from app.core.ai.errors import is_non_retryable_provider_error, map_provider_error
 from app.core.ai.parsers.action_id_parser import ActionIdParser, response_format
 from app.core.policy.base import (
     ActionChosen,
@@ -69,6 +69,7 @@ class LLMPolicy(Policy):
         use_response_format: bool = True,
         reasoning_effort: str | None = None,
         max_thinking_tokens: int | None = None,
+        deepseek_direct_json: bool = False,
     ) -> None:
         self._client = client
         self._provider = provider
@@ -78,6 +79,7 @@ class LLMPolicy(Policy):
         self._stream = stream
         self._use_response_format = use_response_format
         self._reasoning_effort = reasoning_effort
+        self._deepseek_direct_json = deepseek_direct_json and provider == "deepseek"
         self._max_thinking_tokens = max_thinking_tokens
         self._parser = ActionIdParser()
 
@@ -131,6 +133,10 @@ class LLMPolicy(Policy):
                 )
             except Exception as error:
                 last_error = map_provider_error(self._provider, error)
+                if is_non_retryable_provider_error(last_error):
+                    if last_error is error:
+                        raise
+                    raise last_error from error
                 logger.warning(
                     "llm_policy_call_failed",
                     player_id=observation.player_id,
@@ -213,6 +219,12 @@ class LLMPolicy(Policy):
             kwargs["reasoning_effort"] = self._reasoning_effort
         if self._use_response_format:
             kwargs["response_format"] = response_format(legal_ids)
+        if self._deepseek_direct_json:
+            kwargs.pop("reasoning_effort", None)
+            kwargs["thinking"] = {"type": "disabled"}
+            kwargs["response_format"] = {"type": "json_object"}
+            if self._max_tokens is not None:
+                kwargs["max_tokens"] = self._max_tokens
         return kwargs
 
     async def _call_model(
@@ -234,6 +246,8 @@ class LLMPolicy(Policy):
                     yield event
                 return
             except Exception as error:
+                if is_non_retryable_provider_error(error):
+                    raise
                 logger.warning("llm_policy_stream_fallback", error=str(error))
                 # Partial text from the abandoned stream must not be parsed
                 # together with the retry's reply.
