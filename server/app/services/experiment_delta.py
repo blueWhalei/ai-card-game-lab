@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
@@ -13,6 +14,7 @@ from app.core.eval.scorer import (
     apply_scorer_results,
     score_bundle_from_aggregates,
 )
+from app.core.stats.comparison import change_allowed, paired_cohort, protocol_review
 from app.core.stats.game_progress import build_game_progress
 from app.core.stats.proportion import wilson_interval
 from app.core.stats.scenarios import fill_scenario_scores, scenario_rate_diffs
@@ -32,7 +34,6 @@ from app.services.experiment_eval import (
     resolve_delta_peer,
 )
 from app.services.experiment_protocol import (
-    protocol_deal_seeds,
     protocol_eval_metric_ids,
     protocol_source_experiment_id,
 )
@@ -63,16 +64,25 @@ class ExperimentDeltaMixin:
     def _registry_for(self, protocol: dict[str, Any] | None, game_type: str) -> ScorerRegistry:
         raise NotImplementedError
 
-    async def compare_experiments(self, experiment_ids: list[str]) -> dict[str, Any]:
+    async def compare_experiments(
+        self, experiment_ids: list[str], allowed_changes: list[str] | None = None
+    ) -> dict[str, Any]:
         """Side-by-side metrics for 2–5 experiments, including Wilson CIs."""
         unique_ids = list(dict.fromkeys(experiment_ids))
         if len(unique_ids) < 2 or len(unique_ids) > 5:
             raise ExperimentValidationError("对比需要 2 到 5 个不重复的实验 ID")
 
+        allowed = allowed_changes or []
+        if len(allowed) > 32 or any(len(p) > 240 or not change_allowed(p) for p in allowed):
+            raise ExperimentValidationError(
+                "允许变化字段必须是精确的 Solver 参数路径（最多 32 个）"
+            )
+        computed_at = datetime.now(UTC).isoformat()
         rows: list[dict[str, Any]] = []
         games_by_exp: dict[str, list[dict[str, Any]]] = {}
         conn = await self._conn()
         try:
+            await conn.execute("BEGIN")
             repo = ExperimentRepository(conn)
             for experiment_id in unique_ids:
                 try:
@@ -82,6 +92,10 @@ class ExperimentDeltaMixin:
                 summary = await self._build_summary(repo, row)
                 extras = await repo.eval_aggregates(experiment_id)
                 protocol = row.get("protocol")
+                if not isinstance(protocol, dict) or protocol.get("schema_version") != 2:
+                    raise ExperimentValidationError(
+                        "实验协议必须使用当前 Task 结构，请重新创建实验"
+                    )
                 game_type = str(row.get("game_type") or "doudizhu")
                 protocol_dict = protocol if isinstance(protocol, dict) else None
                 registry = self._registry_for(protocol_dict, game_type)
@@ -95,12 +109,21 @@ class ExperimentDeltaMixin:
                 extras = apply_scorer_results(extras, scored)
                 games = await repo.list_games(experiment_id)
                 games_by_exp[experiment_id] = [_normalize_game_row(g) for g in games]
-                rows.append(self._attach_compare_metrics(row, summary, extras))
+                compared = self._attach_compare_metrics(row, summary, extras)
+                compared["game_ids"] = [str(g["id"]) for g in games]
+                rows.append(compared)
         finally:
             await conn.close()
 
         self._attach_paired_compare_metrics(rows, games_by_exp)
-        payload: dict[str, Any] = {"experiments": rows}
+        coverage, _ = paired_cohort(rows, games_by_exp)
+        payload: dict[str, Any] = {
+            "experiments": rows,
+            "coverage": coverage,
+            "protocol_review": protocol_review(rows, allowed),
+            "computed_at": computed_at,
+            "metric_version": "paired-cohort-v2",
+        }
         paired_summary = self._build_paired_summary(rows, games_by_exp)
         if paired_summary is not None:
             payload["paired_summary"] = paired_summary
@@ -335,7 +358,10 @@ class ExperimentDeltaMixin:
         validation_ready = bool(control_ids) and first_ready
 
         suggested = [experiment_id]
-        if control_ids:
+        source_id = protocol_source_experiment_id(experiment.get("protocol") or {})
+        if source_id:
+            suggested.append(source_id)
+        elif control_ids:
             suggested.append(control_ids[0])
         return {
             "control_experiment_ids": control_ids,
@@ -371,8 +397,16 @@ class ExperimentDeltaMixin:
         peer_games = [_normalize_game_row(g) for g in await repo.list_games(peer_id)]
         paired = self._build_paired_summary(
             [
-                {"id": this_id, "protocol": experiment.get("protocol")},
-                {"id": peer_id, "protocol": peer_row.get("protocol")},
+                {
+                    "id": this_id,
+                    "protocol": experiment.get("protocol"),
+                    "player_ids": experiment.get("player_ids"),
+                },
+                {
+                    "id": peer_id,
+                    "protocol": peer_row.get("protocol"),
+                    "player_ids": peer_row.get("player_ids"),
+                },
             ],
             {this_id: this_games, peer_id: peer_games},
         )
@@ -411,7 +445,7 @@ class ExperimentDeltaMixin:
 
         this_cred = summary.get("credibility") or {}
         peer_cred = peer_summary.get("credibility") or {}
-        return build_experiment_delta(
+        delta = build_experiment_delta(
             peer_id=peer_id,
             peer_name=str(peer_row.get("name") or peer_id),
             relation=relation,
@@ -438,48 +472,36 @@ class ExperimentDeltaMixin:
                 else None,
             ),
         )
+        review = protocol_review([experiment, peer_row], [])
+        if not review["controlled"]:
+            delta["can_conclude"] = False
+            delta["inconclusive_reason"] = "protocol_mismatch"
+        return delta
 
     @staticmethod
     def _build_next_step(
         experiment: dict[str, Any],
         summary: dict[str, Any],
         validation: dict[str, Any],
-        *,
-        training_completed: bool = False,
     ) -> dict[str, Any]:
         status = str(summary.get("status") or "pending_collect")
-        usable = int(summary.get("train_usable_decisions") or 0)
-        decision_count = int(summary.get("decision_count") or 0)
-        not_usable = decision_count - usable
+        # Training is optional; workflow guidance depends on run/control state only.
         control_ids = list(validation.get("control_experiment_ids") or [])
         control_progress = list(validation.get("control_progress") or [])
-
         if status == "pending_collect":
             return {"id": "collect", "action": "collect"}
         if status == "collecting":
             return {"id": "watch", "action": "games"}
-        if usable > 0 and decision_count > 0 and not_usable / decision_count > 0.2:
-            return {"id": "review_decisions", "action": "decisions"}
-        if usable > 0 and not control_ids:
-            if training_completed:
-                return {"id": "open_control", "action": "control"}
-            return {"id": "register_train", "action": "train"}
-        if usable > 0 and control_ids and validation.get("validation_ready"):
+        if protocol_source_experiment_id(experiment.get("protocol") or {}):
             return {"id": "review", "action": "stay"}
-        if usable > 0 and control_ids:
+        if control_ids and validation.get("validation_ready"):
+            return {"id": "review", "action": "stay"}
+        if control_ids:
             pending = next((c for c in control_progress if not c.get("ready")), None)
             target_control = pending or (control_progress[0] if control_progress else None)
             ref_id = str(target_control["id"]) if target_control else control_ids[0]
-            return {
-                "id": "collect_control",
-                "action": "control_collect",
-                "ref_id": ref_id,
-            }
-        if status in ("ready_review", "ready_more") and usable == 0:
-            return {"id": "decisions", "action": "decisions"}
-        if status == "ready_more":
-            return {"id": "collect_more", "action": "collect"}
-        return {"id": "review", "action": "games"}
+            return {"id": "collect_control", "action": "control_collect", "ref_id": ref_id}
+        return {"id": "review_decisions", "action": "decisions"}
 
     @staticmethod
     def _attach_compare_metrics(
@@ -547,68 +569,25 @@ class ExperimentDeltaMixin:
         rows: list[dict[str, Any]],
         games_by_exp: dict[str, list[dict[str, Any]]],
     ) -> None:
-        seed_sets: list[set[int]] = []
+        coverage, indexes = paired_cohort(rows, games_by_exp)
+        seeds = coverage["effective_seeds"]
         for row in rows:
-            protocol = row.get("protocol") or {}
-            seeds = set(protocol_deal_seeds(protocol)) if isinstance(protocol, dict) else set()
-            seed_sets.append(seeds)
-        if not seed_sets:
-            return
-        common = set.intersection(*seed_sets) if seed_sets else set()
-        if not common:
-            for row in rows:
-                row["paired_n"] = 0
-                row["paired_landlord_win_rate"] = 0.0
-            return
-
-        for row in rows:
-            player_ids: list[str] = list(row.get("player_ids") or [])
-            seat_wins = [0] * len(player_ids)
-            wins_by_player = {pid: 0 for pid in player_ids}
-            games = games_by_exp.get(str(row["id"]), [])
-            by_seed: dict[int, dict[str, Any]] = {}
-            for game in games:
-                meta = game.get("metadata") or {}
-                if not isinstance(meta, dict):
-                    continue
-                raw_seed = meta.get("deal_seed")
-                if raw_seed is None:
-                    continue
-                by_seed[int(raw_seed)] = game
-
-            paired_n = 0
-            paired_landlord_wins = 0
-            paired_decisive = 0
-            for seed in common:
-                seed_game = by_seed.get(seed)
-                if seed_game is None:
-                    continue
-                winner = seed_game.get("winner_id")
-                if not winner:
-                    continue
-                paired_n += 1
-                wid = str(winner)
-                if wid in wins_by_player:
-                    wins_by_player[wid] += 1
-                try:
-                    seat = player_ids.index(wid)
-                    seat_wins[seat] += 1
-                except ValueError:
-                    pass
-                role = str(seed_game.get("winner_role") or "")
-                if role in ("landlord", "peasant"):
-                    paired_decisive += 1
-                    if role == "landlord":
-                        paired_landlord_wins += 1
-
-            row["paired_n"] = paired_n
-            row["paired_seat_wins"] = seat_wins
+            players = list(row.get("player_ids") or [])
+            wins = {pid: 0 for pid in players}
+            selected = [indexes[str(row["id"])][seed] for seed in seeds]
+            for game in selected:
+                winner = game["winner_id"]
+                if winner in wins:
+                    wins[winner] += 1
+            row["paired_n"] = len(seeds)
+            row["paired_seat_wins"] = [wins[pid] for pid in players]
             row["paired_landlord_win_rate"] = (
-                round(paired_landlord_wins / paired_decisive, 4) if paired_decisive > 0 else 0.0
+                round(sum(g["winner_role"] == "landlord" for g in selected) / len(seeds), 4)
+                if seeds
+                else None
             )
             for stat in row.get("player_stats") or []:
-                pid = str(stat.get("player_id") or "")
-                stat["paired_wins"] = wins_by_player.get(pid, 0)
+                stat["paired_wins"] = wins.get(stat["player_id"], 0)
 
     @staticmethod
     def _build_paired_summary(
@@ -617,129 +596,35 @@ class ExperimentDeltaMixin:
     ) -> dict[str, Any] | None:
         if len(rows) != 2:
             return None
-
-        by_id = {str(row["id"]): row for row in rows}
-        source_id: str | None = None
-        control_id: str | None = None
+        source_id, control_id = str(rows[0]["id"]), str(rows[1]["id"])
         for row in rows:
-            protocol = row.get("protocol") or {}
-            src = protocol_source_experiment_id(protocol) if isinstance(protocol, dict) else None
-            if src and str(src) in by_id:
-                control_id = str(row["id"])
-                source_id = str(src)
+            source = protocol_source_experiment_id(row.get("protocol") or {})
+            if source in (source_id, control_id) and source != row["id"]:
+                source_id, control_id = str(source), str(row["id"])
                 break
-        if source_id is None or control_id is None:
-            return None
-
-        seed_sets: list[set[int]] = []
-        for row in rows:
-            protocol = row.get("protocol") or {}
-            seed_sets.append(
-                set(protocol_deal_seeds(protocol)) if isinstance(protocol, dict) else set()
+        coverage, indexes = paired_cohort(rows, games_by_exp)
+        diffs = [
+            float(
+                (indexes[control_id][seed]["winner_role"] == "landlord")
+                - (indexes[source_id][seed]["winner_role"] == "landlord")
             )
-        common = set.intersection(*seed_sets) if seed_sets else set()
-        if not common:
-            return {
-                "shared_seeds": 0,
-                "source_id": source_id,
-                "control_id": control_id,
-                "landlord_win_rate_diff": None,
-                "low_power": True,
-            }
+            for seed in coverage["effective_seeds"]
+        ]
+        from app.core.stats.paired import mcnemar_exact_p, paired_bootstrap_ci
 
-        def landlord_wins_on_common(exp_id: str) -> tuple[int, int]:
-            """Return (landlord_wins, decisive) on seeds where this experiment finished."""
-            games = games_by_exp.get(exp_id, [])
-            by_seed: dict[int, dict[str, Any]] = {}
-            for game in games:
-                meta = game.get("metadata") or {}
-                if not isinstance(meta, dict):
-                    continue
-                raw_seed = meta.get("deal_seed")
-                if raw_seed is None:
-                    continue
-                by_seed[int(raw_seed)] = game
-
-            landlord_wins = 0
-            decisive = 0
-            for seed in common:
-                seed_game = by_seed.get(seed)
-                if seed_game is None:
-                    continue
-                winner = seed_game.get("winner_id")
-                if not winner:
-                    continue
-                role = str(seed_game.get("winner_role") or "")
-                if role in ("landlord", "peasant"):
-                    decisive += 1
-                    if role == "landlord":
-                        landlord_wins += 1
-            return landlord_wins, decisive
-
-        src_ll_wins, src_dec = landlord_wins_on_common(source_id)
-        ctl_ll_wins, ctl_dec = landlord_wins_on_common(control_id)
-
-        def landlord_on_seed(exp_id: str, seed: int) -> int | None:
-            """1 landlord win, 0 peasant win, None if missing/undecisive."""
-            for game in games_by_exp.get(exp_id, []):
-                meta = game.get("metadata") or {}
-                if not isinstance(meta, dict):
-                    continue
-                raw_seed = meta.get("deal_seed")
-                if raw_seed is None:
-                    continue
-                if int(raw_seed) != int(seed):
-                    continue
-                if not game.get("winner_id"):
-                    return None
-                role = str(game.get("winner_role") or "")
-                if role == "landlord":
-                    return 1
-                if role == "peasant":
-                    return 0
-                return None
-            return None
-
-        shared_played = 0
-        mcnemar_b = 0  # control landlord, source peasant
-        mcnemar_c = 0  # control peasant, source landlord
-        seed_diffs: list[float] = []
-        for seed in common:
-            src_ll = landlord_on_seed(source_id, seed)
-            ctl_ll = landlord_on_seed(control_id, seed)
-            if src_ll is None or ctl_ll is None:
-                continue
-            shared_played += 1
-            seed_diffs.append(float(ctl_ll - src_ll))
-            if ctl_ll == 1 and src_ll == 0:
-                mcnemar_b += 1
-            elif ctl_ll == 0 and src_ll == 1:
-                mcnemar_c += 1
-
-        if shared_played <= 0:
-            return {
-                "shared_seeds": len(common),
-                "source_id": source_id,
-                "control_id": control_id,
-                "landlord_win_rate_diff": None,
-                "low_power": True,
-                "mcnemar_b": 0,
-                "mcnemar_c": 0,
-                "seed_diffs": [],
-            }
-
-        src_rate = src_ll_wins / src_dec if src_dec else 0.0
-        ctl_rate = ctl_ll_wins / ctl_dec if ctl_dec else 0.0
-        diff = round(ctl_rate - src_rate, 4)
+        paired_ci = list(paired_bootstrap_ci(diffs, n_boot=2000, seed=0)) if diffs else None
         return {
-            "shared_seeds": shared_played,
+            "shared_seeds": len(diffs),
+            "planned_shared_seeds": coverage["planned_shared"],
+            "paired_p": mcnemar_exact_p(diffs.count(1.0), diffs.count(-1.0)) if diffs else None,
+            "paired_ci": paired_ci,
             "source_id": source_id,
             "control_id": control_id,
-            "landlord_win_rate_diff": diff,
-            "low_power": shared_played < CREDIBILITY_MIN_DECISIVE_N,
-            "mcnemar_b": mcnemar_b,
-            "mcnemar_c": mcnemar_c,
-            "seed_diffs": seed_diffs,
+            "landlord_win_rate_diff": round(sum(diffs) / len(diffs), 4) if diffs else None,
+            "low_power": len(diffs) < CREDIBILITY_MIN_DECISIVE_N,
+            "mcnemar_b": diffs.count(1.0),
+            "mcnemar_c": diffs.count(-1.0),
+            "seed_diffs": diffs,
         }
 
 

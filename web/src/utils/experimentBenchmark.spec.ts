@@ -34,24 +34,27 @@ function makeExperiment(overrides: Partial<Experiment> = {}): Experiment {
     created_at: '',
     updated_at: '',
     protocol: {
-      schema_version: 1,
+      schema_version: 2,
       frozen_at: '',
-      prompt_version: '',
-      players: [],
-      source_experiment_id: null,
-      pair_deals: false,
-      deal_seeds: [1, 2, 3],
-      collect_mode: 'benchmark',
-      game_type: 'doudizhu',
-      engine_version: '1',
-      decision_schema_version: 1,
-      rules_ref: null,
-      phases: [],
-      prompt_keys: {},
-      roles: [],
-      eval_metric_ids: [],
-      supports_deal_seed: true,
-      benchmark_seed_count: 50,
+      dataset: {
+        collect_mode: 'benchmark',
+        deal_seeds: [1, 2, 3],
+        pair_deals: false,
+        source_experiment_id: null,
+      },
+      solver: { players: [], prompt_version: '' },
+      scorer: { eval_metric_ids: [] },
+      engine: {
+        game_type: 'doudizhu',
+        engine_version: '1',
+        decision_schema_version: 2,
+        rules_ref: null,
+        phases: [],
+        prompt_keys: {},
+        roles: [],
+        supports_deal_seed: true,
+        benchmark_seed_count: 50,
+      },
     },
     summary: {
       status: 'ready_more',
@@ -91,7 +94,10 @@ describe('shouldShowBenchmarkReport', () => {
 
   it('hides free-collect experiments', () => {
     const experiment = makeExperiment({
-      protocol: { ...makeExperiment().protocol!, collect_mode: 'free' },
+      protocol: {
+        ...makeExperiment().protocol!,
+        dataset: { ...makeExperiment().protocol!.dataset, collect_mode: 'free' },
+      },
       benchmark: null,
     })
     expect(shouldShowBenchmarkReport(experiment)).toBe(false)
@@ -116,7 +122,10 @@ describe('remainingBenchmarkSeeds and remainingCollectGames', () => {
 
   it('keeps the free-collect clamp when there is no benchmark payload', () => {
     const experiment = makeExperiment({
-      protocol: { ...makeExperiment().protocol!, collect_mode: 'free' },
+      protocol: {
+        ...makeExperiment().protocol!,
+        dataset: { ...makeExperiment().protocol!.dataset, collect_mode: 'free' },
+      },
       benchmark: null,
       summary: { ...makeExperiment().summary, target_games: 10, finished_games: 3 },
     })

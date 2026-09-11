@@ -46,7 +46,7 @@ async def test_extract_empty_list_and_run(client: AsyncClient, tmp_path) -> None
 
     run = await client.post(
         f"/api/v1/puzzles/packs/{pack_id}/run",
-        json={"baseline_kind": "rule"},
+        json={"baseline_kind": "first"},
     )
     assert run.status_code == 200
     summary = run.json()["data"]["summary"]
@@ -81,7 +81,7 @@ async def test_probe_empty_pack(client: AsyncClient, tmp_path) -> None:
 
     probe = await client.post(
         f"/api/v1/puzzles/packs/{pack_id}/probe",
-        json={"baseline_kind": "rule", "n_trials": 2},
+        json={"baseline_kind": "first", "n_trials": 2},
     )
     assert probe.status_code == 200
     summary = probe.json()["data"]["summary"]

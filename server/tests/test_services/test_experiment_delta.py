@@ -241,6 +241,7 @@ async def test_get_experiment_delta_vs_control_and_source(db_path: str) -> None:
     service = ExperimentService(sqlite_path=db_path, game_service=_FakeGameService())  # type: ignore[arg-type]
 
     base = await service.get_experiment("exp-base", include_games=False)
+    assert base["validation"]["suggested_compare_ids"] == ["exp-base", "exp-ctrl"]
     delta = base["delta"]
     assert delta is not None
     assert delta["peer_id"] == "exp-ctrl"
@@ -249,10 +250,11 @@ async def test_get_experiment_delta_vs_control_and_source(db_path: str) -> None:
     assert delta["paired_n"] == 2
     assert delta["paired_landlord_win_rate_diff"] == -0.5
     assert delta["can_conclude"] is False
-    assert delta["inconclusive_reason"] == "low_power"
+    assert delta["inconclusive_reason"] == "protocol_mismatch"
     assert "bidding" in delta["scenario_diffs"]
 
     ctrl = await service.get_experiment("exp-ctrl", include_games=False)
+    assert ctrl["validation"]["suggested_compare_ids"] == ["exp-ctrl", "exp-base"]
     ctrl_delta = ctrl["delta"]
     assert ctrl_delta is not None
     assert ctrl_delta["peer_id"] == "exp-base"
@@ -262,25 +264,40 @@ async def test_get_experiment_delta_vs_control_and_source(db_path: str) -> None:
     assert ctrl_delta["can_conclude"] is False
 
 
-def test_next_step_open_control_after_training() -> None:
-    summary = {
-        "status": "ready_review",
-        "train_usable_decisions": 10,
-        "decision_count": 10,
-    }
-    validation = {
-        "control_experiment_ids": [],
-        "control_progress": [],
-        "validation_ready": False,
-    }
-    after_train = ExperimentService._build_next_step(
-        {}, summary, validation, training_completed=True
+@pytest.mark.parametrize("usable", [0, 10])
+def test_next_step_reviews_results_without_training_requirement(usable: int) -> None:
+    step = ExperimentService._build_next_step(
+        {},
+        {"status": "ready_review", "train_usable_decisions": usable},
+        {"control_experiment_ids": []},
     )
-    assert after_train == {"id": "open_control", "action": "control"}
-    before_train = ExperimentService._build_next_step(
-        {}, summary, validation, training_completed=False
+    assert step == {"id": "review_decisions", "action": "decisions"}
+
+
+@pytest.mark.parametrize(
+    "status, expected",
+    [
+        ("pending_collect", {"id": "collect", "action": "collect"}),
+        ("collecting", {"id": "watch", "action": "games"}),
+        ("ready_review", {"id": "collect_control", "action": "control_collect", "ref_id": "ctrl"}),
+    ],
+)
+def test_next_step_prioritizes_running_work(status: str, expected: dict) -> None:
+    step = ExperimentService._build_next_step(
+        {},
+        {"status": status},
+        {"control_experiment_ids": ["ctrl"], "control_progress": [{"id": "ctrl", "ready": False}]},
     )
-    assert before_train == {"id": "register_train", "action": "train"}
+    assert step == expected
+
+
+def test_completed_control_stays_for_review() -> None:
+    step = ExperimentService._build_next_step(
+        {"protocol": {"dataset": {"source_experiment_id": "source"}}},
+        {"status": "ready_review"},
+        {},
+    )
+    assert step == {"id": "review", "action": "stay"}
 
 
 def test_next_step_stays_on_detail_when_validation_ready() -> None:

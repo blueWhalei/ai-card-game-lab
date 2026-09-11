@@ -496,6 +496,12 @@ onMounted(async () => {
 
 <template>
   <div :class="embedded ? 'space-y-3' : 'page-container'">
+    <RouterLink
+      v-if="!embedded && typeof route.query.comparison_id === 'string'"
+      :to="{ path: '/experiments/compare', query: { snapshot: route.query.comparison_id } }"
+      class="mb-3 inline-block text-caption text-ink-primary"
+      >{{ t('researchReport.back') }}</RouterLink
+    >
     <div :class="embedded ? 'space-y-2' : 'mb-4 space-y-3'">
       <div class="flex flex-wrap items-center justify-between gap-2">
         <button
@@ -831,7 +837,9 @@ onMounted(async () => {
                 {{ t('decision.lastPlay') }}
               </div>
               <div class="mt-1 text-sm text-ink-text">
-                {{ playerNames[selectedPoint.last_action.player] || selectedPoint.last_action.player }}:
+                {{
+                  playerNames[selectedPoint.last_action.player] || selectedPoint.last_action.player
+                }}:
                 {{ formatAction(selectedPoint.last_action) }}
               </div>
             </div>

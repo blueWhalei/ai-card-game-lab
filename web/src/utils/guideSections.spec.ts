@@ -24,15 +24,12 @@ describe('parseGuideHash', () => {
     })
   })
 
-  it('treats hero and legacy overview hashes as the start section', () => {
+  it('opens the start section', () => {
     expect(parseGuideHash('#quickStart')).toEqual({
       sectionId: GUIDE_HERO_ID,
       groupId: null,
     })
-    expect(parseGuideHash('#overview')).toEqual({
-      sectionId: GUIDE_HERO_ID,
-      groupId: null,
-    })
+    expect(parseGuideHash('#overview')).toBeNull()
   })
 
   it('returns null for empty or unknown hashes', () => {

@@ -38,33 +38,18 @@ const progress = computed(() =>
 
 const claim = computed(() => {
   const exp = props.experiment
-  const s = summary.value
   if (stage.value === 'empty') return t('stage.empty.claim')
   if (stage.value === 'collecting') return t('stage.collecting.claim')
-  if (stage.value === 'control') {
-    return exp.next_step?.id === 'open_control'
-      ? t('stage.control.claim')
-      : t('stage.control.needPlayerClaim')
-  }
   if (stage.value === 'verdict' && exp.delta) {
     const headline = verdictHeadlineOf(exp.delta, gamesNeededForPower(exp))
     return t(`stage.${headline.key}`, headline.params ?? {})
   }
-  if (exp.next_step?.id === 'review_decisions') {
-    return t('stage.harvest.reviewClaim', { n: s.train_usable_decisions })
-  }
-  if (s.train_usable_decisions <= 0) return t('stage.harvest.noneClaim')
-  return t('stage.harvest.claim', { n: s.train_usable_decisions })
+  return t('stage.harvest.readyClaim')
 })
 
 const actionLabel = computed(() => {
   if (stage.value === 'empty') return t('stage.empty.action')
   if (stage.value === 'collecting') return t('stage.collecting.action')
-  if (stage.value === 'control') {
-    return props.experiment.next_step?.id === 'open_control'
-      ? t('stage.control.action')
-      : t('stage.control.needPlayerAction')
-  }
   if (stage.value === 'verdict') {
     const delta = props.experiment.delta
     if (delta && !delta.can_conclude) {
@@ -74,11 +59,7 @@ const actionLabel = computed(() => {
     }
     return t('experiment.openDetail')
   }
-  if (props.experiment.next_step?.id === 'review_decisions') {
-    return t('stage.harvest.reviewAction')
-  }
-  if (summary.value.train_usable_decisions <= 0) return t('stage.harvest.noneAction')
-  return t('stage.harvest.action')
+  return t('experiment.openDetail')
 })
 
 const canWatch = computed(
@@ -98,7 +79,11 @@ function onPrimary(): void {
   <article
     class="flex flex-wrap items-center justify-between gap-ink-4 px-ink-6 py-ink-6 transition-colors hover:bg-ink-paper-elevated"
   >
-    <button type="button" class="min-w-0 flex-1 rounded-ink text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink-primary" @click="emit('open')">
+    <button
+      type="button"
+      class="min-w-0 flex-1 rounded-ink text-left focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ink-primary"
+      @click="emit('open')"
+    >
       <div class="flex flex-wrap items-center gap-ink-2">
         <h3 class="truncate text-lead font-semibold text-ink-text">{{ experiment.name }}</h3>
         <UiBadge :variant="EXPERIMENT_STATUS_VARIANT[summary.status]" size="xs">

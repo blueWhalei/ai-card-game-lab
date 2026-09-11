@@ -18,6 +18,23 @@ _bound_connection: ContextVar[aiosqlite.Connection | None] = ContextVar(
 logger = structlog.get_logger()
 
 _SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS research_revisions (
+    id TEXT PRIMARY KEY,
+    comparison_id TEXT NOT NULL REFERENCES comparison_snapshots(id),
+    revision INTEGER NOT NULL,
+    created_at TEXT NOT NULL,
+    payload TEXT NOT NULL,
+    UNIQUE(comparison_id, revision)
+);
+
+CREATE TABLE IF NOT EXISTS comparison_snapshots (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    result TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_comparison_snapshots_created ON comparison_snapshots(created_at);
+
 CREATE TABLE IF NOT EXISTS experiments (
     id            TEXT PRIMARY KEY,
     name          TEXT    NOT NULL,

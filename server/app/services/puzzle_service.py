@@ -57,8 +57,7 @@ logger = structlog.get_logger()
 
 _DEFAULT_EVALUATOR_PARAMS = EvaluatorParams()
 
-BaselineKind = Literal["rule", "first", "random", "heuristic"]
-# ``rule`` kept for API compatibility: means FirstActionPolicy, not HeuristicPolicy.
+BaselineKind = Literal["first", "random", "heuristic"]
 
 
 def match_recorded_action(
@@ -130,17 +129,12 @@ def legal_actions_from_dicts(rows: list[dict[str, Any]], *, player_id: str) -> l
 
 
 def baseline_policy(kind: BaselineKind) -> Policy:
-    """Map API baseline names to non-LLM policies.
-
-    ``rule`` ≡ ``first`` (``FirstActionPolicy``). Prefer ``first`` / ``heuristic`` /
-    ``random`` in new callers so the name matches the policy class.
-    """
-    resolved = "first" if kind == "rule" else kind
-    if resolved == "first":
+    """Map first, random and heuristic to their non-LLM policies."""
+    if kind == "first":
         return FirstActionPolicy()
-    if resolved == "random":
+    if kind == "random":
         return RandomPolicy()
-    if resolved == "heuristic":
+    if kind == "heuristic":
         return HeuristicPolicy()
     raise AppError(
         message=f"Unknown baseline kind: {kind}",

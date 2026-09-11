@@ -213,7 +213,7 @@ POST   /api/v1/experiments/{id}/cancel-collect  # 停止对局：取消本实验
 
 - `timeline[]` — `created` / `first_collect` / `first_finished` / `dataset_registered` / `training_completed` / `control_created`
 - `validation` — `control_experiment_ids`、`validation_ready`、`suggested_compare_ids`、`control_progress[]`
-- `next_step` — `{ id, action, ref_id? }` 下一步引导。训练完成后若尚无对照则为 `open_control`（开始对照实验）；`collect_control` 跳转对照实验并开始对局。对照已就绪则为 `review` + `action=stay`（留在详情看结论，不去对比页）。
+- `next_step` — `{ id, action, ref_id? }` 下一步引导。采集结束且没有关联对照时为 `review_decisions`（审查全部决策），不依赖训练状态或可训练样本数；`collect_control` 跳转对照实验并打开开始确认，不自动运行。对照已就绪则为 `review` + `action=stay`（留在详情看结论，不去对比页）。
 - `delta` — 相对源实验（`vs_source`）或首个对照（`vs_control`）的一屏结论：`landlord_win_rate_diff`（本实验 − 对照）、`paired_n` / `paired_landlord_win_rate_diff`、双方 CI 与决胜局数、`can_conclude`、`inconclusive_reason`（`no_games` / `peer_not_ready` / `low_power`）、`verdict_key`。无对照时为 `null`。Δ **不以红绿表示好坏**（地主胜率升降取决于假设）。
 - `delta.verdict_key` — `stronger` / `weaker` / `even` / `peer_pending` / `no_data`，方向与评估公式同处计算；`even` 的阈值是 `VERDICT_EVEN_THRESHOLD`（2 个百分点）。前端在 `can_conclude=true` 时把 `verdict_key` 渲染为 `stage.verdict.<key>` 主句；**`can_conclude=false` 时主句改用证据句（`stage.evidence.*`），Δ 降为附注**，不再用因果结论当标题。
 - `summary.credibility` — `{ decisive_n, landlord_ci_width, low_power }`（决胜局 < 20 或 CI 宽 > 0.3 则 `low_power`）
@@ -227,10 +227,27 @@ POST   /api/v1/experiments/{id}/cancel-collect  # 停止对局：取消本实验
 
 #### GET /api/v1/experiments/compare
 
-**Query**: `ids=exp_a,exp_b`（2–5 个，逗号分隔）
+**Query**: `ids=exp_a,exp_b`（2–5 个不同实验，顺序决定参照列）；可重复 `allowed_changes=solver.players.0.model_config.temperature`。最多 32 个精确 Solver 参数路径；规则、评估器、种子计划不可豁免，非法路径返回 400。
 
-**Response** `data.experiments[]` 含 `train_usable_rate`、`parser_success_rate`、`player_stats[].win_rate_ci`、`credibility`、`protocol`、`paired_n` / `paired_landlord_win_rate`、`scenario_scores`（叫分 / 出牌 / 残局 / 炸弹的可训练占比与解析率）。  
-2 个实验且存在源/对照关系时，附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`low_power`）。此处 `landlord_win_rate_diff` = 对照实验 − 源实验。详情页 `delta.landlord_win_rate_diff` 则按当前实验视角计算（本实验 − 对照）。`GET /experiments/{id}` 的 `delta.scenario_diffs` 为相对对照的同场景 Δ。
+**Response** 保留 `experiments[]`，新增：
+
+- `metric_version: "paired-cohort-v2"`、`computed_at`：指标口径版本与计算开始时间。各组数据在同一 SQLite 读事务中读取。
+- `protocol_review`：首列 `baseline_id`、`allowed_changes`、逐字段 `differences`（参照/变体值、缺失标记、可声明与已声明标记）、`unknown` 缺失字段、`controlled` 和原因列表。仅两组、冻结协议完整且所有差异都在声明内时可通过配置检查；多席位同时变化、跨局记忆和不支持的配对口径仍受限制。声明是事后审查，不是预注册，也不构成显著性或能力结论。
+- `coverage`：`planned_shared` 为共同计划种子数，`effective_n` / `effective_seeds` 为共同有效集合，`members` 记录每个有效种子的各实验 game_id。每组列出计划/有效/非共同有效数量、缺失/重复/未完成/无效胜负/席位不匹配的互斥排除数、冲突种子与 game_id、无种子及计划外记录数。
+
+有效种子必须在每组中只有一条记录、`status=finished`、已知胜者及 landlord/peasant 结果、席位顺序匹配。重复记录（包括失败后的重跑）全部排除，不按记录顺序挑选。`paired_n`、配对胜率、座位胜场、配对差值与统计检验均使用同一共同有效集合；没有有效样本时配对率和差值为 null，计数为 0。整体描述指标仍使用各自全部样本。比较只接受当前嵌套 Task 协议（schema_version=2）；其他结构返回 422，不提供转换或回退。
+
+两组比较附加 `paired_summary`（`landlord_win_rate_diff`、`shared_seeds`、`planned_shared_seeds`、`paired_p`、`paired_ci`、`low_power`）。`shared_seeds` 始终表示共同有效样本数；有源/对照关系时差值为对照减源，无关联时为第二列减第一列。McNemar 与确定种子的 2000 次 paired bootstrap 使用该共同集合；稀少/退化样本、配置差异和相关性限制必须一起解读。详情页差值仍为当前实验减关联实验；未通过无声明的协议审查时 `can_conclude=false`、`inconclusive_reason=protocol_mismatch`，引导打开比较页。
+
+#### 比较快照
+
+| 方法与路径 | 语义 |
+|---|---|
+| `POST /api/v1/experiments/comparisons` | `{title, experiment_ids, allowed_changes?}`；重新计算并保存，返回 201 和 `{id,title,created_at,result}` |
+| `GET /api/v1/experiments/comparisons` | `limit` 1–100（默认 30）、`offset` ≥0；按创建时间和 ID 降序列出元数据 |
+| `GET /api/v1/experiments/comparisons/{id}` | 返回已保存结果，绝不重新计算；不存在返回 404 |
+
+`comparison_snapshots` 是独立的追加式 SQLite 表，启动幂等创建；没有修改接口，不与可删除的实验建立级联外键。保存时只接受实验 ID 和审查声明，结果由服务端计算；前端切换为服务端返回的快照。后续实验修改/补跑不改变快照，页面可通过 `?snapshot=cmp_...` 恢复并导出 JSON。比较快照本身只保存计算结果；研究结论通过独立版本关联快照。研究报告导出额外包含结论和所选证据，不包含完整对局正文或复现环境。
 
 数据看板 `GET /api/v1/data/stats?experiment_id=` 与决策 `GET /api/v1/decision-points/stats?experiment_id=` 按实验过滤，不含试玩对局。
 
@@ -992,3 +1009,23 @@ prompt 取学生侧；缺配对或缺 gold 的行跳过。输出写入 `{data_di
   }
 }
 ```
+
+实验研究主流程允许不经过训练直接审查、创建对照、比较和编辑假设/结论。对照实验的 `validation.suggested_compare_ids` 包含当前实验与源实验；普通实验优先建议第一个对照。`hypothesis` / `conclusion` 仍是原有可编辑文本字段，不提供版本化证据快照。
+
+### 研究结论与证据
+
+比较快照保存后可引用其中对局的决策，并追加结论版本。实验笔记用于工作中编辑；这里的版本是不可覆盖的研究记录。
+
+| 方法 | 路径（前缀 `/api/v1/experiments`） | 行为 |
+|------|------|------|
+| GET | `/comparisons/{id}/decisions` | 候选决策 `{total,items}`；`limit=20`（最多100）、`offset=0` |
+| GET | `/comparisons/{id}/conclusions` | 版本摘要，按版本倒序；同样支持分页 |
+| POST | `/comparisons/{id}/conclusions` | 创建版本，成功201 |
+| GET | `/conclusions/{id}` | 不可变 `record` 与读取时的 `evidence_status` |
+| GET | `/conclusions/{id}/export` | 研究报告 JSON：比较快照、结论、所选冻结证据及读取时状态 |
+
+创建请求包含 `expected_revision`（首次0）、`observations`、`interpretation`、`limitations`、`evidence:[{decision_id,note}]`。观察与局限必填非空白，每段最多10000字符；解释可空；最多30条不重复引用，每条说明最多1000字符。
+
+候选决策须属于快照 `result.experiments[].game_ids`，且创建时间不晚于 `computed_at`。这个范围包括配对统计排除的对局，不能把引用数量当作有效配对样本数。保存时冻结决策动作、局面、质量与评估字段；不复制完整提示消息和推理轨迹。版本序号在 SQLite 写事务中检查：版本冲突409，证据缺失/越界/重复422，快照或版本不存在404。
+
+`evidence_status` 为 `available`、`changed`、`missing` 或 `identity_mismatch`。状态变化不修改冻结内容。导出 `kind=cardlab.research_report`，用于阅读与审查，不是包含模型、依赖和完整对局文件的可运行复现包。

@@ -773,3 +773,13 @@ Chat Completions 协议（`POST /chat/completions` + Bearer）：在 `dependenci
 ### 10.3 新增训练算法
 
 当前实现是 `core/training/sft.py` 的 PEFT LoRA（内部使用 HuggingFace `Trainer`）。仓库**没有**统一的 `Trainer` ABC。新算法应扩展 `training_service` + `core/training/`，并由 `training_type` 路由。
+
+## 比较审查与快照（2026-09-11）
+
+比较沿用 API → ExperimentService/ExperimentDeltaMixin → repositories/core 的依赖方向。`core/stats/comparison.py` 为纯计算模块，负责共同有效种子集合与冻结协议差异；SQLite 读事务固定一次比较的数据截点。`ComparisonRepository` 只负责追加、分页列举与读取 `comparison_snapshots`，不启动对局、不回写实验。记录包含当时的结果、协议、成员 game_id、排除原因、声明和口径版本；无更新/级联删除接口。前端通过 `ComparisonAudit` 展示审查与覆盖，通过比较页保存、重开和导出；后续版本化证据/结论在该快照基础上设计，不复用可变实验文本冒充证据版本。
+
+### 研究记录的一致性
+
+`research_revisions` 关联 `comparison_snapshots`，以 `(comparison_id, revision)` 唯一约束保存追加版本。ResearchMixin 在 `BEGIN IMMEDIATE` 内校验预期版本与证据范围、读取引用内容并写入记录，失败关闭连接回滚。读取报告使用单一读事务，分别返回不可变记录与当前原始证据状态。快照保留计算时的所有对局 ID；配对覆盖中的成员列表仍只含共同有效样本。
+
+只维护当前 Task 协议和当前研究报告结构，不进行平铺协议转换、字段推导或报告升级。研究修订用于保留用户的推理过程，与代码兼容无关。

@@ -3,11 +3,7 @@ import type { ApiResponse } from './types'
 import type { GameItem } from './gameApi'
 import { tt } from '@/i18n'
 
-export type ExperimentStatus =
-  | 'pending_collect'
-  | 'collecting'
-  | 'ready_review'
-  | 'ready_more'
+export type ExperimentStatus = 'pending_collect' | 'collecting' | 'ready_review' | 'ready_more'
 
 export type CollectMode = 'free' | 'benchmark'
 
@@ -114,7 +110,7 @@ export interface ExperimentProtocol {
   benchmark_seed_count: number
 }
 
-/** Nested protocol as stored/returned by the API (schema_version ≥ 2). */
+/** Nested protocol as stored/returned by the API (schema_version = 2). */
 export interface ExperimentProtocolNested {
   schema_version: number
   frozen_at: string
@@ -145,47 +141,49 @@ export interface ExperimentProtocolNested {
   }
 }
 
-export type ExperimentProtocolRaw = ExperimentProtocol | ExperimentProtocolNested
+export type ExperimentProtocolRaw = ExperimentProtocolNested
 
 export function flattenProtocol(
   protocol: ExperimentProtocolRaw | null | undefined,
 ): ExperimentProtocol | null {
   if (!protocol) return null
-  if ('dataset' in protocol && protocol.dataset && typeof protocol.dataset === 'object') {
-    const nested = protocol as ExperimentProtocolNested
-    return {
-      schema_version: nested.schema_version,
-      frozen_at: nested.frozen_at,
-      prompt_version: nested.solver?.prompt_version ?? '',
-      prompt_hashes: Object.fromEntries(
-        Object.entries(nested.solver?.prompts ?? {}).map(([key, entry]) => [
-          key,
-          String(entry?.content_hash ?? ''),
-        ]),
-      ),
-      players: nested.solver?.players ?? [],
-      source_experiment_id: nested.dataset?.source_experiment_id ?? null,
-      pair_deals: Boolean(nested.dataset?.pair_deals),
-      deal_seeds: nested.dataset?.deal_seeds ?? [],
-      collect_mode: nested.dataset?.collect_mode,
-      eval_metric_ids: nested.scorer?.eval_metric_ids ?? [],
-      game_type: nested.engine?.game_type ?? '',
-      engine_version: nested.engine?.engine_version ?? '',
-      decision_schema_version: nested.engine?.decision_schema_version ?? 0,
-      rules_ref: nested.engine?.rules_ref ?? null,
-      phases: nested.engine?.phases ?? [],
-      prompt_keys: nested.engine?.prompt_keys ?? {},
-      roles: nested.engine?.roles ?? [],
-      supports_deal_seed: Boolean(nested.engine?.supports_deal_seed),
-      benchmark_seed_count: nested.engine?.benchmark_seed_count ?? 0,
-    }
+  if (protocol.schema_version !== 2) return null
+  const nested = protocol
+  return {
+    schema_version: nested.schema_version,
+    frozen_at: nested.frozen_at,
+    prompt_version: nested.solver?.prompt_version ?? '',
+    prompt_hashes: Object.fromEntries(
+      Object.entries(nested.solver?.prompts ?? {}).map(([key, entry]) => [
+        key,
+        String(entry?.content_hash ?? ''),
+      ]),
+    ),
+    players: nested.solver?.players ?? [],
+    source_experiment_id: nested.dataset?.source_experiment_id ?? null,
+    pair_deals: Boolean(nested.dataset?.pair_deals),
+    deal_seeds: nested.dataset?.deal_seeds ?? [],
+    collect_mode: nested.dataset?.collect_mode,
+    eval_metric_ids: nested.scorer?.eval_metric_ids ?? [],
+    game_type: nested.engine?.game_type ?? '',
+    engine_version: nested.engine?.engine_version ?? '',
+    decision_schema_version: nested.engine?.decision_schema_version ?? 0,
+    rules_ref: nested.engine?.rules_ref ?? null,
+    phases: nested.engine?.phases ?? [],
+    prompt_keys: nested.engine?.prompt_keys ?? {},
+    roles: nested.engine?.roles ?? [],
+    supports_deal_seed: Boolean(nested.engine?.supports_deal_seed),
+    benchmark_seed_count: nested.engine?.benchmark_seed_count ?? 0,
   }
-  return protocol as ExperimentProtocol
 }
 
 export type ExperimentDeltaRelation = 'vs_source' | 'vs_control'
 
-export type ExperimentDeltaReason = 'no_games' | 'peer_not_ready' | 'low_power'
+export type ExperimentDeltaReason =
+  | 'no_games'
+  | 'peer_not_ready'
+  | 'low_power'
+  | 'protocol_mismatch'
 
 /** Plain-language claim the verdict block renders; wording lives in `stage.verdict.*`. */
 export type ExperimentVerdictKey = 'stronger' | 'weaker' | 'even' | 'peer_pending' | 'no_data'
@@ -225,7 +223,7 @@ export interface ExperimentDelta {
   low_power: boolean
   can_conclude: boolean
   inconclusive_reason: ExperimentDeltaReason | null
-  verdict_key?: ExperimentVerdictKey
+  verdict_key: ExperimentVerdictKey
   scenario_diffs?: Record<string, ExperimentScenarioDiff>
 }
 
@@ -374,6 +372,7 @@ export interface ExperimentComparePlayerStat {
 }
 
 export interface ExperimentCompareRow {
+  game_ids: string[]
   id: string
   name: string
   notes: string
@@ -408,6 +407,8 @@ export interface ExperimentCompareRow {
 }
 
 export interface ExperimentPairedSummary {
+  paired_p?: number | null
+  paired_ci?: [number, number] | null
   shared_seeds: number
   source_id: string
   control_id: string
@@ -415,7 +416,52 @@ export interface ExperimentPairedSummary {
   low_power: boolean
 }
 
+export interface ComparisonReview {
+  baseline_id: string
+  allowed_changes: string[]
+  controlled: boolean
+  reasons: string[]
+  unknown: { experiment_id: string; fields: string[] }[]
+  differences: {
+    experiment_id: string
+    path: string
+    baseline: unknown
+    variant: unknown
+    baseline_missing: boolean
+    variant_missing: boolean
+    allowable: boolean
+    declared: boolean
+  }[]
+}
+export interface ComparisonCoverage {
+  planned_shared: number
+  effective_n: number
+  effective_seeds: number[]
+  experiments: {
+    experiment_id: string
+    planned: number
+    valid: number
+    not_shared: number
+    excluded: Record<string, number>
+    conflicts: { seed: number; game_ids: string[] }[]
+    missing_seed_games: number
+    unplanned_games: number
+  }[]
+}
+export interface ComparisonSnapshotSummary {
+  id: string
+  title: string
+  created_at: string
+}
+export interface ComparisonSnapshot extends ComparisonSnapshotSummary {
+  result: ExperimentCompareResult
+}
+
 export interface ExperimentCompareResult {
+  metric_version?: string
+  computed_at?: string
+  protocol_review?: ComparisonReview
+  coverage?: ComparisonCoverage
   experiments: ExperimentCompareRow[]
   paired_summary?: ExperimentPairedSummary
 }
@@ -464,8 +510,7 @@ export interface ExperimentPackImportResult {
 export const experimentApi = {
   list: () => apiClient.get<never, ApiResponse<Experiment[]>>('/api/v1/experiments'),
 
-  get: (id: string) =>
-    apiClient.get<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}`),
+  get: (id: string) => apiClient.get<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}`),
 
   create: (data: CreateExperimentRequest) =>
     apiClient.post<never, ApiResponse<Experiment>>('/api/v1/experiments', data),
@@ -494,11 +539,27 @@ export const experimentApi = {
       `/api/v1/experiments/${id}/cancel-collect`,
     ),
 
-  compare: (ids: string[]) =>
-    apiClient.get<never, ApiResponse<ExperimentCompareResult>>(
-      '/api/v1/experiments/compare',
-      { params: { ids: ids.join(',') } },
+  compare: (ids: string[], allowedChanges: string[] = []) =>
+    apiClient.get<never, ApiResponse<ExperimentCompareResult>>('/api/v1/experiments/compare', {
+      params: new URLSearchParams([
+        ['ids', ids.join(',')],
+        ...allowedChanges.map((p) => ['allowed_changes', p]),
+      ]),
+    }),
+
+  saveComparison: (experimentIds: string[], title: string, allowedChanges: string[]) =>
+    apiClient.post<never, ApiResponse<ComparisonSnapshot>>('/api/v1/experiments/comparisons', {
+      experiment_ids: experimentIds,
+      title,
+      allowed_changes: allowedChanges,
+    }),
+  listComparisons: (offset = 0) =>
+    apiClient.get<never, ApiResponse<ComparisonSnapshotSummary[]>>(
+      '/api/v1/experiments/comparisons',
+      { params: { limit: 30, offset } },
     ),
+  getComparison: (id: string) =>
+    apiClient.get<never, ApiResponse<ComparisonSnapshot>>(`/api/v1/experiments/comparisons/${id}`),
 
   exportPack: (id: string) =>
     apiClient.get<never, ApiResponse<ExperimentPack>>(`/api/v1/experiments/${id}/export`),

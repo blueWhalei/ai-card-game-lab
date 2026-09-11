@@ -94,11 +94,12 @@ describe('ExperimentStage blocking CTA', () => {
     expect(wrapper.text()).not.toContain('确认开始')
   })
 
-  it('replaces harvest zero-usable collect with settings when blocked', () => {
+  it('allows reviewing zero-usable results even when collection is blocked', async () => {
     const wrapper = mountStage(makeExperiment(), '供应商未配置')
-    expect(wrapper.text()).toContain('还差一步才能开始实验')
-    expect(wrapper.text()).toContain('去设置')
-    const buttons = wrapper.findAll('button')
-    expect(buttons.every((b) => !b.attributes('disabled'))).toBe(true)
+    const review = wrapper.findAll('button').find((b) => b.text() === '审查全部决策')!
+    expect(review.attributes('disabled')).toBeUndefined()
+    await review.trigger('click')
+    expect(wrapper.emitted('action')).toEqual([['review-decisions']])
+    expect(wrapper.text()).not.toContain('开始训练')
   })
 })

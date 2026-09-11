@@ -5,7 +5,7 @@ export default {
     tocTitle: 'Contents',
     lookupTitle: 'Look up',
     intro:
-      'CardLab is built around experiments: watch decisions, collect games, fine-tune a small model, then validate with a control run.',
+      'CardLab follows a research loop: form a hypothesis, run games, review decisions, compare results and record conclusions. Training is an optional improvement tool.',
     hero: {
       goPlayers: 'Open player configs',
       goExperiments: 'Open experiments',
@@ -22,9 +22,9 @@ export default {
         nodes: [
           { label: 'Players', icon: 'lucide:flask-conical' },
           { label: 'Start experiment', icon: 'lucide:play', tone: 'primary' },
-          { label: 'Watch', icon: 'lucide:eye' },
-          { label: 'Training', icon: 'lucide:brain' },
-          { label: 'Control', icon: 'lucide:git-branch' },
+          { label: 'Review decisions', icon: 'lucide:eye' },
+          { label: 'Compare results', icon: 'lucide:git-compare' },
+          { label: 'Record conclusion', icon: 'lucide:notebook-pen' },
         ],
       },
       detail: {
@@ -39,8 +39,8 @@ export default {
         items: [
           'Nothing has run yet: one sentence and Start experiment.',
           'In progress: a progress number; the button becomes Watch.',
-          'After games finish: trainable decision count, and Start training.',
-          'After training: replay the same deals, and Start control experiment.',
+          'After games finish: review all decisions, including records excluded from training.',
+          'To test a change: create a control using registered players, with no training prerequisite.',
           'Control ready: a verdict plus Δ. Full matrix via “Full comparison table”.',
         ],
       },
@@ -69,7 +69,7 @@ export default {
         steps: [
           'In Player configs, add one model per seat (Dou Dizhu needs 3). Creating an experiment does not start games.',
           'Back on Home, create an experiment and open its detail page.',
-          'Detail offers one button at a time: Start experiment → Watch → Train → Control. Follow it.',
+          'Record a hypothesis, run games and review decisions. Create a control or compare existing experiments, then record a conclusion. Training is optional under Analyze.',
         ],
       },
       experiments: {
@@ -82,7 +82,7 @@ export default {
       },
       experimentDetail: {
         title: 'Experiment detail',
-        body: 'One question and one button at a time. Follow the current button to walk the whole loop.',
+        body: 'The current phase highlights the next action. The research area always offers hypothesis and conclusion editing, comparison and control creation.',
         bullets: [
           'When a control is ready: a verdict plus Δ. If evidence is thin, the headline is “not enough to conclude” and Δ drops to a footnote.',
           'A benchmark run shows this experiment’s numbers under the phase; the control replays the same deals.',
@@ -114,7 +114,9 @@ export default {
         title: 'Compare experiments',
         body: 'Home “Compare several experiments” lines up 2–5 runs. Detail only answers “vs this control, what changed?”',
         bullets: [
-          'After paired control games, detail shows the verdict; this page is the full matrix.',
+          'Review frozen protocol differences, declare allowed changes and compare again. Missing protocols or undeclared changes permit descriptive analysis only.',
+          'Paired metrics use unique, valid seeds shared by all selected runs; exclusions are listed. The first column is the reference, with no winner ranking.',
+          'Name and save a recalculated snapshot, then reopen or export it. Declarations are retrospective and snapshots are not complete evidence packages.',
         ],
       },
       metrics: {
@@ -171,7 +173,8 @@ export default {
     hint: {
       provider: 'Set at least one API key in .env, or run local Ollama. Settings shows readiness.',
       players: 'This game needs at least {n} players (model and sampling).',
-      experiment: 'Pick players and a target game count. Creating does not start games; click Start experiment on the detail page.',
+      experiment:
+        'Pick players and a target game count. Creating does not start games; click Start experiment on the detail page.',
     },
   },
   metricHint: {
@@ -198,8 +201,10 @@ export default {
       formula: 'Sum of prompt+completion tokens / finished games.',
     },
     overallDelta: {
-      plain: 'This run’s landlord win rate minus the control (or previous run). Sign is not good/bad.',
-      formula: 'Δ = this landlord WR − peer landlord WR, in percentage points (pp). The detail page uses the current experiment as “this”.',
+      plain:
+        'This run’s landlord win rate minus the control (or previous run). Sign is not good/bad.',
+      formula:
+        'Δ = this landlord WR − peer landlord WR, in percentage points (pp). The detail page uses the current experiment as “this”.',
     },
     pairedDelta: {
       plain: 'Only games that were dealt the same cards — a fairer comparison.',
@@ -215,19 +220,23 @@ export default {
       formula: 'Wilson 95% interval. Decisive n < 20 or width > 0.3 is marked underpowered.',
     },
     scenario: {
-      plain: 'Trainable share and parse rate split by bidding / playing / endgame / bomb. Δ is not good/bad.',
+      plain:
+        'Trainable share and parse rate split by bidding / playing / endgame / bomb. Δ is not good/bad.',
       formula: 'Endgame: any hand ≤ 8 cards. BOMB/ROCKET outranks endgame.',
     },
     quality: {
       plain: 'An end-game outcome proxy, not whether this move was skillful.',
-      formula: 'Win 0.8 / loss 0.3 / draw 0.5 for that seat. SFT filtering uses train_usable, not this score.',
+      formula:
+        'Win 0.8 / loss 0.3 / draw 0.5 for that seat. SFT filtering uses train_usable, not this score.',
     },
     benchmarkCoverage: {
       plain: 'How many of the declared fixed deals have been run.',
-      formula: 'The denominator is deal_seeds written at create time. Failed games count as coverage; no extra random seeds are added.',
+      formula:
+        'The denominator is deal_seeds written at create time. Failed games count as coverage; no extra random seeds are added.',
     },
     evLoss: {
-      plain: 'How much value this move gave up versus the best simulated candidate. 0 means it was the best one; blank means it was never evaluated.',
+      plain:
+        'How much value this move gave up versus the best simulated candidate. 0 means it was the best one; blank means it was never evaluated.',
       formula:
         'Loss = expected payoff of the best candidate − expected payoff of the move played. Payoffs come from sampling the hidden hands and playing each candidate out to the end, reusing the same sampled worlds across candidates. Evaluator settings are stored with each record: two numbers produced with different settings are not comparable.',
     },

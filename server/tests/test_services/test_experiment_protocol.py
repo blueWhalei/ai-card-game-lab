@@ -252,6 +252,9 @@ async def test_compare_paired_wins(db_path: str) -> None:
             """,
             (players_a, now, players_a, now, players_b, now, players_b, now),
         )
+        await db.execute(
+            "UPDATE games SET winner_role = CASE WHEN winner_id = 'cfg_b' THEN 'peasant' ELSE 'landlord' END"
+        )
         await db.commit()
 
     service = ExperimentService(sqlite_path=db_path, game_service=_fake_game_service())

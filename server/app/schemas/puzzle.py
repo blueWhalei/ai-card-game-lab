@@ -15,17 +15,17 @@ class PuzzleExtractRequest(BaseModel):
 
 
 class PuzzleRunRequest(BaseModel):
-    baseline_kind: Literal["rule", "first", "random", "heuristic"] = Field(
+    baseline_kind: Literal["first", "random", "heuristic"] = Field(
         default="heuristic",
-        description="Non-LLM baseline. ``rule`` is an alias for ``first`` (FirstActionPolicy), not HeuristicPolicy.",
+        description="Non-LLM baseline: first, random or heuristic.",
     )
     seed: int = 0
 
 
 class PuzzleProbeRequest(BaseModel):
-    baseline_kind: Literal["rule", "first", "random", "heuristic"] = Field(
+    baseline_kind: Literal["first", "random", "heuristic"] = Field(
         default="heuristic",
-        description="Non-LLM baseline. ``rule`` is an alias for ``first`` (FirstActionPolicy), not HeuristicPolicy.",
+        description="Non-LLM baseline: first, random or heuristic.",
     )
     seed: int = 0
     n_trials: int = Field(default=3, ge=1, le=50)

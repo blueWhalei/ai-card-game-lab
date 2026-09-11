@@ -84,7 +84,7 @@ const model = computed(() => localOrQuery('model'))
 const trainUsable = computed(() => {
   const v = localOrQuery('train_usable')
   if (v === 'true' || v === 'false') return v
-  return props.mode === 'decision' ? 'true' : ''
+  return ''
 })
 const gamePhase = computed(() => localOrQuery('game_phase'))
 const minQuality = computed(() => localOrQuery('min_quality'))
@@ -176,7 +176,7 @@ const trainUsableModel = computed({
     return ALL
   },
   set: (v: string) => {
-    patchFilters({ train_usable: v === ALL ? undefined : v })
+    patchFilters({ train_usable: v === ALL ? 'all' : v })
   },
 })
 

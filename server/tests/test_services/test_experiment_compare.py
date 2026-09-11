@@ -35,6 +35,12 @@ async def _seed_pair(db_path: str) -> tuple[str, str]:
             (players, now, now, players, now, now),
         )
         await db.execute(
+            "UPDATE experiments SET protocol = ?",
+            (
+                '{"schema_version":2,"dataset":{"deal_seeds":[]},"solver":{},"scorer":{},"engine":{}}',
+            ),
+        )
+        await db.execute(
             """
             INSERT INTO games (
                 id, game_type, status, player_ids, winner_id, total_rounds,

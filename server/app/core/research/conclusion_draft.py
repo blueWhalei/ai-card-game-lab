@@ -28,14 +28,14 @@ _VERDICT_CLAIM: dict[str, dict[str, str]] = {
     "zh-CN": {
         "stronger": "对照结果：本实验当地主时赢得更多。",
         "weaker": "对照结果：本实验当地主时赢得更少。",
-        "even": "对照结果：两次运行的地主胜率没有明显差别。",
+        "even": "对照结果：两次运行的地主胜率点估计接近，不代表等效。",
         "peer_pending": "对照实验尚未就绪，暂时不能下结论。",
         "no_data": "还没有足够的对局可以比较。",
     },
     "en": {
         "stronger": "Result: this run wins more often as landlord.",
         "weaker": "Result: this run wins less often as landlord.",
-        "even": "Result: landlord win rates look even across the two runs.",
+        "even": "Result: landlord win-rate estimates are close; this does not establish equivalence.",
         "peer_pending": "The peer run is not ready yet; no conclusion yet.",
         "no_data": "Not enough games to compare.",
     },

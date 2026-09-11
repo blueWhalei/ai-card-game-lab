@@ -14,7 +14,7 @@ from app.services.puzzle_service import PuzzleService
 
 
 def _order_sensitive_pack(root: Path) -> PuzzlePackManifest:
-    """Best action is second in the menu so rule/first is order-sensitive."""
+    """Best action is second in the menu so first is order-sensitive."""
     manifest = PuzzlePackManifest(
         pack_id="pack-probe",
         created_at="2026-09-08T00:00:00+00:00",
@@ -80,7 +80,7 @@ async def test_probe_rule_consistency_below_one(
 
     report = await probe_service.probe(
         manifest.pack_id,
-        baseline_kind="rule",
+        baseline_kind="first",
         seed=1,
         n_trials=8,
         kinds=["shuffle_legal_actions"],
@@ -104,7 +104,7 @@ async def test_probe_reproducible_with_same_seed(
 ) -> None:
     puzzle_dir = tmp_path / "puzzles"
     manifest = _order_sensitive_pack(puzzle_dir)
-    a = await probe_service.probe(manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5)
-    b = await probe_service.probe(manifest.pack_id, baseline_kind="rule", seed=42, n_trials=5)
+    a = await probe_service.probe(manifest.pack_id, baseline_kind="first", seed=42, n_trials=5)
+    b = await probe_service.probe(manifest.pack_id, baseline_kind="first", seed=42, n_trials=5)
     assert a["summary"] == b["summary"]
     assert a["puzzles"][0]["trials"] == b["puzzles"][0]["trials"]

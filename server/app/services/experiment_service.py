@@ -21,6 +21,7 @@ from app.core.pack import (
 )
 from app.core.stats.benchmark import build_benchmark_coverage
 from app.database import open_db_connection
+from app.repositories.comparison_repo import ComparisonRepository
 from app.repositories.decision_repo import DecisionRepository
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.experiment_collect import ExperimentCollectMixin
@@ -45,6 +46,7 @@ from app.services.experiment_protocol import (
     protocol_prompts,
 )
 from app.services.game_service import GameService
+from app.services.research_service import ResearchMixin
 from app.utils.id_generator import generate_id
 from app.utils.providers import unconfigured_providers_from_players
 
@@ -57,7 +59,7 @@ __all__ = [
 ]
 
 
-class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
+class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMixin):
     """Manages experiment runs and collection against GameService."""
 
     def __init__(
@@ -79,6 +81,32 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
 
     async def _conn(self) -> aiosqlite.Connection:
         return await open_db_connection(self._sqlite_path)
+
+    async def save_comparison(
+        self, experiment_ids: list[str], title: str, allowed_changes: list[str]
+    ) -> dict[str, Any]:
+        result = await self.compare_experiments(experiment_ids, allowed_changes)
+        conn = await self._conn()
+        try:
+            return await ComparisonRepository(conn).create(
+                generate_id("cmp"), title.strip(), datetime.now(UTC).isoformat(), result
+            )
+        finally:
+            await conn.close()
+
+    async def get_comparison(self, snapshot_id: str) -> dict[str, Any]:
+        conn = await self._conn()
+        try:
+            return await ComparisonRepository(conn).get(snapshot_id)
+        finally:
+            await conn.close()
+
+    async def list_comparisons(self, limit: int, offset: int) -> list[dict[str, Any]]:
+        conn = await self._conn()
+        try:
+            return await ComparisonRepository(conn).list(limit, offset)
+        finally:
+            await conn.close()
 
     def _prompt_version(self, override: str | None = None) -> str:
         from app.core.ai.prompts.registry import DEFAULT_TEMPLATE_VERSION
@@ -558,13 +586,10 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             for row in rows:
                 summary = await self._build_summary(repo, row)
                 validation = await self._build_validation(repo, row, summary)
-                experiment_id = str(row["id"])
-                training_at = await repo.first_training_completed_at(experiment_id)
                 next_step = self._build_next_step(
                     row,
                     summary,
                     validation,
-                    training_completed=training_at is not None,
                 )
                 delta = await self._build_delta(repo, row, summary, validation)
                 slim_delta = _slim_list_delta(delta)
@@ -605,14 +630,10 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin):
             )
             payload["timeline"] = await self._build_timeline(repo, row)
             payload["validation"] = await self._build_validation(repo, row, summary)
-            training_completed = any(
-                event.get("id") == "training_completed" for event in payload["timeline"]
-            )
             payload["next_step"] = self._build_next_step(
                 row,
                 summary,
                 payload["validation"],
-                training_completed=training_completed,
             )
             payload["delta"] = await self._build_delta(repo, row, summary, payload["validation"])
             return payload

@@ -6,18 +6,22 @@ import { Icon } from '@iconify/vue'
 import {
   experimentApi,
   isBenchmarkExperiment,
-  flattenProtocol,
   type Experiment,
   type ExperimentCompareRow,
   type ExperimentPairedSummary,
-  type ExperimentProtocolRaw,
+  type ExperimentCompareResult,
+  type ComparisonSnapshot,
+  type ComparisonSnapshotSummary,
 } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
 import { showApiError } from '@/utils/error'
-import { formatWinRate, formatWinRateCi, EXPERIMENT_SCENARIO_IDS } from '@/utils/experimentWorkbench'
+import {
+  formatWinRate,
+  formatWinRateCi,
+  EXPERIMENT_SCENARIO_IDS,
+} from '@/utils/experimentWorkbench'
 import { formatExperimentProgress } from '@/utils/experimentStage'
 import {
-  bestIndex,
   compareMetricsForEngine,
   formatDelta,
   metricUnit,
@@ -25,7 +29,10 @@ import {
 } from '@/utils/compareMatrix'
 import { systemApi } from '@/api/systemApi'
 import { defaultEngineId, engineById, type EngineInfo } from '@/utils/engineSlots'
-import { cn } from '@/lib/cn'
+import ComparisonResearch from '@/components/experiment/ComparisonResearch.vue'
+import ComparisonAudit from '@/components/experiment/ComparisonAudit.vue'
+import UiInput from '@/components/ui/Input.vue'
+import { downloadJson } from '@/utils/jsonFile'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
@@ -41,6 +48,74 @@ const engines = ref<EngineInfo[]>([])
 const selectedIds = ref<string[]>([])
 const rows = ref<ExperimentCompareRow[]>([])
 const pairedSummary = ref<ExperimentPairedSummary | null>(null)
+const result = ref<ExperimentCompareResult | null>(null)
+const allowedChanges = ref<string[]>([])
+const snapshot = ref<ComparisonSnapshot | null>(null)
+const snapshots = ref<ComparisonSnapshotSummary[]>([])
+const moreSnapshots = ref(false)
+const snapshotTitle = ref('')
+const saving = ref(false)
+let requestVersion = 0
+const dirty = computed(
+  () =>
+    rows.value.map((r) => r.id).join(',') !== selectedIds.value.join(',') ||
+    JSON.stringify([...(result.value?.protocol_review?.allowed_changes ?? [])].sort()) !==
+      JSON.stringify([...allowedChanges.value].sort()),
+)
+function applyResult(data: ExperimentCompareResult) {
+  result.value = data
+  rows.value = data.experiments
+  pairedSummary.value = data.paired_summary ?? null
+}
+async function loadSnapshots(append = false) {
+  try {
+    const res = await experimentApi.listComparisons(append ? snapshots.value.length : 0)
+    snapshots.value = append ? [...snapshots.value, ...res.data] : res.data
+    moreSnapshots.value = res.data.length === 30
+  } catch (e) {
+    showApiError(e, t('compare.audit.loadFailed'))
+  }
+}
+async function openSnapshot(id: string) {
+  const version = ++requestVersion
+  comparing.value = true
+  try {
+    const res = await experimentApi.getComparison(id)
+    if (version !== requestVersion) return
+    snapshot.value = res.data
+    applyResult(res.data.result)
+    selectedIds.value = res.data.result.experiments.map((r) => r.id)
+    allowedChanges.value = [...(res.data.result.protocol_review?.allowed_changes ?? [])]
+    snapshotTitle.value = res.data.title
+    await router.replace({ query: { snapshot: id } })
+  } catch (e) {
+    showApiError(e, t('compare.audit.loadFailed'))
+  } finally {
+    if (version === requestVersion) comparing.value = false
+  }
+}
+async function saveSnapshot() {
+  if (!canCompare.value || dirty.value || !snapshotTitle.value.trim() || saving.value) return
+  saving.value = true
+  const version = ++requestVersion
+  try {
+    const res = await experimentApi.saveComparison(
+      [...selectedIds.value],
+      snapshotTitle.value.trim(),
+      [...allowedChanges.value],
+    )
+    if (version !== requestVersion) return
+    snapshot.value = res.data
+    applyResult(res.data.result)
+    await router.replace({ query: { snapshot: res.data.id } })
+    await loadSnapshots()
+  } catch (e) {
+    showApiError(e, t('compare.audit.saveFailed'))
+  } finally {
+    saving.value = false
+  }
+}
+
 const playerMatrixMode = ref<'win_rate' | 'paired_wins'>('win_rate')
 
 const activeEngine = computed(() => {
@@ -57,11 +132,10 @@ function configName(id: string): string {
   return configs.value.find((c) => c.id === id)?.name ?? id
 }
 
-const canCompare = computed(
-  () => selectedIds.value.length >= 2 && selectedIds.value.length <= 5,
-)
+const canCompare = computed(() => selectedIds.value.length >= 2 && selectedIds.value.length <= 5)
 
 function toggleId(id: string): void {
+  if (saving.value) return
   if (selectedIds.value.includes(id)) {
     selectedIds.value = selectedIds.value.filter((x) => x !== id)
     return
@@ -73,31 +147,39 @@ function toggleId(id: string): void {
 function idsFromQuery(): string[] {
   const raw = route.query.ids
   if (typeof raw !== 'string' || !raw) return []
-  return raw.split(',').map((s) => s.trim()).filter(Boolean)
+  return raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)
 }
 
 async function runCompare(ids: string[]): Promise<void> {
   if (ids.length < 2) {
     rows.value = []
+    result.value = null
     pairedSummary.value = null
     return
   }
+  const version = ++requestVersion
   comparing.value = true
   try {
-    const res = await experimentApi.compare(ids)
-    rows.value = res.data.experiments
-    pairedSummary.value = res.data.paired_summary ?? null
+    const res = await experimentApi.compare(ids, [...allowedChanges.value])
+    if (version !== requestVersion) return
+    snapshot.value = null
+    applyResult(res.data)
   } catch (e: unknown) {
+    if (version !== requestVersion) return
     showApiError(e, t('compare.failed'))
+    result.value = null
     rows.value = []
     pairedSummary.value = null
   } finally {
-    comparing.value = false
+    if (version === requestVersion) comparing.value = false
   }
 }
 
 async function submit(): Promise<void> {
-  const ids = selectedIds.value
+  const ids = [...selectedIds.value]
   void router.replace({ query: { ids: ids.join(',') } })
   await runCompare(ids)
 }
@@ -117,7 +199,10 @@ function metricLabel(id: string): string {
   return map[id] ?? id
 }
 
-function cellFor(row: ExperimentCompareRow, metric: CompareMetricDef): {
+function cellFor(
+  row: ExperimentCompareRow,
+  metric: CompareMetricDef,
+): {
   value: number | null
   display: string
 } {
@@ -193,7 +278,6 @@ type MatrixRow = {
   cells: Array<{
     display: string
     delta: string | null
-    isBest: boolean
   }>
 }
 
@@ -201,19 +285,14 @@ const matrixRows = computed((): MatrixRow[] => {
   if (rows.value.length === 0) return []
   return visibleMetrics.value.map((metric) => {
     const raw = rows.value.map((row) => cellFor(row, metric))
-    const best = bestIndex(
-      raw.map((c) => c.value),
-      metric.kind,
-    )
-    const bestVal = best != null ? raw[best]?.value ?? null : null
+    const referenceValue = raw[0]?.value ?? null
     const unit = metricUnit(metric.id)
     return {
       metric,
       label: metricLabel(metric.id),
-      cells: raw.map((c, i) => ({
+      cells: raw.map((c) => ({
         display: c.display,
-        delta: formatDelta(c.value, bestVal, unit),
-        isBest: best === i && c.value != null,
+        delta: formatDelta(c.value, referenceValue, unit),
       })),
     }
   })
@@ -252,18 +331,13 @@ const scenarioMatrixRows = computed((): MatrixRow[] => {
         display: `${train} · n=${n} · ${t('compare.colParser')} ${parser}`,
       }
     })
-    const best = bestIndex(
-      raw.map((c) => c.value),
-      'higher',
-    )
-    const bestVal = best != null ? raw[best]?.value ?? null : null
+    const referenceValue = raw[0]?.value ?? null
     return {
       metric: { id: `scenario-${id}`, kind: 'higher' as const },
       label: scenarioLabel(id),
-      cells: raw.map((c, i) => ({
+      cells: raw.map((c) => ({
         display: c.display,
-        delta: formatDelta(c.value, bestVal, 'rate'),
-        isBest: best === i && c.value != null,
+        delta: formatDelta(c.value, referenceValue, 'rate'),
       })),
     }
   })
@@ -280,7 +354,7 @@ const playerIds = computed(() => {
 type PlayerMatrixRow = {
   playerId: string
   name: string
-  cells: Array<{ display: string; isBest: boolean }>
+  cells: Array<{ display: string }>
 }
 
 const playerMatrix = computed((): PlayerMatrixRow[] => {
@@ -289,22 +363,18 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
       const stat = row.player_stats.find((s) => s.player_id === pid)
       if (!stat) return null
       if (playerMatrixMode.value === 'paired_wins') {
+        if ((row.paired_n ?? 0) <= 0) return null
         const wins = stat.paired_wins ?? 0
         return { value: wins, display: String(wins) }
       }
+      if (row.games_with_winner <= 0) return null
       return { value: stat.win_rate, display: formatWinRate(stat.win_rate) }
     })
-    const kind = playerMatrixMode.value === 'paired_wins' ? 'higher' : 'higher'
-    const best = bestIndex(
-      rates.map((r) => r?.value ?? null),
-      kind,
-    )
     return {
       playerId: pid,
       name: configName(pid),
-      cells: rates.map((r, i) => ({
+      cells: rates.map((r) => ({
         display: r?.display ?? t('common.dash'),
-        isBest: best === i && r != null,
       })),
     }
   })
@@ -344,30 +414,6 @@ const showLowPowerHint = computed(
     pairedSummary.value?.low_power === true,
 )
 
-function protocolFingerprintKey(p: ExperimentProtocolRaw | null | undefined): string {
-  const view = flattenProtocol(p)
-  if (!view) return ''
-  const promptKeys = view.prompt_keys
-    ? Object.keys(view.prompt_keys)
-        .sort()
-        .map((k) => `${k}=${view.prompt_keys[k]}`)
-        .join(',')
-    : ''
-  return [
-    view.game_type ?? '',
-    view.engine_version ?? '',
-    promptKeys,
-    String(view.decision_schema_version ?? ''),
-  ].join('|')
-}
-
-const showProtocolMismatch = computed(() => {
-  if (rows.value.length < 2) return false
-  const keys = rows.value.map((r) => protocolFingerprintKey(r.protocol))
-  const first = keys[0]
-  return keys.some((k) => k !== first)
-})
-
 onMounted(async () => {
   loading.value = true
   try {
@@ -379,6 +425,11 @@ onMounted(async () => {
     experiments.value = expRes.data ?? []
     configs.value = cfgRes.data ?? []
     engines.value = engineRes?.data ?? []
+    await loadSnapshots()
+    if (typeof route.query.snapshot === 'string') {
+      await openSnapshot(route.query.snapshot)
+      return
+    }
     selectedIds.value = await resolveInitialIds()
     if (selectedIds.value.length >= 2) {
       await runCompare(selectedIds.value)
@@ -394,7 +445,10 @@ watch(
   () => route.query.ids,
   (ids) => {
     if (typeof ids === 'string' && ids && ids !== selectedIds.value.join(',')) {
-      selectedIds.value = ids.split(',').map((s) => s.trim()).filter(Boolean)
+      selectedIds.value = ids
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean)
     }
   },
 )
@@ -410,7 +464,7 @@ watch(
       >
         {{ t('compare.back') }}
       </button>
-      <UiButton :disabled="!canCompare" :loading="comparing" @click="submit">
+      <UiButton :disabled="!canCompare || saving" :loading="comparing" @click="submit">
         {{ t('compare.submit') }}
       </UiButton>
     </div>
@@ -452,22 +506,74 @@ watch(
             <span class="min-w-0 truncate font-medium">{{ exp.name }}</span>
             <span class="shrink-0 text-caption opacity-70">
               {{
-                formatExperimentProgress(
-                  exp.summary.finished_games,
-                  exp.summary.target_games,
-                  t,
-                )
+                formatExperimentProgress(exp.summary.finished_games, exp.summary.target_games, t)
               }}
             </span>
           </button>
         </div>
       </section>
 
+      <details class="rounded-ink-md border border-ink-border p-4">
+        <summary class="cursor-pointer text-body font-medium">
+          {{ t('compare.audit.saved') }}
+        </summary>
+        <p v-if="!snapshots.length" class="mt-3 text-caption text-ink-text-secondary">
+          {{ t('compare.audit.noSnapshots') }}
+        </p>
+        <ul class="mt-3 space-y-2">
+          <li v-for="item in snapshots" :key="item.id">
+            <UiButton variant="ghost" :disabled="saving || comparing" @click="openSnapshot(item.id)"
+              >{{ item.title }} · {{ item.created_at }}</UiButton
+            >
+          </li>
+        </ul>
+        <UiButton v-if="moreSnapshots" variant="secondary" @click="loadSnapshots(true)">{{
+          t('compare.audit.more')
+        }}</UiButton>
+      </details>
+      <p v-if="dirty && rows.length" role="status" class="text-body text-ink-text-secondary">
+        {{ t('compare.audit.dirty') }}
+      </p>
       <div v-if="comparing" class="flex justify-center py-8">
         <UiSpinner :label="t('common.loading')" />
       </div>
 
       <section v-else-if="rows.length > 0" class="space-y-4">
+        <ComparisonAudit
+          v-if="result"
+          :result="result"
+          v-model:allowed="allowedChanges"
+          :readonly="saving"
+        />
+        <section class="space-y-3 rounded-ink-md border border-ink-border bg-ink-surface p-4">
+          <p v-if="snapshot" class="text-body font-medium">
+            {{ t('compare.audit.snapshotAt', { time: snapshot.created_at }) }}
+          </p>
+          <p class="text-caption text-ink-text-secondary">{{ t('compare.audit.snapshotHint') }}</p>
+          <label class="block text-caption"
+            >{{ t('compare.audit.name')
+            }}<UiInput v-model="snapshotTitle" :maxlength="120" :disabled="saving"
+          /></label>
+          <div class="flex flex-wrap gap-2">
+            <UiButton
+              :disabled="dirty || !snapshotTitle.trim() || comparing"
+              :loading="saving"
+              @click="saveSnapshot"
+              >{{ t('compare.audit.save') }}</UiButton
+            >
+            <UiButton
+              v-if="snapshot"
+              variant="secondary"
+              @click="downloadJson(`comparison-${snapshot.id}.json`, snapshot)"
+              >{{ t('compare.audit.export') }}</UiButton
+            >
+          </div>
+        </section>
+        <ComparisonResearch
+          v-if="snapshot && !dirty"
+          :key="snapshot.id"
+          :comparison-id="snapshot.id"
+        />
         <div
           v-if="pairedDiffDisplay"
           class="rounded-ink-md border border-ink-primary/25 bg-ink-primary-muted/30 px-3 py-2.5 text-sm text-ink-text"
@@ -476,12 +582,6 @@ watch(
           <UiBadge v-if="pairedSummary?.low_power" variant="muted" class="ml-2">
             {{ t('experiment.lowPowerShort') }}
           </UiBadge>
-        </div>
-        <div
-          v-if="showProtocolMismatch"
-          class="rounded-ink-md border border-ink-accent/30 bg-ink-accent-muted/40 px-3 py-2.5 text-sm text-ink-text-secondary"
-        >
-          {{ t('compare.protocolMismatch') }}
         </div>
         <div
           v-if="showLowPowerHint"
@@ -496,11 +596,7 @@ watch(
                 <th class="sticky left-0 z-10 bg-ink-surface-muted px-3 py-2 font-medium">
                   {{ t('compare.colMetric') }}
                 </th>
-                <th
-                  v-for="row in rows"
-                  :key="row.id"
-                  class="px-3 py-2 font-medium"
-                >
+                <th v-for="row in rows" :key="row.id" class="px-3 py-2 font-medium">
                   <div class="flex flex-wrap items-center justify-center gap-1">
                     <button
                       type="button"
@@ -509,11 +605,7 @@ watch(
                     >
                       {{ row.name }}
                     </button>
-                    <UiBadge
-                      v-if="isBenchmarkExperiment(row)"
-                      variant="accent"
-                      class="text-xs"
-                    >
+                    <UiBadge v-if="isBenchmarkExperiment(row)" variant="accent" class="text-xs">
                       {{ t('experiment.modeBenchmark') }}
                     </UiBadge>
                   </div>
@@ -537,19 +629,10 @@ watch(
                   :key="`${mrow.metric.id}-${i}`"
                   class="px-3 py-1.5 tabular-nums whitespace-nowrap"
                 >
-                  <span
-                    :class="
-                      cn(
-                        cell.isBest ? 'font-semibold text-ink-primary' : 'text-ink-text',
-                      )
-                    "
-                  >
+                  <span class="text-ink-text">
                     {{ cell.display }}
                   </span>
-                  <span
-                    v-if="cell.delta"
-                    class="ml-1.5 text-xs text-ink-text-muted"
-                  >
+                  <span v-if="cell.delta" class="ml-1.5 text-xs text-ink-text-muted">
                     ({{ cell.delta }})
                   </span>
                 </td>
@@ -568,11 +651,7 @@ watch(
                 <th class="sticky left-0 z-10 bg-ink-surface-muted px-3 py-2 font-medium">
                   {{ t('compare.scenarioTitle') }}
                 </th>
-                <th
-                  v-for="row in rows"
-                  :key="`sc-${row.id}`"
-                  class="px-3 py-2 font-medium"
-                >
+                <th v-for="row in rows" :key="`sc-${row.id}`" class="px-3 py-2 font-medium">
                   {{ row.name }}
                 </th>
               </tr>
@@ -593,19 +672,10 @@ watch(
                   :key="`${mrow.metric.id}-${i}`"
                   class="px-3 py-1.5 tabular-nums whitespace-nowrap"
                 >
-                  <span
-                    :class="
-                      cn(
-                        cell.isBest ? 'font-semibold text-ink-primary' : 'text-ink-text',
-                      )
-                    "
-                  >
+                  <span class="text-ink-text">
                     {{ cell.display }}
                   </span>
-                  <span
-                    v-if="cell.delta"
-                    class="ml-1.5 text-xs text-ink-text-muted"
-                  >
+                  <span v-if="cell.delta" class="ml-1.5 text-xs text-ink-text-muted">
                     ({{ cell.delta }})
                   </span>
                 </td>
@@ -614,10 +684,7 @@ watch(
           </table>
         </div>
 
-        <p
-          v-if="rows.some((r) => (r.paired_n ?? 0) > 0)"
-          class="text-sm text-ink-text-secondary"
-        >
+        <p v-if="rows.some((r) => (r.paired_n ?? 0) > 0)" class="text-sm text-ink-text-secondary">
           {{ t('compare.pairedHint') }}
         </p>
 
@@ -662,11 +729,7 @@ watch(
               <thead class="text-ink-text">
                 <tr>
                   <th class="px-3 py-2 font-medium">{{ t('compare.colPlayer') }}</th>
-                  <th
-                    v-for="row in rows"
-                    :key="`p-${row.id}`"
-                    class="px-3 py-2 font-medium"
-                  >
+                  <th v-for="row in rows" :key="`p-${row.id}`" class="px-3 py-2 font-medium">
                     {{ row.name }}
                   </th>
                 </tr>
@@ -681,8 +744,7 @@ watch(
                   <td
                     v-for="(cell, i) in prow.cells"
                     :key="`${prow.playerId}-${i}`"
-                    class="px-3 py-1.5 tabular-nums"
-                    :class="cell.isBest ? 'font-semibold text-ink-primary' : ''"
+                    class="px-3 py-1.5 tabular-nums text-ink-text"
                   >
                     {{ cell.display }}
                   </td>

@@ -539,3 +539,42 @@ async def test_compare_rejects_single_id(client: AsyncClient) -> None:
     )
     assert response.status_code == 400
     assert response.json()["code"] == "EXPERIMENT_VALIDATION_FAILED"
+
+
+async def test_comparison_snapshot_is_immutable_and_reopenable(client: AsyncClient) -> None:
+    a = await _create_experiment(client, name="before")
+    b = await _create_experiment(client, name="variant")
+    response = await client.post(
+        "/api/v1/experiments/comparisons",
+        json={"title": "Trial 1", "experiment_ids": [a["id"], b["id"]]},
+    )
+    assert response.status_code == 201, response.text
+    saved = response.json()["data"]
+    assert saved["result"]["metric_version"] == "paired-cohort-v2"
+    assert saved["result"]["coverage"]["effective_n"] == 0
+    await client.patch(f"/api/v1/experiments/{a['id']}", json={"name": "after"})
+    reopened = await client.get(f"/api/v1/experiments/comparisons/{saved['id']}")
+    assert reopened.json()["data"] == saved
+    listing = await client.get("/api/v1/experiments/comparisons", params={"limit": 1})
+    assert listing.json()["data"] == [{k: saved[k] for k in ("id", "title", "created_at")}]
+    assert (await client.get("/api/v1/experiments/comparisons", params={"offset": 1})).json()[
+        "data"
+    ] == []
+
+
+async def test_comparison_snapshot_validation(client: AsyncClient) -> None:
+    response = await client.post(
+        "/api/v1/experiments/comparisons", json={"title": " ", "experiment_ids": ["a", "b"]}
+    )
+    assert response.status_code == 422
+    assert (await client.get("/api/v1/experiments/comparisons/missing")).status_code == 404
+    assert (
+        await client.get("/api/v1/experiments/comparisons", params={"limit": 101})
+    ).status_code == 422
+    a = await _create_experiment(client)
+    b = await _create_experiment(client)
+    response = await client.get(
+        "/api/v1/experiments/compare",
+        params={"ids": f"{a['id']},{b['id']}", "allowed_changes": "engine.engine_version"},
+    )
+    assert response.status_code == 400

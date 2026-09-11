@@ -110,14 +110,14 @@ async def test_run_heuristic_writes_report(run_service: PuzzleService, tmp_path:
     puzzle_dir = tmp_path / "puzzles"
     manifest = _tiny_pack(puzzle_dir)
 
-    report = await run_service.run(manifest.pack_id, baseline_kind="rule", seed=1)
+    report = await run_service.run(manifest.pack_id, baseline_kind="first", seed=1)
 
     summary = report["summary"]
     assert summary["n"] == 2
     assert "accuracy" in summary
     assert "mean_ev_loss" in summary
     assert summary["truncated_n"] == 1
-    assert report["baseline_kind"] == "rule"
+    assert report["baseline_kind"] == "first"
     # FirstActionPolicy always picks the first legal id → miss both bests.
     assert summary["accuracy"] == 0.0
     run_path = puzzle_dir / manifest.pack_id / "runs" / f"{report['run_id']}.json"

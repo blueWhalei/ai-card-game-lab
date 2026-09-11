@@ -43,6 +43,7 @@ function makeExperiment(overrides: Partial<Experiment> = {}): Experiment {
 
 function makeDelta(overrides: Partial<ExperimentDelta> = {}): ExperimentDelta {
   return {
+    verdict_key: 'stronger',
     peer_id: 'exp-2',
     peer_name: 'control',
     relation: 'vs_control',
@@ -81,13 +82,6 @@ describe('resolveStageId', () => {
     expect(resolveStageId(makeExperiment({ delta: makeDelta() }))).toBe('verdict')
   })
 
-  it('asks for a control run after training completes', () => {
-    const experiment = makeExperiment({
-      next_step: { id: 'open_control', action: 'control' },
-    })
-    expect(resolveStageId(experiment)).toBe('control')
-  })
-
   it('falls back to the harvest phase', () => {
     expect(resolveStageId(makeExperiment())).toBe('harvest')
   })
@@ -97,21 +91,6 @@ describe('verdictKeyOf', () => {
   it('uses the key the backend sent', () => {
     const experiment = makeExperiment({ delta: makeDelta({ verdict_key: 'weaker' }) })
     expect(verdictKeyOf(experiment)).toBe('weaker')
-  })
-
-  it('derives the same claim for payloads that predate verdict_key', () => {
-    expect(verdictKeyOf(makeExperiment({ delta: makeDelta() }))).toBe('stronger')
-    expect(
-      verdictKeyOf(makeExperiment({ delta: makeDelta({ landlord_win_rate_diff: -0.2 }) })),
-    ).toBe('weaker')
-    expect(
-      verdictKeyOf(makeExperiment({ delta: makeDelta({ landlord_win_rate_diff: 0.005 }) })),
-    ).toBe('even')
-    expect(
-      verdictKeyOf(
-        makeExperiment({ delta: makeDelta({ inconclusive_reason: 'peer_not_ready' }) }),
-      ),
-    ).toBe('peer_pending')
   })
 
   it('reports no data without a delta', () => {

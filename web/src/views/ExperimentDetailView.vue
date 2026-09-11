@@ -30,7 +30,6 @@ const {
   load,
   blockedMessage,
   noticeText,
-  hasChallenger,
   stageBusy,
   cancellingCollect,
   collectCount,
@@ -125,15 +124,39 @@ const {
         </div>
       </header>
 
-      <p v-if="experiment.hypothesis?.trim()" class="max-w-2xl text-body text-ink-text-secondary">
-        {{ experiment.hypothesis }}
-      </p>
+      <section :aria-label="t('experiment.research.title')" class="space-y-ink-3">
+        <div class="flex flex-wrap items-center justify-between gap-ink-3">
+          <h2 class="text-body font-semibold text-ink-text">
+            {{ t('experiment.research.title') }}
+          </h2>
+          <div class="flex flex-wrap gap-ink-2">
+            <UiButton variant="secondary" size="sm" @click="archiveOpen = true">
+              {{ t('experiment.research.notes') }}
+            </UiButton>
+            <UiButton variant="secondary" size="sm" @click="goCompareWithSuggested">
+              {{ t('experiment.research.compare') }}
+            </UiButton>
+            <UiButton variant="secondary" size="sm" @click="onStageAction('open-control')">
+              {{ t('control.submit') }}
+            </UiButton>
+          </div>
+        </div>
+        <p class="max-w-3xl whitespace-pre-wrap break-words text-body text-ink-text-secondary">
+          {{ experiment.hypothesis?.trim() || t('experiment.research.emptyHypothesis') }}
+        </p>
+        <p
+          v-if="experiment.conclusion?.trim()"
+          class="max-w-3xl whitespace-pre-wrap break-words text-body text-ink-text-secondary"
+        >
+          <span class="font-medium text-ink-text">{{ t('experiment.research.conclusion') }}</span>
+          {{ experiment.conclusion }}
+        </p>
+      </section>
 
       <section class="rounded-ink-md border border-ink-border bg-ink-surface p-ink-6 md:p-ink-8">
         <ExperimentStage
           :experiment="experiment"
           :blocked-message="blockedMessage"
-          :has-challenger="hasChallenger"
           :busy="stageBusy"
           v-model:collect-count="collectCount"
           :remaining-collect="remaining"
@@ -157,7 +180,13 @@ const {
             <RouterLink
               v-for="tool in ['data', 'decisions', 'traces']"
               :key="tool"
-              :to="{ path: `/pipeline/${tool}`, query: { experiment_id: experimentId } }"
+              :to="{
+                path: `/pipeline/${tool}`,
+                query: {
+                  experiment_id: experimentId,
+                  ...(tool === 'decisions' ? { train_usable: 'all' } : {}),
+                },
+              }"
               class="text-ink-primary underline-offset-4 hover:underline focus-visible:underline"
             >
               {{ t(`nav.${tool}`) }}

@@ -1,5 +1,45 @@
 export default {
+  researchReport: {
+    back: 'Back to comparison and conclusions',
+    title: 'Conclusions and evidence',
+    scope:
+      'Each save appends a revision and freezes cited evidence. Exports contain the comparison, conclusion and selected evidence, not full game archives or a runnable environment.',
+    refresh: 'Refresh revisions',
+    more: 'More revisions',
+    saved: 'Saved conclusion',
+    observations: 'Observations: what happened',
+    interpretation: 'Interpretation: possible reasons',
+    limitations: 'Limitations: what remains unproven',
+    noEvidence: 'This revision cites no decisions.',
+    frozen: 'Inspect frozen evidence',
+    revise: 'Revise from this version',
+    export: 'Export research report',
+    draft: 'Write the next revision',
+    evidence: 'Cite decisions',
+    candidateHint:
+      'Candidates belong to captured games and predate the comparison cutoff. They include games excluded from paired statistics; explain why each citation matters.',
+    previous: 'Previous',
+    next: 'Next',
+    note: 'Explain what this evidence supports or contradicts',
+    remove: 'Remove citation',
+    save: 'Save new revision',
+    error: 'Operation failed. Please retry.',
+    status: {
+      available: 'Original decision available',
+      changed: 'Original changed; saved evidence is preserved',
+      missing: 'Original deleted; frozen evidence is preserved',
+      identity_mismatch: 'Original identity differs; frozen evidence is preserved',
+    },
+  },
   experiment: {
+    research: {
+      title: 'Research question',
+      notes: 'Edit hypothesis & conclusion',
+      compare: 'Compare experiments',
+      emptyHypothesis:
+        'What will this experiment test? Record the expected change and criteria, then examine the game evidence.',
+      conclusion: 'Current conclusion: ',
+    },
     libraryCount: '{n} experiments',
     collectionProgress: 'Collected {progress}',
     outcomeCounts: {
@@ -190,13 +230,13 @@ export default {
     },
   },
   control: {
-    title: 'Start another round with a new player',
+    title: 'Create control experiment',
     description:
-      'The new player takes seat 1. The other {n} seats keep this experiment’s baseline players. You open the detail page; games do not start automatically.',
+      'All source players are selected by default. You can change seat 1 and the other {n} seats. Change one factor at a time and record the hypothesis. Training is optional.',
     namePlaceholder: 'Control experiment name',
-    challengerPlaceholder: 'Pick a LoRA player or an existing player',
+    challengerPlaceholder: 'Choose a registered player configuration',
     baselinePlaceholder: 'Baseline player',
-    noPlayers: 'No players available. Add one from the model library on Training.',
+    noPlayers: 'No players available. Create a configuration in Players first.',
     newPlayer: 'New player',
     baseline: 'Baseline',
     baselineN: 'Baseline {letter}',
@@ -207,14 +247,77 @@ export default {
     wizardStepProtocol: 'Protocol & deals',
     wizardStepConfirm: 'Confirm',
     wizardNext: 'Next',
-    wizardProtocolIntro: 'Copies protocol fingerprint and deal seeds from source {id}.',
+    wizardProtocolIntro:
+      'Reuses prompt keys and collected deal seeds from source {id}, then freezes the selected current configurations. Engine, evaluator or configuration changes can affect comparability; check protocols when comparing.',
     wizardSeedCount: '{n} deal seed(s)',
     wizardConfirmIntro:
       'You will open the control experiment detail page; games do not start automatically.',
-    openCollectAfter: 'Start games after creating',
+    openCollectAfter: 'Open start confirmation after creating',
     submit: 'Create control',
   },
   compare: {
+    audit: {
+      differenceCount: 'Protocol differences ({n})',
+      title: 'Comparability and sample review',
+      reference:
+        'Reference: {name}. Matrix deltas use the first column; overall and paired metrics use different denominators.',
+      controlled:
+        'Configuration checks passed; this does not establish significance or stronger play.',
+      descriptive: 'Descriptive comparison only.',
+      unknown: 'Unknown',
+      unknownFields: 'Inspect missing frozen fields',
+      declarationHint:
+        'Declare exact allowed changes, then compare again. This is a retrospective review, not preregistration. Rules, evaluator and deal plan differences cannot be waived.',
+      field: 'Changed field / experiment',
+      before: 'Reference value',
+      after: 'Current value',
+      declared: 'Allowed change',
+      fixed: 'Must match',
+      coverage: '{planned} shared planned deals · {effective} effective pairs',
+      cohortHint:
+        'Every effective seed must occur exactly once in every run, finish normally with a known outcome, and match seat order. All duplicates are excluded; retries are never silently selected.',
+      planned: 'Planned seeds',
+      valid: 'Valid here',
+      notShared: 'Valid but not shared',
+      excluded: 'Exclusions by seed',
+      outside: 'Missing seed: {missing} · Outside plan: {unplanned}',
+      conflicts: 'Inspect conflicting seeds and game IDs',
+      metricScope:
+        'Paired rates measure the landlord side (landlord wins / effective shared seeds), not an individual player. Bidding may change the landlord. Parser and trainable rates describe execution quality. EV loss is an evaluator proxy; missing evaluation is not zero. No detected difference does not imply equivalence.',
+      saved: 'Saved comparisons',
+      noSnapshots: 'No comparison snapshots saved yet.',
+      more: 'Load more',
+      dirty:
+        'Selection or declarations changed. These are the previous results; compare again before saving.',
+      snapshotAt: 'Saved snapshot · {time}',
+      snapshotHint:
+        'Saving recalculates and freezes results, protocols and coverage. Later games do not change it. JSON export is a comparison record, without complete game evidence or a reproduction environment.',
+      name: 'Snapshot name',
+      save: 'Recalculate and save snapshot',
+      export: 'Export this snapshot',
+      saveFailed: 'Could not save comparison',
+      loadFailed: 'Could not load comparison records',
+      statistics:
+        'McNemar p={p} · Paired difference 95% bootstrap CI [{low}, {high}]pp (may degenerate with sparse samples; descriptive when controls fail)',
+      reasons: {
+        multiple_target_seats:
+          'Multiple seats changed; attribution to one target player is not supported.',
+        unsupported_seeds: 'The protocol does not declare reproducible seeded deals.',
+        exploratory: 'Three or more runs are exploratory; no significance ranking is provided.',
+        unknown_protocol: 'Frozen protocols are incomplete; control conditions cannot be verified.',
+        undeclared_changes: 'There are undeclared or non-waivable configuration differences.',
+        dependent_memory:
+          'Cross-game memory may correlate seed outcomes; independent-sample inference is unsuitable.',
+        unsupported_metric: 'The current paired outcome definition supports Dou Dizhu only.',
+      },
+      exclusions: {
+        duplicate: 'Duplicate conflicts',
+        missing: 'No game yet',
+        unfinished: 'Not normally finished',
+        invalid_outcome: 'Incomplete outcome',
+        seat_mismatch: 'Seat or winner mismatch',
+      },
+    },
     back: '← Back to experiments',
     title: 'Compare experiments',
     submit: 'Compare selected',
@@ -270,7 +373,7 @@ export default {
       action: 'Watch',
     },
     harvest: {
-      readyClaim: 'Your training data is ready',
+      readyClaim: 'Game results are ready for review',
       metricLabel: 'Trainable decisions',
       claim: 'These games produced {n} trainable decisions',
       detail: '{n} more were excluded for format or outcome reasons.',
@@ -278,16 +381,16 @@ export default {
       action: 'Start training',
       reviewClaim: '{n} trainable decisions, but many were excluded',
       reviewDetail:
-        '{n} were excluded — over a fifth of the total. Check why before you train on this.',
-      reviewAction: 'See exclusion reasons',
+        'Review all decisions, including {n} excluded from training. Trainable means structurally valid, not a measure of decision quality.',
+      reviewAction: 'Review all decisions',
       noneClaim: 'No trainable decisions yet',
       noneDetail: 'Decisions appear once games finish. Run a few more and come back.',
       noneAction: 'Continue experiment',
     },
     control: {
-      claim: 'To know whether it got stronger, run it again on the same deals',
+      claim: 'Check configuration changes on the same deals',
       detail:
-        'This run’s landlord win rate is {rate}. The control reuses these {seeds} deals and swaps one seat for the trained model. Same cards is what makes that number mean anything. A control is same-deal validation, not a benchmark run (no seed-coverage report).',
+        'Create a control using registered players; training is optional. Reusing deals reduces deal variation, but check protocols, seats and effective pairs before interpreting results.',
       action: 'Start control experiment',
       needPlayerClaim: 'First register the trained model as a player',
       needPlayerDetail:
@@ -295,9 +398,9 @@ export default {
       needPlayerAction: 'Open model repo',
     },
     verdict: {
-      stronger: 'The fine-tuned model wins more as landlord',
-      weaker: 'The fine-tuned model wins less as landlord',
-      even: 'Landlord win rate is effectively the same across the two runs',
+      stronger: 'This experiment has a higher landlord win rate',
+      weaker: 'This experiment has a lower landlord win rate',
+      even: 'Landlord win-rate estimates are close (not evidence of equivalence)',
       peer_pending: 'The control experiment is still running, so there is nothing to compare yet',
       no_data: 'Not enough games to compare yet',
     },
@@ -317,6 +420,8 @@ export default {
       openBlunder: 'Round {round} · {action} (ev_loss {loss})',
     },
     evidence: {
+      protocolMismatch:
+        'Protocols are incomplete or differ without a declaration; inspect comparability first.',
       sufficient: '{n} same-deal pairs support this.',
       peerPending: 'Wait for the control to finish before reading this number.',
       lowPower: '{n} same-deal pairs so far — not enough to conclude.',

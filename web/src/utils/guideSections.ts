@@ -45,7 +45,7 @@ export type GuideHashTarget = {
 export function parseGuideHash(hash: string): GuideHashTarget | null {
   const sectionId = hash.replace(/^#/, '').trim()
   if (!sectionId) return null
-  if (sectionId === GUIDE_HERO_ID || sectionId === 'overview') {
+  if (sectionId === GUIDE_HERO_ID) {
     return { sectionId: GUIDE_HERO_ID, groupId: null }
   }
   const groupId = SECTION_TO_GROUP.get(sectionId)

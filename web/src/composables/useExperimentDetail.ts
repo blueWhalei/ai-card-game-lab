@@ -34,7 +34,6 @@ import type { DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
 export function useExperimentDetail() {
   const { t } = useI18n()
 
-  const PIPELINE_TABS = new Set(['decisions', 'traces', 'training'])
 
   const route = useRoute()
   const router = useRouter()
@@ -46,10 +45,10 @@ export function useExperimentDetail() {
   const trainingDepsAvailable = ref(false)
   const completedModelCount = ref(0)
 
-  function stripTabQuery(query: Record<string, unknown>): Record<string, string> {
+  function consumeActionQuery(query: Record<string, unknown>): Record<string, string> {
     const q: Record<string, string> = {}
     for (const [k, v] of Object.entries(query)) {
-      if (typeof v === 'string' && v && k !== 'tab') q[k] = v
+      if (typeof v === 'string' && v && !['collect', 'open_control'].includes(k)) q[k] = v
     }
     return q
   }
@@ -69,7 +68,7 @@ export function useExperimentDetail() {
   const controlPlayerIds = ref<string[]>([])
   const controlTarget = ref(5)
   const controlPairDeals = ref(true)
-  const controlOpenCollectAfter = ref(true)
+  const controlOpenCollectAfter = ref(false)
   const experiment = ref<Experiment | null>(null)
   const configs = ref<ExperimentConfig[]>([])
   const preflight = ref<PreflightResult | null>(null)
@@ -181,23 +180,14 @@ export function useExperimentDetail() {
     }
   }
 
-  const {
-    collecting,
-    collectOpen,
-    collectCount,
-    remaining,
-    openCollect,
-    openCollectDialog,
-    submitCollect,
-  } = useExperimentCollect({
-    experiment,
-    collectBlocked,
-    noticeText,
-    t,
-    onCollected: refreshQuiet,
-  })
-
-  const hasChallenger = computed(() => configs.value.some((c) => c.id.startsWith('lora_')))
+  const { collecting, collectOpen, collectCount, remaining, openCollectDialog, submitCollect } =
+    useExperimentCollect({
+      experiment,
+      collectBlocked,
+      noticeText,
+      t,
+      onCollected: refreshQuiet,
+    })
 
   const stageBusy = computed(() => collecting.value || registeringTrain.value)
 
@@ -230,14 +220,7 @@ export function useExperimentDetail() {
     })),
   )
 
-  const challengerOptions = computed(() => {
-    const loras = configs.value.filter((c) => c.id.startsWith('lora_'))
-    const pool = loras.length > 0 ? loras : configs.value
-    return pool.map((c) => ({
-      label: `${c.name} (${c.model_config.provider}/${c.model_config.model_name})`,
-      value: c.id,
-    }))
-  })
+  const challengerOptions = configSelectOptions
 
   const canSubmitControl = computed(() => {
     return (
@@ -449,16 +432,13 @@ export function useExperimentDetail() {
   function handlePostLoadQuery(): void {
     const q = route.query
     if (q.collect === '1') {
-      openCollect()
-      void submitCollect()
-      void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
+      openCollectDialog()
+      void router.replace({ query: consumeActionQuery(route.query as Record<string, unknown>) })
       return
     }
     if (q.open_control === '1') {
-      const redirected = openControlDialog({ requireChallenger: true })
-      if (!redirected) {
-        void router.replace({ query: stripTabQuery(route.query as Record<string, unknown>) })
-      }
+      openControlDialog()
+      void router.replace({ query: consumeActionQuery(route.query as Record<string, unknown>) })
     }
   }
 
@@ -494,7 +474,7 @@ export function useExperimentDetail() {
   }
 
   function goDecisions(gamePhase?: string): void {
-    const query: Record<string, string> = { experiment_id: experimentId.value }
+    const query: Record<string, string> = { experiment_id: experimentId.value, train_usable: 'all' }
     if (gamePhase) query.game_phase = gamePhase
     void router.push({
       path: pipelinePath('decisions'),
@@ -572,7 +552,7 @@ export function useExperimentDetail() {
         goModelRepo()
         break
       case 'open-control':
-        openControlDialog({ requireChallenger: true })
+        openControlDialog()
         break
       case 'collect-control':
         goControlCollect(nextStep.value?.ref_id)
@@ -671,18 +651,9 @@ export function useExperimentDetail() {
     )
   }
 
-  function openControlDialog(opts?: { requireChallenger?: boolean }): boolean {
-    if (!experiment.value) return false
-    const loras = configs.value.filter((c) => c.id.startsWith('lora_'))
-    if (opts?.requireChallenger && loras.length === 0) {
-      toast.info(t('experiment.registerPlayerFirst'))
-      void router.push({
-        path: pipelinePath('training'),
-        query: { experiment_id: experimentId.value, tab: 'models', return_control: '1' },
-      })
-      return true
-    }
-    const challenger = loras[0]?.id ?? ''
+  function openControlDialog(): void {
+    if (!experiment.value) return
+    const challenger = experiment.value.player_ids[0] ?? ''
     controlName.value = `${sanitizeNamePart(experiment.value.name)}${t('experiment.controlNameSuffix')}`
     controlPlayerIds.value = initialControlPlayerIds(
       experiment.value.player_ids.length,
@@ -691,9 +662,8 @@ export function useExperimentDetail() {
     )
     controlTarget.value = experiment.value.target_games || 5
     controlPairDeals.value = true
-    controlOpenCollectAfter.value = true
+    controlOpenCollectAfter.value = false
     controlOpen.value = true
-    return false
   }
 
   async function submitControl(): Promise<void> {
@@ -757,26 +727,6 @@ export function useExperimentDetail() {
     }
   }
 
-  function openPipelineTab(tab: unknown): boolean {
-    if (typeof tab !== 'string' || !PIPELINE_TABS.has(tab) || !experimentId.value) return false
-    void router.replace({
-      path: route.path,
-      query: stripTabQuery(route.query as Record<string, unknown>),
-    })
-    if (tab === 'decisions') goDecisions()
-    else if (tab === 'traces') goTraces()
-    else goTraining()
-    return true
-  }
-
-  watch(
-    () => route.query.tab,
-    (tab) => {
-      openPipelineTab(tab)
-    },
-    { immediate: true },
-  )
-
   watch(experimentId, () => {
     trainStartedLocal.value = false
     controlCreatedLocal.value = false
@@ -821,7 +771,6 @@ export function useExperimentDetail() {
     // stage
     blockedMessage,
     noticeText,
-    hasChallenger,
     stageBusy,
     cancellingCollect,
     collectCount,

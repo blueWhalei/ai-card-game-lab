@@ -31,7 +31,7 @@ const name = defineModel<string>('name', { required: true })
 const target = defineModel<number>('target', { required: true })
 const playerIds = defineModel<string[]>('playerIds', { required: true })
 const pairDeals = defineModel<boolean>('pairDeals', { default: true })
-const openCollectAfter = defineModel<boolean>('openCollectAfter', { default: true })
+const openCollectAfter = defineModel<boolean>('openCollectAfter', { default: false })
 
 const step = ref(0)
 const maxStep = 2
@@ -77,7 +77,9 @@ function prevStep(): void {
     <div class="space-y-4">
       <div v-if="step === 0" class="space-y-4">
         <div>
-          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{ t('common.name') }}</label>
+          <label class="mb-1.5 block text-sm font-medium text-ink-text">{{
+            t('common.name')
+          }}</label>
           <UiInput v-model="name" :placeholder="t('control.namePlaceholder')" class="w-full" />
         </div>
         <div v-for="(label, index) in slotLabels" :key="`${label}-${index}`">
@@ -109,7 +111,9 @@ function prevStep(): void {
 
       <div v-else-if="step === 1" class="space-y-3 text-sm text-ink-text-secondary">
         <p>{{ t('control.wizardProtocolIntro', { id: sourceExperimentLabel }) }}</p>
-        <ul class="space-y-1 rounded-ink border border-ink-border bg-ink-surface-muted/40 px-3 py-2">
+        <ul
+          class="space-y-1 rounded-ink border border-ink-border bg-ink-surface-muted/40 px-3 py-2"
+        >
           <li>{{ t('control.wizardSeedCount', { n: seedCount }) }}</li>
           <li v-for="(bit, i) in protocolSummaryBits" :key="i">{{ bit }}</li>
         </ul>
@@ -127,12 +131,7 @@ function prevStep(): void {
         <UiButton v-if="step < maxStep" :disabled="step === 0 && !canSubmit" @click="nextStep">
           {{ t('control.wizardNext') }}
         </UiButton>
-        <UiButton
-          v-else
-          :disabled="!canSubmit"
-          :loading="loading"
-          @click="emit('submit')"
-        >
+        <UiButton v-else :disabled="!canSubmit" :loading="loading" @click="emit('submit')">
           {{ t('control.submit') }}
         </UiButton>
       </div>
