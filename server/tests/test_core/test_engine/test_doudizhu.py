@@ -131,14 +131,18 @@ def test_the_bid_menu_offers_the_highest_bid_first() -> None:
     assert "`BID||3` — BID 3分（叫3分）" in menu
 
 
-def test_a_truncated_menu_still_offers_every_action_type() -> None:
-    """A hand with hundreds of plays must not lose PASS to the 80-line cap.
-
-    PASS sorts last by presentation priority, so plain truncation would drop the
-    one action that is always available.
-    """
+@pytest.mark.parametrize(
+    ("limit", "expected_types"),
+    [
+        (3, [ActionType.ROCKET, ActionType.BOMB, ActionType.PASS]),
+        (4, [ActionType.ROCKET, ActionType.BOMB, ActionType.SINGLE, ActionType.PASS]),
+    ],
+)
+def test_truncated_menu_preserves_pass_and_fills_available_types(
+    limit: int, expected_types: list[ActionType]
+) -> None:
     engine = DoudizhuEngine()
-    state = engine.initialize(["a", "b", "c"])
+    state = engine.initialize(["a", "b", "c"], seed=18)
     state = engine.apply_action(
         state,
         next(
@@ -158,11 +162,17 @@ def test_a_truncated_menu_still_offers_every_action_type() -> None:
     responder = engine.get_current_player(state)
 
     all_legal = engine.legal_actions(state, responder)
-    presented, omitted = engine.present_legal_actions(state, responder, limit=3)
+    assert len(all_legal) > limit
+    assert {entry.action.action_type for entry in all_legal} == {
+        ActionType.ROCKET,
+        ActionType.BOMB,
+        ActionType.SINGLE,
+        ActionType.PASS,
+    }
+    presented, omitted = engine.present_legal_actions(state, responder, limit=limit)
 
-    assert len(presented) == 3
-    assert omitted == len(all_legal) - 3
-    assert any(entry.action.action_type == ActionType.PASS for entry in presented)
+    assert [entry.action.action_type for entry in presented] == expected_types
+    assert omitted == len(all_legal) - limit
 
 
 def test_is_terminal_false_initially() -> None:

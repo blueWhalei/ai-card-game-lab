@@ -187,6 +187,8 @@ class GameEngine(ABC):
         ...     # ... 实现其他抽象方法
     """
 
+    _menu_priority_types: tuple[str, ...] = ()
+
     @property
     def min_players(self) -> int:
         """Minimum number of players this engine accepts."""
@@ -278,11 +280,9 @@ class GameEngine(ABC):
     ) -> tuple[list[LegalAction], int]:
         """The subset of legal actions to show a model, plus how many were dropped.
 
-        A late-game Dou Dizhu hand can have several hundred legal plays, more than
-        fits in a prompt. Truncating the presentation order would cut whole
-        categories from the tail -- ``PASS`` sorts last, so a big hand would be
-        offered a menu with no way to pass. Round-robin over action types instead:
-        every category survives, and the strongest of each comes first.
+        Round-robin over action types so each type is represented when it fits.
+        If the limit is smaller than the number of types, select engine-priority
+        types first. The final menu still uses the original presentation order.
 
         Returns:
             ``(presented, omitted_count)``. ``presented`` keeps presentation order.
@@ -295,10 +295,16 @@ class GameEngine(ABC):
         for entry in legal:
             groups.setdefault(str(entry.action.action_type), []).append(entry)
 
+        buckets = list(groups.values())
+        if len(buckets) > limit:
+            buckets.sort(
+                key=lambda bucket: bucket[0].action.action_type not in self._menu_priority_types
+            )
+
         picked: set[ActionId] = set()
         while len(picked) < limit:
             added = False
-            for bucket in groups.values():
+            for bucket in buckets:
                 if len(picked) >= limit:
                     break
                 for entry in bucket:

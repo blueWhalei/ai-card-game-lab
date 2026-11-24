@@ -125,6 +125,8 @@ _ENDGAME_CARD_COUNT = 2
 class DoudizhuEngine(GameEngine):
     """Doudizhu game engine supporting 3 players."""
 
+    _menu_priority_types = (ActionType.PASS,)
+
     @property
     def game_type(self) -> str:
         return "doudizhu"

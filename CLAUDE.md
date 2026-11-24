@@ -371,8 +371,10 @@ than sniffing the thinking text for a prefix.
 ## The decision protocol
 
 The model picks an **`ActionId`** off a menu; it never describes a move. `engine.present_legal_actions()`
-renders the menu (round-robin across action types, capped at `MAX_PRESENTED_ACTIONS`, so truncation
-can never hide `PASS`), `action_menu.render_menu()` formats it, and the reply is
+selects up to `MAX_PRESENTED_ACTIONS` entries round-robin across action types.
+Use the engine's priority types when there are fewer slots than action types.
+Dou Dizhu reserves a slot for `PASS` when it is legal and the limit is positive.
+`action_menu.render_menu()` formats the selected entries, and the reply is
 `{"thinking": ..., "action_id": ...}` constrained by a JSON Schema `enum` over exactly those ids.
 `ActionIdParser` only validates that the id is in the legal set — there is one game-agnostic parser,
 not one per phase.
