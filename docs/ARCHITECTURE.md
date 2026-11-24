@@ -2,7 +2,39 @@
 
 > FastAPI 统一后端（无 Node 中间层）。与代码冲突时以 `server/app/` 和 `CLAUDE.md` 为准。
 
+Windows 桌面宿主通过 Tauri 管理打包后的同一个 Python 服务，服务同时提供现有前端静态资源。桌面进程、会话与资源边界见 [desktop/design.md](desktop/design.md)，不复制研究业务或 API 客户端。
+
+正常退出由 Rust 关闭协调器向各研究窗口请求保存，Vue 生命周期入口复用共享草稿 store；全部窗口确认后才允许停止服务。证据窗口独立关闭，未完成设计或保存失败取消退出。原生回复命令只向本次后端的精确回环源授权，浏览器工作台不获得系统权限。范围与验收见 [第五批 A](../specs/desktop-research-workspace/validation-5a.md)。
+
+主窗口位置恢复由 `workspace.rs` 固定文件存储和 `useDesktopWorkspace` 接入，复用路由元数据声明的定位参数；在正常关闭时确认写入相对地址，下次启动前恢复。证据窗口不持有此存储权限，研究草稿仍在原数据库服务中。详见 [第五批 B](../specs/desktop-research-workspace/validation-5b.md)。
+
+主窗口布局与相对路由保存在同一工作区记录中，由 `window_layout.rs` 使用 Windows 布局 API 采集和恢复普通矩形与最大化状态。页面不提交坐标；不新增布局存储或格式转换，详见 [第五批 E](../specs/desktop-research-workspace/batch-5e.md)。
+
+JSON 经 `downloadJson` 序列化，与可读报告 HTML 共用 `downloadText` 传输；桌面经受限 `save_export` 命令选择系统保存位置，格式仅接受 JSON/HTML，等待实际写入后反馈。目标路径不接受前端参数，导出与关闭共用协调器；导出和位置记录共用 `file_io.rs` 的完整文件替换函数。报告页面与独立 HTML 使用同一 Vue 正文，数据来自既有结论导出接口。详见 [第四批 A](../specs/desktop-research-workspace/batch-4a.md)。
+
+保存返回的记录编号由同一导出模块绑定调用窗口及宿主内存中的路径；`reveal_saved_export` 仅定位本窗口最近一次成功导出的文件。成功提示复用 Toast 的可等待操作，不建立文件历史服务或开放任意路径。边界见 [第五批 D](../specs/desktop-research-workspace/batch-5d.md)。
+
+桌面研究工作室的当前改造边界见 [整体设计](../specs/desktop-research-workspace/design.md)。实验笔记与比较结论草稿共用 `workspace_drafts` 和 DraftService，使用修订号检查并发写入；前端共用 Pinia 草稿会话，避免弹窗卸载和轮询覆盖输入。草稿存储与研究结论发布独立，后者继续使用 ResearchMixin 的冻结证据和追加版本。
+
+双组斗地主记录对照由 ResearchMixin 验证冻结成员与对局身份，DecisionRepository 按快照截止时间读取有界序列，纯函数 `core/research/decision_alignment.py` 按席位归一并判定连续记录路径。候选决策、对照与引用共用 `coverage.members` 范围。前端 ComparisonReplay 负责选择和时间线，DecisionPreview 同时服务单次与双组呈现；草稿和正式结论沿用原服务。不重建隐藏状态、不新增回放引擎，分歧或证据缺口之后不恢复同一路径判断。详见 [第三批 A](../specs/desktop-research-workspace/batch-3a.md)。
+
 ## 1. 架构决策记录
+
+Prompt A/B 向导位于 `/research/:id/prompt-ab`。ExperimentService 委托 prompt_design_service 读取和验证冻结基线，在同一写事务中深复制协议、替换一个阶段正文，并通过既有 ExperimentRepository 创建 B。`protocol.design` 记录设计来源，纯函数 declared_prompt_changes 为既有比较审核提供精确声明；不建立第二套采集、统计或结论服务。默认空思考预算也写入冻结协议，决策轨迹按实际阶段记录模板版本。配置预检复用 SystemService，不代表远端连接已验证。
+
+研究组织使用 `studies` 与 `study_runs`，一项研究包含多次运行，运行最多归属一项研究。StudyService 负责组织与工作区读取，继续调用 ExperimentService 获取既有运行摘要；API 层不直接调用仓储。快速实验在同一写事务内创建研究和运行关系，复制与配对对照沿用源研究。未组织运行由用户明确加入，不自动重组已有数据。
+
+研究预算与费用使用 `StudyFinanceService` / `StudyFinanceRepository`，迁移 7 增加 `study_budget_revisions` 和 `study_expenses`。预算追加版本并校验预期版本，费用显式登记、幂等重试、保留作废原因；固定币种与定点金额不从调用用量推导。采集预留、对局启动/恢复、关联训练创建在接受任务的同一写事务中检查费用限制；已接受任务不被自动取消，不预留未来金额，不能保证真实支出上限。前端在原研究任务侧面板内使用 `StudyFinance`，表单显式保存，复用原生关闭阻止机制，不另建草稿数据库。
+
+迁移 8 增加供应商配置版本与同步尝试表。`StudyBillingService` / `StudyBillingRepository` 管理明确组织、项目、UTC 区间的费用快照；`OpenAICostsClient` 使用独立服务端 Admin 凭据只读固定官方地址，严格验证分页与来源范围、Decimal 精确求和。网络等待不占数据库写锁；持久化尝试占用阻止同版本并发同步并允许中断后恢复。失败不采用部分结果，成功快照按配置版本隔离，重复同步不叠加历史费用。供应商项目限制与人工登记限制独立计算，同一接受任务事务检查任一限制；快照缺失、失败或超期会阻止启用了供应商限制的新任务。`StudyBilling` 在原费用面板中提供配置、显式同步和来源分页，费用不被自动归为研究完整成本。
+
+迁移 9 增加周期计划版本和持久化执行状态，默认关闭。`BillingScheduleService` 负责计划版本/费用配置绑定与失败后安排；`BillingScheduler` 随 HTTP/桌面服务启动，每 30 秒检查、每进程最多 2 个请求，关闭时取消本进程同步。手动与周期请求在 `StudyBillingService` 中共用占用和快照提交；写事务原子更新费用结果与匹配计划的执行状态，迟到结果不能覆盖新版本。临时错误延后重试，配置/校验问题等待用户处理。周期暂停和服务停机不解除既有预算限制。`StudyBillingSchedule` 复用原侧面板及关闭保护，前端只读轮询不触发供应商请求。
+
+研究记录读取冻结比较快照：全部成员运行属于当前研究时才显示，不复制快照、证据或结论版本。前端 `/` 为研究首页、`/research/:id` 为工作区、`/experiments` 为全部运行库，运行创建继续复用同一表单。具体范围见 [第二批 A](../specs/desktop-research-workspace/batch-2a.md)。
+
+迁移 10 增加费用对账记录、复核事件和独立任务限制策略。`BillingReconciliationService` 只读已有成功快照，按用户录入的来源、组织、项目、币种和已结束 UTC 整日区间核对，精确计算可比金额差异；不可比时明确原因且不计算差额。保存前重新核对预览指纹，幂等请求不重复建账；复核事件追加版本和原因，不覆写金额、来源或计算结论。默认关闭的待复核限制与金额/时效检查在同一接受任务事务内读取，包含旧配置和所有分页的待处理记录；新同步及暂停周期计划不处置差异。`StudyBillingReconciliation` 复用现有研究费用面板、输入保护和来源明细入口。原始供应商文件未被系统核验，对账不增加费用、不与人工登记合计，也不构成完整成本认证。
+
+CSV 依据由 `billing_reconciliation_csv.py` 按选定列解析，保存文件摘要、列映射和服务日期范围。原始文件由用户保管。只读复算命令使用同一解析和计算逻辑，检查所选文件和历史快照能否重现保存结果。 [对账验收流程](../specs/desktop-research-workspace/billing-acceptance.md)
 
 ### 1.1 去掉 Node.js 中间层，采用 FastAPI 统一后端
 
@@ -547,7 +579,7 @@ class ConnectionManager:
 | `game_started` | 对局开始 | `{players, current_player, landlord_cards}` |
 | `thinking` | AI 开始思考 | `{player_id, player_name, legal_actions}` |
 | `thinking_chunk` | AI 思考流式输出 | `{player_id, chunk, chunk_type}` |
-| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name, legal_actions, parser_ok, win_probability, hand_analysis}` |
+| `thinking_complete` | AI 思考完成 | `{player_id, thinking, response_time_ms, action_preview, prompt_preview, raw_response_preview, prompt_tokens, completion_tokens, total_tokens, model_provider, model_name, legal_actions, parser_ok, hand_analysis}` |
 | `action` | AI 完成出牌 | `{round, player_id, action_type, cards}` |
 | `state_update` | 全局状态更新 | `{players, hands, current_player, landlord_cards}` |
 | `game_paused` | 对局暂停 | `{}` |
@@ -736,7 +768,6 @@ CREATE TABLE decision_points (
     chosen_action   TEXT    NOT NULL,
     thinking        TEXT,
     outcome         TEXT,
-    quality_score   REAL    DEFAULT 0.5,  -- 终局结果分，非招法质量
     train_usable    INTEGER NOT NULL DEFAULT 1,
     created_at      TEXT    NOT NULL
 );

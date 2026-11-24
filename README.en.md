@@ -6,9 +6,15 @@ Local AI card-game research tool: form hypotheses, inspect decisions, compare ga
 
 After saving a comparison, cite individual decisions and append conclusion revisions with observations, interpretation and limitations. Export a research report containing the snapshot and selected evidence. Source changes or deletion do not rewrite saved evidence.
 
-> **About models**: This project **calls** third-party LLM APIs (or local Ollama) for card-playing decisions—it does **not** distill or replicate any large model. LoRA fine-tuning uses game-play trajectory data (the user's own recorded games), not third-party API outputs for training competing models. All API calls comply with each provider's terms of service. The project itself **does not bundle any model weights**; users configure their own API keys or local models.
+> **Models and data**: CardLab uses models configured by the user for card-playing decisions. It can export training data from recorded games and teacher–student preference pairs from the first verifiable action divergence in a paired deal. Check the provider's permissions for the intended use before reusing third-party model outputs. CardLab ships without model weights.
 
 ## Stack
+
+The Windows desktop development build reuses this research workbench and bundles its Python backend. See the [desktop documentation](docs/desktop/README.md) for builds, scope and validation status. The development installer is unsigned; clean-machine release acceptance is still pending.
+
+The desktop app supports native Save As for JSON and readable HTML reports, and can show saved files in their folders. It restores the main window's position, size and maximized state with the research location. The existing installer was built from an earlier revision. [Report export validation](specs/desktop-research-workspace/validation-4a.md) · [File location validation](specs/desktop-research-workspace/validation-5d.md) · [Layout restoration validation](specs/desktop-research-workspace/validation-5e.md)
+
+The research expenses panel supports manual entries, OpenAI project cost snapshots, CSV reconciliation and limits on new tasks. Each amount reflects its source and scope. Validation against actual invoices and an enforceable spending cap are still pending. [Billing validation procedure](specs/desktop-research-workspace/billing-acceptance.md)
 
 | Layer | Choice |
 |-------|--------|
@@ -37,12 +43,18 @@ Start in two terminals:
 
 Or manually: `cd server && poetry install && poetry run uvicorn ...` · `cd web && npm install && npm run dev`.
 
-Open http://localhost:5173 . Home walks you through provider → players → experiment. Create **Player configs** first (Dou Dizhu needs 3). Set at least one API key or local Ollama in `.env`. No key? Use **Load demo experiment** on the home page — it seeds a main + control pair and opens the **verdict** stage. Importable packs live in [`examples/`](examples/) (baseline vs LLM, prompt A/B skeleton, pre-finetune baseline).
+Open http://localhost:5173 . In **Create experiment**, choose **Try one offline game**, save, then confirm **Start experiment** on the run page. CardLab prepares three local players and plays one fixed deal without model credentials. For a model experiment, choose **Choose players** to add or select seats in the same dialog. Review the start conditions and use **Check model connection** to read the selected providers’ model catalogs.
+
+Source development uses the project `.env`. The desktop app shows its `config.env` path in Settings. Restart the service after editing the file. **Load demo experiment** inserts prepared main/control data for exploring analysis. Importable packs live in [`examples/`](examples/).
+
+Experiment notes and comparison conclusion drafts save automatically to the local database. Applying notes updates the experiment summary; publishing a formal conclusion remains an explicit action that freezes evidence in a new revision. Failed saves preserve input and offer retry, copy export and conflict resolution.
+
+See the desktop research workspace [design](specs/desktop-research-workspace/design.md), [requirements](specs/desktop-research-workspace/requirements.md) and [delivery plan](specs/desktop-research-workspace/tasks.md). Directional support requires paired evidence, a difference interval, a test and protocol review; this exploratory assessment establishes neither general superiority nor equivalence.
 
 ## Main loop
 
-1. **Configure players** — choose models, policies and sampling parameters.
-2. **Define an experiment** — select players and record a hypothesis with evaluation criteria. Creating it does not start games.
+1. **Start research and configure players** — record the research question on Home and choose models, policies and sampling parameters. A quick experiment creates research automatically.
+2. **Define an experiment** — create a run in the research workspace, select players and record a hypothesis with evaluation criteria. Creation does not start games; copies and paired controls retain their research context.
 3. **Run and review** — watch or replay games, then review all decisions, including failures and records excluded from training. Trainable means structurally valid; it does not measure decision quality.
 4. **Compare** — compare existing experiments or create a control using registered players and source deal seeds. Check protocol differences and effective sample sizes before interpreting results.
 5. **Record conclusions** — keep working notes on experiment detail; save a comparison snapshot, then cite decisions and append conclusion revisions under Conclusions and evidence.
@@ -51,7 +63,9 @@ Open http://localhost:5173 . Home walks you through provider → players → exp
 
 Comparison now shows frozen protocol differences and effective shared seeds, excluding ambiguous duplicate runs. Declare allowed Solver changes and compare again. Save a named snapshot to reopen or export its frozen results later. Declarations are retrospective; research reports include selected evidence, while full runnable reproduction packages remain planned.
 
-Benchmark mode uses fixed deal seeds (up to 50 games); the detail page shows **this run’s** metrics under the current phase (landlord WR, parse, trainable, latency, tokens/game). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Analyze** (`/pipeline/…`, `?experiment_id=`). Export an experiment pack from detail (no API keys) and import it on the home page to reproduce on another machine. Usage guide: header book icon → `/guide`.
+Home `/` is the research studio. `/research/:id` groups runs and comparison records; unassigned runs can be added explicitly. A comparison appears in research only when every included run belongs to it. Cross-research comparisons remain in the comparison library. Design Prompt A/B offers three steps: choose a fixed-deal baseline with a model player, change one phase’s prompt, and review frozen conditions. Creating B makes no model calls; start each run explicitly, then use the existing comparison and conclusion workflow. Configuration checks do not verify remote connectivity. See the [batch 2B design](specs/desktop-research-workspace/batch-2b.md). Linked analysis remains planned.
+
+Benchmark mode uses fixed deal seeds (up to 50 games); the detail page shows **this run’s** metrics under the current phase (landlord WR, parse, trainable, latency, tokens/game). Trial games live at `/game` (not tied to experiments). Decisions, traces, data, and training are under **Analyze** (`/pipeline/…`, `?experiment_id=`). Export an experiment pack from detail (no API keys) and import it in All runs `/experiments` to reproduce on another machine. Usage guide: header book icon → `/guide`.
 
 Script loop: `.\scripts\e2e_pipeline.ps1 all -Count 1` — see [E2E guide](docs/E2E_PIPELINE.md).
 

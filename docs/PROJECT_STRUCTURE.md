@@ -111,7 +111,7 @@ ai-card-game-lab/
 │   │   │   │   │   └── action_id_parser.py  # ActionId 结构化解析
 │   │   │   │   ├── prompts/            # 提示词模板
 │   │   │   │   │   └── registry.py      # 模板注册中心
-│   │   │   │   └── tools/              # 游戏无关 AI 工具（如胜率估计）
+│   │   │   │   └── tools/              # 决策工具输出的序列化
 │   │   │   │
 │   │   │   ├── policy/                 # 决策策略（事件流 → ActionChosen）
 │   │   │   │   ├── base.py            # Policy / Budget / PolicyContext
@@ -130,7 +130,7 @@ ai-card-game-lab/
 │   │   │   ├── pack.py                 # 实验包 / 选手包（导出不含 API 密钥）
 │   │   │   ├── stats/                  # 评测统计
 │   │   │   │   ├── proportion.py      # Wilson 区间
-│   │   │   │   ├── scenarios.py       # 叫分 / 出牌 / 残局 / 炸弹子分
+│   │   │   │   ├── scenarios.py       # 互斥场景分类与项目阈值
 │   │   │   │   └── highlights.py      # 局后高光 3–5 步（决策点打分）
 │   │   │   │
 │   │   │   ├── database/               # 数据库抽象层
@@ -234,15 +234,17 @@ ai-card-game-lab/
 │   │   │   │   ├── ExperimentContextBar.vue # Pipeline 页回实验上下文条
 │   │   │   │   ├── KpiStrip.vue / NameChips.vue / CompactRecordList.vue
 │   │   │   │   ├── LoadingSpinner.vue
-│   │   │   │   ├── EmptyState.vue
-│   │   │   │   └── FirstRunStepper.vue  # 首页从零到第一局（密钥 / 选手 / 实验）
+│   │   │   │   └── EmptyState.vue
 │   │   │   │
 │   │   │   ├── experiment/            # 实验：首页行 / 详情阶段 / 进展 / 档案
+│   │   │   │   ├── CreateExperimentDialog.vue    # 离线试跑、自选席位与运行参数
+│   │   │   │   ├── SeatReadiness.vue             # 所选模型的配置与目录检查
+│   │   │   │   ├── PlayerConfigDialog.vue        # 名册和实验创建共用的选手编辑器
 │   │   │   │   ├── ExperimentListRow.vue         # 首页一行：状态句 + 下一步
 │   │   │   │   ├── ExperimentStage.vue           # 按状态机选当前阶段并给出文案
 │   │   │   │   ├── StageAction.vue               # 一句话 + 一个操作（前四个阶段）
 │   │   │   │   ├── StageVerdict.vue              # 可下结论：结论句+Δ；弱证据：证据句为主、Δ 为附注
-│   │   │   │   ├── ExperimentScenarioBars.vue    # 分场景 Δ 分面小图
+│   │   │   │   ├── ExperimentScenarios.vue       # 当前场景记录、对局与决策导航
 │   │   │   │   ├── ExperimentTimeline.vue        # 进展事件流 + 对照进度
 │   │   │   │   ├── ExperimentMetaPanel.vue       # 实验档案（⋯ 对话框）
 │   │   │   │   ├── ExperimentNotebookPanel.vue
@@ -258,7 +260,7 @@ ai-card-game-lab/
 │   │   │   │   └── DecisionWorkbenchPanel.vue
 │   │   │   │
 │   │   │   ├── training/              # 训练页：任务 / 模型仓库 / 实时日志
-│   │   │   ├── prompt/                # 提示词编辑 / 列表 / 版本对比
+│   │   │   ├── prompt/                # 提示词编辑 / 列表（对照设计从研究基线进入）
 │   │   │   │
 │   │   │   ├── game/                  # 对局相关组件
 │   │   │   │   ├── GenericBoard.vue   # 唯一观战牌桌（居中桌面 + 围座 grid）
@@ -278,7 +280,7 @@ ai-card-game-lab/
 │   │   │   │       └── ArchiveTab.vue
 │   │   │   │
 │   │   │   └── trace/                # 追踪组件
-│   │   │       ├── TraceWorkbenchPanel.vue # 追踪面板（分析枢纽；可带 experiment_id）
+│   │   │       ├── TraceWorkbenchPanel.vue # 调用记录面板（AND 筛选、当前统计与详情）
 │   │   │       ├── TraceDetail.vue   # 决策详情展示
 │   │   │       ├── TraceMetrics.vue  # 性能指标仪表盘
 │   │   │       └── ResponseTimeChart.vue # AI 响应时间趋势图
@@ -295,7 +297,7 @@ ai-card-game-lab/
 │   │   │   ├── DataView.vue           # 数据看板（统计 + 数据集管理）
 │   │   │   ├── TrainingView.vue       # 训练页（任务列表 + 模型仓库 + 创建对话框）
 │   │   │   ├── PromptView.vue         # 提示词管理（模板列表 + 版本控制）
-│   │   │   ├── TraceView.vue          # 决策追踪（薄壳 → TraceWorkbenchPanel）
+│   │   │   ├── TraceView.vue          # 调用记录（薄壳 → TraceWorkbenchPanel）
 │   │   │   ├── DecisionView.vue       # 决策点（薄壳 → DecisionWorkbenchPanel）
 │   │   │   └── SettingsView.vue       # 设置（只读机器状态；密钥在 .env）
 │   │   │
