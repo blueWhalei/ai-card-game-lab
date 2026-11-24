@@ -1,10 +1,5 @@
 """Rollout evaluator: what was that move worth?
 
-Turns an outcome-only signal into a per-decision one. ``quality_score`` says who
-won the game; this says how much value the chosen move gave up compared with the
-best move considered. That is the difference between one sample per game and one
-sample per decision.
-
 Pure CPU work, so this module is synchronous by design -- callers in the service
 layer wrap it in ``asyncio.to_thread()``.
 """
@@ -190,7 +185,7 @@ class RolloutEvaluator:
 
         for _ in range(self._params.max_steps):
             if engine.is_terminal(state):
-                return engine.terminal_rewards(state)[viewer_id]
+                break
             player_id = engine.get_current_player(state)
             legal = engine.legal_actions(state, player_id)
             if not legal:
@@ -198,6 +193,8 @@ class RolloutEvaluator:
             action_id = self._opponent.choose(engine.observe(state, player_id), legal, ctx)
             state = engine.apply_action(state, engine.resolve_action(state, player_id, action_id))
 
+        if engine.is_terminal(state):
+            return engine.terminal_rewards(state)[viewer_id]
         # Scoring an unfinished game would invent signal (0.0 is a real loss
         # payoff), so refuse instead of guessing.
         raise InvalidActionError(

@@ -4,7 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { promptsApi, type PromptTemplateResponse } from '@/api/prompts'
-import PromptComparePanel from '@/components/prompt/PromptComparePanel.vue'
+import { RouterLink } from 'vue-router'
 import PromptList from '@/components/prompt/PromptList.vue'
 import PromptEditor from '@/components/prompt/PromptEditor.vue'
 import UiButton from '@/components/ui/Button.vue'
@@ -29,10 +29,8 @@ const editorForm = ref({
 
 const editorLoading = ref(false)
 
-const dialogTitle = computed(() => (isEditing.value ? t('prompt.editTemplate') : t('prompt.newTemplate')))
-
-const promptVersions = computed(() =>
-  [...new Set(templates.value.map((item) => item.version).filter(Boolean))],
+const dialogTitle = computed(() =>
+  isEditing.value ? t('prompt.editTemplate') : t('prompt.newTemplate'),
 )
 
 async function fetchTemplates() {
@@ -163,7 +161,10 @@ onMounted(() => {
       <UiButton @click="openCreateDialog()">{{ t('prompt.newTemplate') }}</UiButton>
     </div>
 
-    <PromptComparePanel class="mb-6" :versions="promptVersions" />
+    <p class="mb-ink-5 text-body text-ink-text-secondary">
+      {{ t('prompt.designHint') }}
+      <RouterLink to="/" class="text-ink-accent underline">{{ t('prompt.designLink') }}</RouterLink>
+    </p>
 
     <div class="grid grid-cols-1 gap-6 lg:grid-cols-3">
       <div class="lg:col-span-2">
@@ -217,7 +218,10 @@ onMounted(() => {
             </div>
           </div>
         </div>
-        <div v-else class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5">
+        <div
+          v-else
+          class="sticky top-20 rounded-ink-md border border-ink-border bg-ink-surface p-5"
+        >
           <UiEmpty :title="t('prompt.pickDetail')" :description="t('prompt.pickDetailHint')" />
         </div>
       </div>

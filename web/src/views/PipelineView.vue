@@ -45,6 +45,10 @@ function sectionLabel(id: PipelineSection): string {
 function clearScope(): void {
   const query = { ...route.query }
   delete query.experiment_id
+  if (current.value === 'training') {
+    for (const key of ['study_id', 'task_id', 'task_study', 'task_kind', 'task_state', 'task_page'])
+      delete query[key]
+  }
   void router.replace({ path: route.path, query })
 }
 </script>

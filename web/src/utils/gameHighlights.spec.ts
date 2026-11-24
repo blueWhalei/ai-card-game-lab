@@ -1,9 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  findCommentaryAtIndex,
-  findReplayIndex,
-  formatEvExplain,
-} from './gameHighlights'
+import { findCommentaryAtIndex, findReplayIndex, formatEvExplain } from './gameHighlights'
 
 const rounds = [
   { round_num: 1, player_id: 'p1', action_type: 'BID', cards: [] },
@@ -65,12 +61,24 @@ describe('formatEvExplain', () => {
     if (key === 'game.evExplainAi') return `AI ${values?.ai}`
     if (key === 'game.evExplainBaseline') return `Baseline ${values?.base}`
     if (key === 'game.evExplainBest') return `EV-best ${values?.best}`
-    if (key === 'game.evExplainLoss') return `loss ${values?.loss}`
+    if (key === 'decision.evLossLabel') return `loss ${values?.n}`
+    if (key === 'decision.rolloutScope')
+      return [
+        values?.evaluated,
+        values?.legal,
+        values?.worlds,
+        values?.repeats,
+        values?.policy,
+      ].join('/')
     return key
   }
 
   it('returns null without baseline or best', () => {
     expect(formatEvExplain({ action_id: 'A' }, t, 'fallback')).toBeNull()
+  })
+
+  it('shows an evaluated zero and leaves missing conditions unreported', () => {
+    expect(formatEvExplain({ ev_loss: 0 }, t, 'A')).toContain('loss 0.00 · —/—/—/—/—')
   })
 
   it('joins AI baseline best and loss', () => {
@@ -81,10 +89,17 @@ describe('formatEvExplain', () => {
           baseline_label: 'B',
           best_action_id: 'Z',
           ev_loss: 0.25,
+          evaluation_scope: {
+            candidates_evaluated: 2,
+            legal_action_count: 5,
+            determinizations: 4,
+            rollouts_per_world: 2,
+            opponent_kind_effective: 'random',
+          },
         },
         t,
         'fallback',
       ),
-    ).toBe('AI A1 · Baseline B · EV-best Z · loss 0.25')
+    ).toBe('AI A1 · Baseline B · EV-best Z · loss 0.25 · 2/5/4/2/random')
   })
 })

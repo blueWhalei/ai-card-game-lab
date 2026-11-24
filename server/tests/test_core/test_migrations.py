@@ -56,7 +56,7 @@ async def test_v5_database_gains_collection_reservations(tmp_path: Path) -> None
         await db.execute("PRAGMA user_version = 5")
         await db.commit()
         await migrate(db)
-        assert await get_schema_version(db) == 6
+        assert await get_schema_version(db) == SCHEMA_VERSION
         assert {"experiment_id", "request_key", "requested_count", "start_index", "game_ids"} <= (
             await _columns(db, "experiment_collect_requests")
         )
@@ -72,6 +72,85 @@ async def test_a_newer_database_is_refused(tmp_path: Path) -> None:
 
     with pytest.raises(SchemaVersionError):
         await init_db(sqlite_path)
+
+
+async def test_v6_gains_finance_tables_without_touching_existing_data(tmp_path: Path) -> None:
+    sqlite_path = str(tmp_path / "finance_migration.db")
+    await init_db(sqlite_path)
+    async with connect_sqlite(sqlite_path) as db:
+        await db.execute("INSERT INTO studies VALUES ('s','Keep','Question','t','t')")
+        await db.execute("DROP TABLE study_expenses")
+        await db.execute("DROP TABLE study_budget_revisions")
+        await db.execute("PRAGMA user_version=6")
+        await db.commit()
+        await migrate(db)
+        assert {"amount_units", "source_reference", "voided_at"} <= await _columns(
+            db, "study_expenses"
+        )
+        assert {"revision", "limit_units", "currency"} <= await _columns(
+            db, "study_budget_revisions"
+        )
+        row = await (await db.execute("SELECT title FROM studies WHERE id='s'")).fetchone()
+        assert row[0] == "Keep"
+
+
+async def test_v7_billing_migration_preserves_registered_expenses(tmp_path: Path) -> None:
+    sqlite_path = str(tmp_path / "billing_migration.db")
+    await init_db(sqlite_path)
+    async with connect_sqlite(sqlite_path) as db:
+        await db.execute("INSERT INTO studies VALUES ('s','Keep','Question','t','t')")
+        await db.execute(
+            "INSERT INTO study_expenses VALUES ('e','s','r','USD',1,'2026-11-19','manual_allocation','ref','scope','t',NULL,NULL)"
+        )
+        await db.execute("DROP TABLE study_billing_attempts")
+        await db.execute("DROP TABLE study_billing_configs")
+        await db.execute("PRAGMA user_version=7")
+        await db.commit()
+        await migrate(db)
+        assert await get_schema_version(db) == 10
+        assert {"revision", "project_id", "max_age_hours"} <= await _columns(
+            db, "study_billing_configs"
+        )
+        row = await (
+            await db.execute("SELECT amount_units FROM study_expenses WHERE id='e'")
+        ).fetchone()
+        assert row[0] == 1
+
+
+async def test_v8_schedule_migration_keeps_cost_snapshot_and_defaults_to_manual(
+    tmp_path: Path,
+) -> None:
+    sqlite_path = str(tmp_path / "billing_schedule_migration.db")
+    await init_db(sqlite_path)
+    async with connect_sqlite(sqlite_path) as db:
+        await db.execute("INSERT INTO studies VALUES ('s','Keep','Question','t','t')")
+        await db.execute(
+            "INSERT INTO study_billing_configs VALUES ('s',1,'org-test','proj_test','2026-11-01','1',1,6,'Keep','t')"
+        )
+        await db.execute(
+            "INSERT INTO study_billing_attempts (id,study_id,revision,status,start_time,end_time,started_at,amount,items_json) VALUES ('a','s',1,'succeeded',100,200,'t','0.10000001','[]')"
+        )
+        await db.execute("ALTER TABLE study_billing_attempts DROP COLUMN trigger")
+        await db.execute("ALTER TABLE study_billing_attempts DROP COLUMN schedule_revision")
+        await db.execute("DROP TABLE study_billing_schedule_runtime")
+        await db.execute("DROP TABLE study_billing_schedule_revisions")
+        await db.execute("DROP TABLE billing_scheduler_heartbeat")
+        await db.execute("PRAGMA user_version=8")
+        await db.commit()
+        await migrate(db)
+        await migrate(db)
+        row = await (
+            await db.execute(
+                "SELECT amount,trigger,schedule_revision FROM study_billing_attempts WHERE id='a'"
+            )
+        ).fetchone()
+        assert tuple(row) == ("0.10000001", "manual", None)
+        assert await get_schema_version(db) == 10
+        assert (
+            await (
+                await db.execute("SELECT COUNT(*) FROM study_billing_schedule_revisions")
+            ).fetchone()
+        )[0] == 0
 
 
 async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
@@ -97,7 +176,6 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
                 prompt_messages TEXT,
                 thinking TEXT,
                 outcome TEXT,
-                quality_score REAL DEFAULT 0.5,
                 train_usable INTEGER NOT NULL DEFAULT 1,
                 train_usable_reason TEXT NOT NULL DEFAULT '',
                 parse_fallback INTEGER NOT NULL DEFAULT 0,
@@ -114,7 +192,7 @@ async def test_migration_1_adds_policy_kind_to_legacy_decision_points(
 
     async with connect_sqlite(sqlite_path) as db:
         assert await get_schema_version(db) == SCHEMA_VERSION
-        assert SCHEMA_VERSION == 6
+        assert SCHEMA_VERSION == 10
         assert "policy_kind" in await _columns(db, "decision_points")
         assert "tool_calls" in await _columns(db, "decision_points")
         assert "annotation" in await _columns(db, "decision_points")
@@ -181,7 +259,6 @@ async def test_migration_3_adds_tool_calls_to_legacy_decision_points(
                 prompt_messages TEXT,
                 thinking TEXT,
                 outcome TEXT,
-                quality_score REAL DEFAULT 0.5,
                 train_usable INTEGER NOT NULL DEFAULT 1,
                 train_usable_reason TEXT NOT NULL DEFAULT '',
                 parse_fallback INTEGER NOT NULL DEFAULT 0,

@@ -18,12 +18,30 @@ export interface ExperimentConfig {
   }
 }
 
+export interface SeatModelCheck {
+  player_id: string
+  provider: string
+  model: string
+  setting: string
+  status:
+    | 'configured'
+    | 'invalid_model'
+    | 'unknown_provider'
+    | 'invalid_url'
+    | 'missing_key'
+    | 'listed'
+    | 'not_listed'
+    | 'access_denied'
+    | 'unreachable'
+    | 'catalog_unavailable'
+}
+
 export interface ExperimentConfigStats {
   config_id: string
-  games_played: number
+  decided_games: number
   wins: number
   losses: number
-  win_rate: number
+  win_rate: number | null
   last_game_id: string | null
   last_game_at: string | null
 }
@@ -56,8 +74,13 @@ export interface UpdateExperimentConfigRequest {
 }
 
 export const experimentConfigApi = {
-  list: () =>
-    apiClient.get<never, ApiResponse<ExperimentConfig[]>>('/api/v1/experiment-configs'),
+  readiness: (player_ids: string[], check_connection = false) =>
+    apiClient.post<never, ApiResponse<{ checks: SeatModelCheck[]; config_file: string }>>(
+      '/api/v1/experiment-configs/readiness',
+      { player_ids, check_connection },
+    ),
+
+  list: () => apiClient.get<never, ApiResponse<ExperimentConfig[]>>('/api/v1/experiment-configs'),
 
   get: (id: string) =>
     apiClient.get<never, ApiResponse<ExperimentConfig>>(`/api/v1/experiment-configs/${id}`),
@@ -68,17 +91,15 @@ export const experimentConfigApi = {
   update: (id: string, data: UpdateExperimentConfigRequest) =>
     apiClient.put<never, ApiResponse<ExperimentConfig>>(`/api/v1/experiment-configs/${id}`, data),
 
-  delete: (id: string) =>
-    apiClient.delete('/api/v1/experiment-configs', { params: { id } }),
+  delete: (id: string) => apiClient.delete('/api/v1/experiment-configs', { params: { id } }),
 
   getAllStats: () =>
     apiClient.get<never, ApiResponse<ExperimentConfigStats[]>>('/api/v1/experiment-configs/stats'),
 
   exportPack: (ids?: string[]) =>
-    apiClient.get<never, ApiResponse<ExperimentPack>>(
-      '/api/v1/experiment-configs/export',
-      { params: ids?.length ? { ids: ids.join(',') } : undefined },
-    ),
+    apiClient.get<never, ApiResponse<ExperimentPack>>('/api/v1/experiment-configs/export', {
+      params: ids?.length ? { ids: ids.join(',') } : undefined,
+    }),
 
   importPack: (pack: unknown) =>
     apiClient.post<

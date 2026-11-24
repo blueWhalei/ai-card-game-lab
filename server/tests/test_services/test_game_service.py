@@ -14,10 +14,12 @@ from app.utils.exceptions import InvalidPlayerIdsError, ProviderNotConfiguredErr
 @pytest.fixture
 def experiment_config_service() -> MagicMock:
     svc = MagicMock()
-    svc.get_config.side_effect = lambda pid: {
-        "id": pid,
-        "model_config": {"provider": "deepseek", "model_name": "deepseek-v4-flash"},
-    }
+    svc.resolve_configs.return_value = [
+        {
+            "id": "cfg_temp_09",
+            "model_config": {"provider": "deepseek", "model_name": "deepseek-v4-flash"},
+        }
+    ]
     return svc
 
 
@@ -54,12 +56,10 @@ class TestGameServicePlayerValidation:
         kind: str,
         provider: str,
     ) -> None:
-        experiment_config_service.get_config.side_effect = lambda pid: {
-            "id": pid,
-            "policy_kind": kind,
-            "model_config": {"provider": provider},
-        }
-        with patch("app.services.game_service.is_provider_configured", return_value=False) as probe:
+        experiment_config_service.resolve_configs.return_value = [
+            {"id": "baseline_player", "policy_kind": kind, "model_config": {"provider": provider}}
+        ]
+        with patch("app.utils.providers.is_provider_configured", return_value=False) as probe:
             game_service._validate_player_ids(["baseline_player"])
         probe.assert_not_called()
 
@@ -68,7 +68,7 @@ class TestGameServicePlayerValidation:
         game_service: GameService,
         experiment_config_service: MagicMock,
     ) -> None:
-        experiment_config_service.get_config.side_effect = lambda pid: None
+        experiment_config_service.resolve_configs.side_effect = InvalidPlayerIdsError(["missing-1"])
         with pytest.raises(InvalidPlayerIdsError):
             game_service._validate_player_ids(["missing-1"])
 
@@ -86,7 +86,7 @@ class TestGameServicePlayerValidation:
             settings=Settings(deepseek_api_key=""),
         )
         with (
-            patch("app.services.game_service.is_provider_configured", return_value=False),
+            patch("app.utils.providers.is_provider_configured", return_value=False),
             pytest.raises(ProviderNotConfiguredError) as exc,
         ):
             service._validate_player_ids(["cfg_temp_09"])
@@ -96,10 +96,12 @@ class TestGameServicePlayerValidation:
         self,
         experiment_config_service: MagicMock,
     ) -> None:
-        experiment_config_service.get_config.side_effect = lambda pid: {
-            "id": pid,
-            "model_config": {"provider": "ollama", "model_name": "llama3.2"},
-        }
+        experiment_config_service.resolve_configs.return_value = [
+            {
+                "id": "cfg_ollama_local",
+                "model_config": {"provider": "ollama", "model_name": "llama3.2"},
+            }
+        ]
         service = GameService(
             engine_registry=MagicMock(),
             collector=MagicMock(),

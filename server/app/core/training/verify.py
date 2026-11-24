@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from typing import Any
 
 import httpx
 import structlog
+
+from app.utils.providers import fetch_model_catalog
 
 logger = structlog.get_logger()
 
@@ -34,13 +37,7 @@ def ollama_unreachable_error(
 
 async def ollama_list_tags(base_url: str) -> list[str]:
     """Return local Ollama model names."""
-    url = f"{base_url.rstrip('/')}/api/tags"
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        resp = await client.get(url)
-        resp.raise_for_status()
-        data = resp.json()
-    models = data.get("models") or []
-    return [str(m.get("name", "")) for m in models if m.get("name")]
+    return sorted(await asyncio.to_thread(fetch_model_catalog, base_url, ollama=True))
 
 
 async def ollama_smoke_decision(

@@ -8,7 +8,7 @@ from pathlib import Path
 import aiosqlite
 import structlog
 
-from app.migrations import migrate
+from app.migrations import STUDY_BILLING_SQL, STUDY_FINANCE_SQL, migrate
 
 _bound_connection: ContextVar[aiosqlite.Connection | None] = ContextVar(
     "bound_sqlite_connection",
@@ -18,6 +18,28 @@ _bound_connection: ContextVar[aiosqlite.Connection | None] = ContextVar(
 logger = structlog.get_logger()
 
 _SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS studies (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL,
+    question TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS study_runs (
+    experiment_id TEXT PRIMARY KEY REFERENCES experiments(id) ON DELETE CASCADE,
+    study_id TEXT NOT NULL REFERENCES studies(id)
+);
+CREATE INDEX IF NOT EXISTS idx_study_runs_study ON study_runs(study_id);
+
+CREATE TABLE IF NOT EXISTS workspace_drafts (
+    kind TEXT NOT NULL CHECK (kind IN ('experiment', 'comparison')),
+    object_id TEXT NOT NULL,
+    revision INTEGER NOT NULL,
+    updated_at TEXT NOT NULL,
+    content TEXT NOT NULL,
+    PRIMARY KEY (kind, object_id)
+);
+
 CREATE TABLE IF NOT EXISTS research_revisions (
     id TEXT PRIMARY KEY,
     comparison_id TEXT NOT NULL REFERENCES comparison_snapshots(id),
@@ -82,6 +104,21 @@ CREATE INDEX IF NOT EXISTS idx_games_type         ON games(game_type);
 CREATE INDEX IF NOT EXISTS idx_games_status       ON games(status);
 CREATE INDEX IF NOT EXISTS idx_games_created      ON games(created_at);
 CREATE INDEX IF NOT EXISTS idx_games_experiment   ON games(experiment_id);
+
+-- One row per seat in a decisive, attributable Dou Dizhu game.
+CREATE VIEW IF NOT EXISTS game_seat_results AS
+SELECT g.id AS game_id, g.experiment_id, seat.value AS player_id,
+       (seat.value = json_extract(g.metadata, '$.landlord_id')) AS is_landlord,
+       ((seat.value = json_extract(g.metadata, '$.landlord_id')) =
+        (g.winner_role = 'landlord')) AS won
+FROM games g, json_each(g.player_ids) seat
+WHERE g.game_type = 'doudizhu' AND g.status = 'finished'
+  AND g.winner_role IN ('landlord', 'peasant')
+  AND json_array_length(g.player_ids) = 3
+  AND (SELECT COUNT(DISTINCT value) FROM json_each(g.player_ids) WHERE type = 'text') = 3
+  AND json_extract(g.metadata, '$.landlord_id') IN (SELECT value FROM json_each(g.player_ids))
+  AND g.winner_id IN (SELECT value FROM json_each(g.player_ids))
+  AND (g.winner_id = json_extract(g.metadata, '$.landlord_id')) = (g.winner_role = 'landlord');
 
 CREATE TABLE IF NOT EXISTS rounds (
     id               INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -181,8 +218,6 @@ CREATE TABLE IF NOT EXISTS spans (
 CREATE INDEX IF NOT EXISTS idx_spans_trace ON spans(trace_id);
 
 -- Decision Points for SFT training data
--- quality_score is an end-game outcome proxy (win=0.8 / lose=0.3 / draw=0.5),
--- not reasoning quality. Use train_usable for SFT filtering.
 -- ev_loss is the per-decision signal: value given up versus the best evaluated
 -- candidate. NULL means not evaluated, which is not the same as 0.0 (best move).
 -- prompt_messages / action_id hold the exchange verbatim, so an SFT sample is a
@@ -202,7 +237,6 @@ CREATE TABLE IF NOT EXISTS decision_points (
     prompt_messages TEXT,
     thinking        TEXT,
     outcome         TEXT,
-    quality_score   REAL    DEFAULT 0.5,
     train_usable    INTEGER NOT NULL DEFAULT 1,
     train_usable_reason TEXT NOT NULL DEFAULT '',
     parse_fallback  INTEGER NOT NULL DEFAULT 0,
@@ -216,7 +250,6 @@ CREATE TABLE IF NOT EXISTS decision_points (
 
 CREATE INDEX IF NOT EXISTS idx_decision_points_game    ON decision_points(game_id);
 CREATE INDEX IF NOT EXISTS idx_decision_points_player  ON decision_points(player_id);
-CREATE INDEX IF NOT EXISTS idx_decision_points_quality ON decision_points(quality_score);
 CREATE INDEX IF NOT EXISTS idx_decision_points_train_usable ON decision_points(train_usable);
 CREATE INDEX IF NOT EXISTS idx_decision_points_ev_loss ON decision_points(ev_loss);
 
@@ -249,7 +282,7 @@ async def init_db(sqlite_path: str) -> None:
     db_dir.mkdir(parents=True, exist_ok=True)
 
     async with connect_sqlite(sqlite_path) as db:
-        await db.executescript(_SCHEMA_SQL)
+        await db.executescript(_SCHEMA_SQL + STUDY_FINANCE_SQL + STUDY_BILLING_SQL)
         await db.commit()
         version = await migrate(db)
 

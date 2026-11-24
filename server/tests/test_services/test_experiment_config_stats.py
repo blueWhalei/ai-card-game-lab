@@ -1,4 +1,4 @@
-"""Stats must count finished games via json_each (ids containing underscores)."""
+"""Seat win/loss counts for experiment configurations."""
 
 from __future__ import annotations
 
@@ -12,15 +12,15 @@ from app.repositories.experiment_config_stats_repo import ExperimentConfigStatsR
 
 
 @pytest.mark.asyncio
-async def test_count_games_played_with_underscore_id(tmp_path: Path) -> None:
+async def test_team_wins_for_both_peasants(tmp_path: Path) -> None:
     db_path = str(tmp_path / "app.db")
     await init_db(db_path)
     db = await open_db_connection(db_path)
     try:
         await db.execute(
             """
-            INSERT INTO games (id, game_type, status, player_ids, winner_id, created_at, data_file)
-            VALUES (?, 'doudizhu', 'finished', ?, 'aggressive_tiger', '2026-08-28T00:00:00+00:00', 'test.jsonl')
+            INSERT INTO games (id, game_type, status, player_ids, winner_id, winner_role, metadata, created_at, data_file)
+            VALUES (?, 'doudizhu', 'finished', ?, 'aggressive_tiger', 'peasant', '{"landlord_id":"cautious_fox"}', '2026-08-28T00:00:00+00:00', 'test.jsonl')
             """,
             (
                 "game_1",
@@ -29,8 +29,9 @@ async def test_count_games_played_with_underscore_id(tmp_path: Path) -> None:
         )
         await db.commit()
         repo = ExperimentConfigStatsRepository(db)
-        assert await repo.count_games_played("aggressive_tiger") == 1
-        assert await repo.count_wins("aggressive_tiger") == 1
-        assert await repo.count_games_played("missing_cfg") == 0
+        assert await repo.seat_record("aggressive_tiger") == (1, 1)
+        assert await repo.seat_record("random_panda") == (1, 1)
+        assert await repo.seat_record("cautious_fox") == (1, 0)
+        assert await repo.seat_record("missing_cfg") == (0, 0)
     finally:
         await db.close()

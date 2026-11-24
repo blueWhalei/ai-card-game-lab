@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  isPipelineSection,
-  pipelinePath,
-  pipelineScopeQuery,
-  pipelineSectionOf,
-} from './pipeline'
+import { isPipelineSection, pipelinePath, pipelineScopeQuery, pipelineSectionOf } from './pipeline'
 
 describe('pipeline', () => {
   it('maps sections to hub paths', () => {
@@ -18,9 +13,9 @@ describe('pipeline', () => {
   it('reads the section from hub and section paths', () => {
     expect(pipelineSectionOf('/pipeline/decisions')).toBe('decisions')
     expect(pipelineSectionOf('/pipeline/puzzles')).toBe('puzzles')
-    expect(pipelineSectionOf('/puzzles')).toBe('puzzles')
-    expect(pipelineSectionOf('/training')).toBe('training')
-    expect(pipelineSectionOf('/traces/extra')).toBe('traces')
+    expect(pipelineSectionOf('/puzzles')).toBeNull()
+    expect(pipelineSectionOf('/training')).toBeNull()
+    expect(pipelineSectionOf('/traces/extra')).toBeNull()
     expect(pipelineSectionOf('/pipeline')).toBeNull()
     expect(pipelineSectionOf('/settings')).toBeNull()
   })

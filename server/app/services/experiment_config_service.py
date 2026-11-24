@@ -6,6 +6,7 @@ from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
+import aiosqlite
 import structlog
 
 from app.core.pack import build_player_pack, parse_pack
@@ -16,8 +17,12 @@ from app.core.policy.kinds import (
 )
 from app.database import open_db_connection
 from app.repositories.experiment_config_repo import ExperimentConfigRepository
+from app.utils.exceptions import InvalidPlayerIdsError
+from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
+
+OFFLINE_LINEUP = ("heuristic", "first", "random")
 
 # Retired DeepSeek model ids → current default
 _RETIRED_DEEPSEEK_MODELS = {
@@ -96,6 +101,30 @@ class ExperimentConfigService:
             )
         return updated
 
+    def cache_committed(self, configs: list[dict[str, Any]]) -> None:
+        for config in configs:
+            self._configs[config["id"]] = config
+
+    async def offline_lineup(self, db: aiosqlite.Connection) -> list[dict[str, Any]]:
+        """Resolve reusable baseline profiles in the caller’s write transaction."""
+        repo = ExperimentConfigRepository(db)
+        existing = await repo.list_all()
+        lineup = []
+        for kind in OFFLINE_LINEUP:
+            row = next((config for config in existing if config["policy_kind"] == kind), None)
+            if row is None:
+                row = await repo.upsert(
+                    {
+                        "id": generate_id("cfg"),
+                        "name": kind,
+                        "policy_kind": kind,
+                        "model_config": baseline_placeholder_model_config(kind),
+                    },
+                    commit=False,
+                )
+            lineup.append(row)
+        return lineup
+
     def list_configs(self) -> list[dict[str, Any]]:
         self._ensure_ready()
         return [deepcopy(c) for c in self._configs.values()]
@@ -104,6 +133,13 @@ class ExperimentConfigService:
         self._ensure_ready()
         c = self._configs.get(config_id)
         return deepcopy(c) if c else None
+
+    def resolve_configs(self, ids: list[str]) -> list[dict[str, Any]]:
+        self._ensure_ready()
+        missing = [pid for pid in ids if pid not in self._configs]
+        if missing:
+            raise InvalidPlayerIdsError(missing)
+        return [deepcopy(self._configs[pid]) for pid in ids]
 
     async def create_config(self, data: dict[str, Any]) -> dict[str, Any]:
         self._ensure_ready()

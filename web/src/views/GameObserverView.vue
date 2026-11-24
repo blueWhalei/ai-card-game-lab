@@ -66,7 +66,6 @@ const {
   currentRawResponseFull,
   currentLegalActions,
   currentParserOk,
-  currentWinProbability,
   currentHandAnalysis,
   reasoningContent,
   answerContent,
@@ -545,7 +544,6 @@ onUnmounted(() => {
               :current-raw-response-full="currentRawResponseFull"
               :current-legal-actions="currentLegalActions"
               :current-parser-ok="currentParserOk"
-              :current-win-probability="currentWinProbability"
               :current-hand-analysis="currentHandAnalysis"
               :current-reasoning="reasoningContent"
               :current-answer="answerContent"

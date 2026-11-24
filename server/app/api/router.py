@@ -5,18 +5,22 @@ from fastapi import APIRouter
 from app.api.v1 import (
     data,
     decision,
+    drafts,
     experiment,
     experiment_config,
     experiment_config_stats,
     game,
     prompt,
     puzzles,
+    studies,
     system,
     trace,
     training,
 )
 
 api_router = APIRouter()
+api_router.include_router(studies.router, prefix="/api/v1/studies", tags=["studies"])
+api_router.include_router(drafts.router, prefix="/api/v1/drafts", tags=["drafts"])
 
 api_router.include_router(system.router, prefix="/api/v1/system", tags=["system"])
 api_router.include_router(game.router, prefix="/api/v1/games", tags=["games"])

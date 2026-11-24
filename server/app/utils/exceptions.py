@@ -114,15 +114,15 @@ class InvalidPlayerIdsError(AppError):
 
 
 class ProviderNotConfiguredError(AppError):
-    """Raised when an experiment config uses a provider without credentials."""
+    """Raised when a selected model seat cannot start with its current settings."""
 
     def __init__(self, providers: list[str]) -> None:
         names = ", ".join(sorted(set(providers)))
         super().__init__(
             message=(
-                f"LLM provider not configured: {names}. "
-                "Set the matching API key in .env, or switch the experiment "
-                "config to ollama."
+                f"Model seats need configuration for {names}. "
+                "Check the configuration file shown in Settings and the selected model names. "
+                "For Ollama, ensure the service is running with the requested tags installed."
             ),
             code="PROVIDER_NOT_CONFIGURED",
             status_code=400,

@@ -159,8 +159,8 @@ class DoudizhuEngine(GameEngine):
                 "latency_p50_p95",
                 "ev_loss",
             ),
-            # 2: decision points carry ev_loss / evaluator_params.
-            decision_schema_version=2,
+            # Decision records distinguish seat outcomes from sampled action values.
+            decision_schema_version=3,
             rules_ref=_DOUDIZHU_RULES_REF,
             supports_hidden_state_sampling=True,
             tools=DOUDIZHU_TOOLS,

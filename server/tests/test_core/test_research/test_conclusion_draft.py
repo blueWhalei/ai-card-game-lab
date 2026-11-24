@@ -5,7 +5,6 @@ from __future__ import annotations
 from app.core.research.conclusion_draft import (
     build_conclusion_draft,
     normalize_draft_locale,
-    pick_notable_scenario,
 )
 
 
@@ -15,26 +14,23 @@ def test_normalize_locale() -> None:
     assert normalize_draft_locale("zh") == "zh-CN"
 
 
-def test_pick_notable_scenario() -> None:
-    diffs = {
-        "bidding": {"train_usable_rate_diff": 0.02},
-        "playing": {"train_usable_rate_diff": -0.12},
-        "endgame": {"train_usable_rate_diff": None},
-    }
-    assert pick_notable_scenario(diffs) == ("playing", -0.12)
-    assert pick_notable_scenario({"bidding": {"train_usable_rate_diff": 0.01}}) is None
-
-
 def test_draft_zh_strong_with_blunders() -> None:
     draft = build_conclusion_draft(
         experiment={"name": "微调后", "hypothesis": "LoRA 更强"},
         delta={
+            "primary_metric": {"kind": "landlord_win_rate"},
+            "affected_player_ids": [],
+            "difference_basis": "paired",
+            "deal_purpose": "development",
+            "paired_excluded_n": 2,
+            "relation": "vs_source",
+            "outcome_counts": {"both_won": 5, "a_only_won": 6, "b_only_won": 8, "both_lost": 5},
             "verdict_key": "stronger",
             "can_conclude": True,
             "peer_name": "基线",
             "paired_n": 24,
-            "landlord_win_rate_diff": 0.08,
-            "this_landlord_win_rate_ci": [0.45, 0.72],
+            "win_rate_diff": 0.08,
+            "this_win_rate_ci": [0.45, 0.72],
             "scenario_diffs": {
                 "playing": {"train_usable_rate_diff": 0.1},
             },
@@ -56,9 +52,9 @@ def test_draft_zh_strong_with_blunders() -> None:
     assert draft.blunder_ids == ["dp1"]
     assert "【草稿 · 待确认】" in draft.text
     assert "LoRA 更强" in draft.text
-    assert "赢得更多" in draft.text
+    assert "全桌地主胜率更高" in draft.text
     assert "+8.0 pp" in draft.text
-    assert "出牌" in draft.text
+    assert "可训练率" not in draft.text
     assert "ev_loss=0.70" in draft.text
 
 
@@ -66,11 +62,18 @@ def test_draft_en_weak_and_empty_delta() -> None:
     weak = build_conclusion_draft(
         experiment={"name": "A"},
         delta={
+            "primary_metric": {"kind": "landlord_win_rate"},
+            "affected_player_ids": [],
+            "difference_basis": "paired",
+            "deal_purpose": "development",
+            "paired_excluded_n": 2,
+            "relation": "vs_source",
+            "outcome_counts": {"both_won": 2, "a_only_won": 0, "b_only_won": 1, "both_lost": 1},
             "verdict_key": "stronger",
             "can_conclude": False,
             "peer_name": "B",
             "paired_n": 4,
-            "landlord_win_rate_diff": 0.1,
+            "win_rate_diff": 0.25,
         },
         blunders=[],
         locale="en",

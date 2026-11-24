@@ -576,14 +576,6 @@ class GameOrchestrationService:
                 end_time=now_iso,
                 data=explain_from_tools({"hand_analysis": tool_results["hand_analysis"]}),
             )
-        if "win_probability" in tool_results:
-            await self._trace_service.create_span(
-                trace_id=trace_id,
-                span_type="win_probability_estimation",
-                start_time=now_iso,
-                end_time=now_iso,
-                data=explain_from_tools({"win_probability": tool_results["win_probability"]}),
-            )
 
     async def _finish_game(
         self,
@@ -647,17 +639,9 @@ class GameOrchestrationService:
 
         logger.info("game_finished", game_id=game_id, winner=winner)
 
-        if self._decision_service is not None:
-            try:
-                updated = await self._decision_service.update_outcome(game_id, winner)
-                logger.info("decision_outcome_updated", game_id=game_id, updated_count=updated)
-            except Exception:
-                logger.warning("update_decision_outcome_failed", game_id=game_id, exc_info=True)
-
         try:
             await self._update_experiment_memory(
                 game_id=game_id,
-                winner_id=winner,
                 player_ids=list(getattr(state, "player_ids", None) or []),
             )
         except Exception:
@@ -676,7 +660,6 @@ class GameOrchestrationService:
         self,
         *,
         game_id: str,
-        winner_id: str | None,
         player_ids: list[str],
     ) -> None:
         """Overwrite per-seat rule notes when protocol.solver.memory is per_experiment."""
@@ -717,11 +700,14 @@ class GameOrchestrationService:
                 by_player.setdefault(pid, []).append(item)
             memory_repo = ExperimentMemoryRepository(conn)
             now = datetime.now(tz=UTC).isoformat()
+            result_rows = await conn.execute_fetchall(
+                "SELECT player_id, won FROM game_seat_results WHERE game_id = ?", (game_id,)
+            )
+            outcomes = {row["player_id"]: "win" if row["won"] else "lose" for row in result_rows}
             seats = player_ids or list(by_player.keys())
             for pid in seats:
                 notes = build_rule_memory_notes(
-                    player_id=pid,
-                    winner_id=winner_id,
+                    outcome=outcomes.get(pid, "undecided"),
                     decisions=by_player.get(pid, []),
                 )
                 await memory_repo.upsert_notes(str(experiment_id), pid, notes, now)
@@ -750,10 +736,15 @@ class GameOrchestrationService:
         event = self._pause_events.get(game_id)
         if not event:
             raise GameNotFoundError(game_id)
-        event.set()
         async with connect_sqlite(self._sqlite_path) as db:
             repo = GameRepository(db)
+            from app.services.study_finance_service import ensure_study_budget
+
+            await db.execute("BEGIN IMMEDIATE")
+            game = await repo.get_by_id(game_id)
+            await ensure_study_budget(db, game.get("experiment_id"))
             await repo.update_status(game_id, "running")
+        event.set()
         await ws_manager.broadcast(
             game_id,
             {

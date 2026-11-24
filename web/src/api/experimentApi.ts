@@ -2,6 +2,7 @@ import { apiClient } from './client'
 import type { ApiResponse } from './types'
 import type { GameItem } from './gameApi'
 import { tt } from '@/i18n'
+import type { OutcomeScope, PromptDesign } from './promptDesignApi'
 
 export type ExperimentStatus = 'pending_collect' | 'collecting' | 'ready_review' | 'ready_more'
 
@@ -62,8 +63,9 @@ export interface ExperimentNextStep {
 export interface ExperimentPlayerStat {
   player_id: string
   wins: number
-  win_rate: number
-  win_rate_ci?: [number, number]
+  decided_games: number
+  win_rate: number | null
+  win_rate_ci: [number, number] | null
   train_usable_decisions: number
   avg_response_time_ms: number
   trace_count: number
@@ -76,7 +78,7 @@ export interface ExperimentProtocolPlayer {
   id: string
   name: string
   notes: string
-  policy_kind?: 'llm' | 'heuristic' | 'random' | 'first'
+  policy_kind?: 'llm' | 'tool_loop' | 'search' | 'heuristic' | 'random' | 'first'
   model_config: {
     provider: string
     model_name: string
@@ -91,6 +93,8 @@ export interface ExperimentProtocol {
   schema_version: number
   frozen_at: string
   prompt_version: string
+  /** Actual frozen versions per template key; may differ after a single-phase change. */
+  prompt_versions?: Record<string, string>
   /** content_hash per template_key when solver.prompts was frozen */
   prompt_hashes?: Record<string, string>
   players: ExperimentProtocolPlayer[]
@@ -112,9 +116,11 @@ export interface ExperimentProtocol {
 
 /** Nested protocol as stored/returned by the API (schema_version = 2). */
 export interface ExperimentProtocolNested {
+  design?: PromptDesign
   schema_version: number
   frozen_at: string
   dataset: {
+    holdout_for?: string
     collect_mode?: CollectMode
     deal_seeds: number[]
     pair_deals: boolean
@@ -153,6 +159,12 @@ export function flattenProtocol(
     schema_version: nested.schema_version,
     frozen_at: nested.frozen_at,
     prompt_version: nested.solver?.prompt_version ?? '',
+    prompt_versions: Object.fromEntries(
+      Object.entries(nested.solver?.prompts ?? {}).map(([key, entry]) => [
+        key,
+        String(entry?.version ?? ''),
+      ]),
+    ),
     prompt_hashes: Object.fromEntries(
       Object.entries(nested.solver?.prompts ?? {}).map(([key, entry]) => [
         key,
@@ -184,6 +196,9 @@ export type ExperimentDeltaReason =
   | 'peer_not_ready'
   | 'low_power'
   | 'protocol_mismatch'
+  | 'missing_paired_evidence'
+  | 'incomplete_holdout'
+  | 'uncertain_difference'
 
 /** Plain-language claim the verdict block renders; wording lives in `stage.verdict.*`. */
 export type ExperimentVerdictKey = 'stronger' | 'weaker' | 'even' | 'peer_pending' | 'no_data'
@@ -204,20 +219,37 @@ export interface ExperimentScenarioDiff {
   parser_success_rate_diff: number | null
 }
 
-export interface ExperimentDelta {
+export type DealPurpose = 'development' | 'holdout' | 'mixed'
+
+export interface PairedOutcomeCounts {
+  both_won: number
+  a_only_won: number
+  b_only_won: number
+  both_lost: number
+}
+
+export interface PairedStatistics {
+  outcome_counts: PairedOutcomeCounts
+  ci_method: 'clopper_pearson_bonferroni'
+}
+
+export interface ExperimentDelta extends OutcomeScope, PairedStatistics {
+  deal_purpose: DealPurpose
+  paired_excluded_n: number
+  difference_basis: 'paired' | 'unpaired' | null
+  design_hypothesis: string | null
   peer_id: string
   peer_name: string
   relation: ExperimentDeltaRelation
   peer_ready: boolean
-  this_landlord_win_rate: number
-  peer_landlord_win_rate: number
-  landlord_win_rate_diff: number | null
-  this_landlord_win_rate_ci: [number, number] | null
-  peer_landlord_win_rate_ci: [number, number] | null
+  this_win_rate: number | null
+  peer_win_rate: number | null
+  win_rate_diff: number | null
+  this_win_rate_ci: [number, number] | null
+  peer_win_rate_ci: [number, number] | null
   this_decisive_n: number
   peer_decisive_n: number
   paired_n: number
-  paired_landlord_win_rate_diff: number | null
   paired_p?: number | null
   paired_ci?: [number, number] | null
   low_power: boolean
@@ -229,7 +261,7 @@ export interface ExperimentDelta {
 
 export interface ExperimentCredibility {
   decisive_n: number
-  landlord_ci_width: number | null
+  win_rate_ci_width: number | null
   low_power: boolean
 }
 
@@ -280,6 +312,7 @@ export interface ExperimentSummary {
 }
 
 export interface Experiment {
+  study_id: string | null
   id: string
   name: string
   notes: string
@@ -302,6 +335,7 @@ export interface Experiment {
 }
 
 export interface CreateExperimentRequest {
+  study_id?: string
   name: string
   notes?: string
   hypothesis?: string
@@ -317,6 +351,7 @@ export interface CreateExperimentRequest {
 }
 
 export interface UpdateExperimentRequest {
+  expected_draft_revision?: number
   name?: string
   notes?: string
   hypothesis?: string
@@ -338,7 +373,7 @@ export interface ConclusionDraft {
   verdict_key: ExperimentVerdictKey
   can_conclude: boolean
   blunder_ids: string[]
-  blunders?: ConclusionDraftBlunder[]
+  blunders: ConclusionDraftBlunder[]
 }
 
 export interface CloneExperimentRequest {
@@ -360,18 +395,20 @@ export interface CollectExperimentResult {
 export interface ExperimentComparePlayerStat {
   player_id: string
   wins: number
-  win_rate: number
-  win_rate_ci: [number, number]
+  decided_games: number
+  win_rate: number | null
+  win_rate_ci: [number, number] | null
   train_usable_decisions: number
   avg_response_time_ms: number
   trace_count: number
-  paired_wins?: number
+  paired_wins: number | null
   games_as_landlord?: number
   wins_as_landlord?: number
   landlord_win_rate?: number
 }
 
 export interface ExperimentCompareRow {
+  hypothesis?: string
   game_ids: string[]
   id: string
   name: string
@@ -401,23 +438,25 @@ export interface ExperimentCompareRow {
   status_counts?: Record<string, number>
   player_stats: ExperimentComparePlayerStat[]
   paired_n?: number
-  paired_seat_wins?: number[]
+  paired_seat_wins: number[] | null
   paired_landlord_win_rate?: number
   scenario_scores?: Record<string, ExperimentScenarioScore>
 }
 
-export interface ExperimentPairedSummary {
+export interface ExperimentPairedSummary extends OutcomeScope, PairedStatistics {
   paired_p?: number | null
   paired_ci?: [number, number] | null
   shared_seeds: number
   source_id: string
   control_id: string
-  landlord_win_rate_diff: number | null
+  win_rate_diff: number | null
   low_power: boolean
 }
 
 export interface ComparisonReview {
   baseline_id: string
+  /** Present when this exact pair matches a frozen Prompt A/B design. */
+  design_changes?: string[]
   allowed_changes: string[]
   controlled: boolean
   reasons: string[]
@@ -434,6 +473,10 @@ export interface ComparisonReview {
   }[]
 }
 export interface ComparisonCoverage {
+  members?: { seed: number; game_ids: Record<string, string> }[]
+  deal_purpose: DealPurpose
+  excluded_n: number
+  excluded_pairs: { seed: number; reasons: Record<string, string> }[]
   planned_shared: number
   effective_n: number
   effective_seeds: number[]
@@ -507,10 +550,62 @@ export interface ExperimentPackImportResult {
   unconfigured_providers?: string[]
 }
 
+export interface ScenarioCounts {
+  decision_n: number
+  evaluated_n: number
+  game_n: number
+}
+export interface ScenarioGame {
+  id: string
+  status: string
+  created_at: string
+  decision_n: number
+  evaluated_n: number
+}
+export interface ScenarioDecision {
+  id: string
+  game_id: string
+  round_number: number
+  player_id: string
+  game_phase: string
+  hand_cards: string[]
+  chosen_action: { action_type: string; cards: string[] }
+  action_id: string
+  ev_loss: number | null
+  evaluator_params: Record<string, unknown> | null
+  created_at: string
+}
+export interface ScenarioQuery {
+  scenario?: 'bidding' | 'playing' | 'endgame' | 'bomb'
+  game_id?: string
+  decision_id?: string
+  game_page: number
+  page: number
+}
+export interface ScenarioRecords {
+  experiment_id: string
+  scope: 'current_records'
+  read_at: string
+  endgame_max_hand: number
+  scenario: ScenarioQuery['scenario'] | null
+  totals: ScenarioCounts & { unrecorded_game_n: number }
+  groups: (ScenarioCounts & { scenario: NonNullable<ScenarioQuery['scenario']> })[]
+  games: { items: ScenarioGame[]; total: number; page: number; page_size: number }
+  selected_game: ScenarioGame | null
+  decisions: { items: ScenarioDecision[]; total: number; page: number; page_size: number }
+}
+
 export const experimentApi = {
+  scenarios: (id: string, params: ScenarioQuery) =>
+    apiClient.get<never, ApiResponse<ScenarioRecords>>(`/api/v1/experiments/${id}/scenarios`, {
+      params,
+    }),
   list: () => apiClient.get<never, ApiResponse<Experiment[]>>('/api/v1/experiments'),
 
   get: (id: string) => apiClient.get<never, ApiResponse<Experiment>>(`/api/v1/experiments/${id}`),
+
+  createOffline: (data: Pick<CreateExperimentRequest, 'name' | 'study_id' | 'hypothesis'>) =>
+    apiClient.post<never, ApiResponse<Experiment>>('/api/v1/experiments/offline', data),
 
   create: (data: CreateExperimentRequest) =>
     apiClient.post<never, ApiResponse<Experiment>>('/api/v1/experiments', data),

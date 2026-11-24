@@ -61,19 +61,22 @@ def test_build_experiment_delta_inconclusive_when_low_power() -> None:
         peer_name="基线",
         relation="vs_source",
         peer_ready=True,
-        this_landlord_win_rate=0.6,
-        peer_landlord_win_rate=0.4,
-        this_landlord_win_rate_ci=[0.3, 0.8],
-        peer_landlord_win_rate_ci=[0.2, 0.7],
+        primary_metric={"kind": "landlord_win_rate"},
+        affected_player_ids=[],
+        design_hypothesis=None,
+        this_win_rate=0.6,
+        peer_win_rate=0.4,
+        this_win_rate_ci=[0.3, 0.8],
+        peer_win_rate_ci=[0.2, 0.7],
         this_decisive_n=8,
         peer_decisive_n=8,
         this_low_power=True,
         peer_low_power=True,
         paired_n=8,
-        paired_landlord_win_rate_diff=0.2,
+        win_rate_diff=0.2,
         paired_low_power=True,
     )
-    assert payload["landlord_win_rate_diff"] == 0.2
+    assert payload["win_rate_diff"] == 0.2
     assert payload["can_conclude"] is False
     assert payload["inconclusive_reason"] == "low_power"
 
@@ -84,19 +87,24 @@ def test_build_experiment_delta_can_conclude_when_powered() -> None:
         peer_name="对照",
         relation="vs_control",
         peer_ready=True,
-        this_landlord_win_rate=0.45,
-        peer_landlord_win_rate=0.55,
-        this_landlord_win_rate_ci=[0.32, 0.58],
-        peer_landlord_win_rate_ci=[0.42, 0.68],
+        primary_metric={"kind": "landlord_win_rate"},
+        affected_player_ids=[],
+        design_hypothesis=None,
+        this_win_rate=0.45,
+        peer_win_rate=0.55,
+        this_win_rate_ci=[0.32, 0.58],
+        peer_win_rate_ci=[0.42, 0.68],
         this_decisive_n=40,
         peer_decisive_n=40,
         this_low_power=False,
         peer_low_power=False,
         paired_n=40,
-        paired_landlord_win_rate_diff=-0.1,
+        win_rate_diff=-0.1,
         paired_low_power=False,
+        paired_ci=[-0.2, -0.01],
+        paired_p=0.02,
     )
-    assert payload["landlord_win_rate_diff"] == -0.1
+    assert payload["win_rate_diff"] == -0.1
     assert payload["can_conclude"] is True
     assert payload["inconclusive_reason"] is None
 
@@ -105,7 +113,50 @@ def test_verdict_key_reports_direction_independently_of_confidence() -> None:
     # A weak claim still names a direction; `can_conclude` governs how it reads.
     assert verdict_key(overall_diff=0.07, inconclusive_reason="low_power") == "stronger"
     assert verdict_key(overall_diff=-0.07, inconclusive_reason=None) == "weaker"
-    assert verdict_key(overall_diff=0.01, inconclusive_reason=None) == "even"
+    assert verdict_key(overall_diff=0.01, inconclusive_reason=None) == "stronger"
+
+
+@pytest.mark.parametrize(
+    ("interval", "p_value", "reason"),
+    [
+        ([-0.1, 0.3], 0.2, "uncertain_difference"),
+        ([0.0, 0.3], 0.01, "uncertain_difference"),
+        ([0.05, 0.3], 0.05, "uncertain_difference"),
+        (None, 0.01, "missing_paired_evidence"),
+        ([0.05, 0.3], None, "missing_paired_evidence"),
+        ([0.3, 0.05], 0.01, "missing_paired_evidence"),
+        ([float("nan"), 0.3], 0.01, "missing_paired_evidence"),
+        ([0.05, 0.3], 0.01, None),
+    ],
+)
+def test_directional_support_requires_complete_agreeing_paired_evidence(
+    interval: list[float] | None, p_value: float | None, reason: str | None
+) -> None:
+    delta = build_experiment_delta(
+        peer_id="b",
+        peer_name="B",
+        relation="vs_control",
+        peer_ready=True,
+        primary_metric={"kind": "landlord_win_rate"},
+        affected_player_ids=[],
+        design_hypothesis=None,
+        this_win_rate=0.6,
+        peer_win_rate=0.4,
+        this_win_rate_ci=[0.5, 0.7],
+        peer_win_rate_ci=[0.3, 0.5],
+        this_decisive_n=100,
+        peer_decisive_n=100,
+        this_low_power=False,
+        peer_low_power=False,
+        paired_n=100,
+        win_rate_diff=0.2,
+        paired_low_power=False,
+        paired_ci=interval,
+        paired_p=p_value,
+    )
+    assert delta["inconclusive_reason"] == reason
+    assert delta["can_conclude"] is (reason is None)
+    assert delta["win_rate_diff"] == 0.2
 
 
 def test_verdict_key_falls_back_when_there_is_nothing_to_compare() -> None:
@@ -119,8 +170,8 @@ def test_verdict_key_falls_back_when_there_is_nothing_to_compare() -> None:
     [
         (0.05, None, "stronger"),
         (-0.05, None, "weaker"),
-        (0.019, None, "even"),
-        (-0.019, None, "even"),
+        (0.019, None, "stronger"),
+        (-0.019, None, "weaker"),
         (0.0, None, "even"),
         (None, "no_games", "no_data"),
         (0.1, "peer_not_ready", "peer_pending"),
@@ -144,17 +195,22 @@ def test_build_experiment_delta_carries_verdict_key() -> None:
         peer_name="对照",
         relation="vs_control",
         peer_ready=True,
-        this_landlord_win_rate=0.6,
-        peer_landlord_win_rate=0.4,
-        this_landlord_win_rate_ci=[0.45, 0.72],
-        peer_landlord_win_rate_ci=[0.28, 0.55],
+        primary_metric={"kind": "landlord_win_rate"},
+        affected_player_ids=[],
+        design_hypothesis=None,
+        this_win_rate=0.6,
+        peer_win_rate=0.4,
+        this_win_rate_ci=[0.45, 0.72],
+        peer_win_rate_ci=[0.28, 0.55],
         this_decisive_n=40,
         peer_decisive_n=40,
         this_low_power=False,
         peer_low_power=False,
         paired_n=40,
-        paired_landlord_win_rate_diff=0.2,
+        win_rate_diff=0.2,
         paired_low_power=False,
+        paired_ci=[0.05, 0.35],
+        paired_p=0.01,
     )
     assert payload["verdict_key"] == "stronger"
     assert payload["can_conclude"] is True
@@ -246,9 +302,8 @@ async def test_get_experiment_delta_vs_control_and_source(db_path: str) -> None:
     assert delta is not None
     assert delta["peer_id"] == "exp-ctrl"
     assert delta["relation"] == "vs_control"
-    assert delta["landlord_win_rate_diff"] == -0.5
+    assert delta["win_rate_diff"] == -0.5
     assert delta["paired_n"] == 2
-    assert delta["paired_landlord_win_rate_diff"] == -0.5
     assert delta["can_conclude"] is False
     assert delta["inconclusive_reason"] == "protocol_mismatch"
     assert "bidding" in delta["scenario_diffs"]
@@ -259,8 +314,7 @@ async def test_get_experiment_delta_vs_control_and_source(db_path: str) -> None:
     assert ctrl_delta is not None
     assert ctrl_delta["peer_id"] == "exp-base"
     assert ctrl_delta["relation"] == "vs_source"
-    assert ctrl_delta["landlord_win_rate_diff"] == 0.5
-    assert ctrl_delta["paired_landlord_win_rate_diff"] == 0.5
+    assert ctrl_delta["win_rate_diff"] == 0.5
     assert ctrl_delta["can_conclude"] is False
 
 

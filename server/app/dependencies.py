@@ -307,6 +307,7 @@ def get_experiment_service() -> ExperimentService:
         game_service=get_game_service(),
         # Registry is built per experiment ``game_type`` inside the service.
         scorer_registry=None,
+        puzzle_service=get_puzzle_service(),
     )
 
 

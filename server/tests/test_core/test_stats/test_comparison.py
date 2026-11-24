@@ -54,14 +54,17 @@ def test_all_paired_outputs_share_the_intersection() -> None:
     coverage, _ = paired_cohort(rows, games)
     assert coverage["planned_shared"] == 3
     assert coverage["effective_seeds"] == [1]
-    ExperimentService._attach_paired_compare_metrics(rows, games)
+    _, summary = ExperimentService._paired_analysis(rows, games, {})
     assert [r["paired_n"] for r in rows] == [1, 1]
     assert [r["paired_landlord_win_rate"] for r in rows] == [1, 0]
-    summary = ExperimentService._build_paired_summary(rows, games)
     assert summary is not None
-    assert summary["landlord_win_rate_diff"] == -1
-    assert summary["seed_diffs"] == [-1]
-    assert summary["mcnemar_c"] == 1
+    assert summary["win_rate_diff"] == -1
+    assert summary["outcome_counts"] == {
+        "both_won": 0,
+        "a_only_won": 1,
+        "b_only_won": 0,
+        "both_lost": 0,
+    }
 
 
 def test_duplicates_are_excluded_independent_of_order_even_for_failed_retries() -> None:
@@ -81,9 +84,26 @@ def test_no_common_outcomes_never_counts_planned_seeds_as_observed_pairs() -> No
     coverage, _ = paired_cohort(rows, games)
     assert coverage["effective_n"] == 0
     assert coverage["experiments"][0]["excluded"] == {"unfinished": 1, "invalid_outcome": 1}
-    summary = ExperimentService._build_paired_summary(rows, games)
+    _, summary = ExperimentService._paired_analysis(rows, games, {})
     assert summary is not None and summary["shared_seeds"] == 0
-    assert summary["landlord_win_rate_diff"] is None
+    assert summary["win_rate_diff"] is None
+
+
+def test_exclusions_count_unique_shared_deals_and_keep_both_reasons() -> None:
+    rows = [row("a"), row("b")]
+    rows[0]["protocol"]["dataset"]["deal_seeds"].append(4)
+    rows[1]["protocol"]["dataset"]["deal_seeds"].append(5)
+    games = {
+        "a": [game(1), game(2), game(2, id="retry"), game(4)],
+        "b": [game(1), game(2, status="running"), game(5)],
+    }
+    coverage, _ = paired_cohort(rows, games)
+    assert coverage["planned_shared"] == 3 and coverage["effective_n"] == 1
+    assert coverage["excluded_n"] == 2
+    assert coverage["excluded_pairs"] == [
+        {"seed": 2, "reasons": {"a": "duplicate", "b": "unfinished"}},
+        {"seed": 3, "reasons": {"a": "missing", "b": "missing"}},
+    ]
 
 
 def test_seat_mismatch_and_duplicate_plan_are_not_pairs() -> None:

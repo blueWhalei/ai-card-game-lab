@@ -43,8 +43,9 @@ async def test_create_and_get_experiment(client: AsyncClient) -> None:
         {
             "player_id": pid,
             "wins": 0,
-            "win_rate": 0.0,
-            "win_rate_ci": [0.0, 0.0],
+            "decided_games": 0,
+            "win_rate": None,
+            "win_rate_ci": None,
             "train_usable_decisions": 0,
             "avg_response_time_ms": 0.0,
             "trace_count": 0,
@@ -512,7 +513,7 @@ async def test_create_benchmark_experiment(client: AsyncClient) -> None:
     assert len(protocol.get("dataset", {}).get("deal_seeds") or []) == 5
 
 
-async def test_compare_experiments_returns_wilson_ci(client: AsyncClient) -> None:
+async def test_compare_without_games_has_no_player_estimate(client: AsyncClient) -> None:
     left = await _create_experiment(client, name="基线 A")
     right = await _create_experiment(client, name="对照 B")
     response = await client.get(
@@ -527,8 +528,9 @@ async def test_compare_experiments_returns_wilson_ci(client: AsyncClient) -> Non
         assert "parser_success_rate" in item
         assert len(item["player_stats"]) == 3
         for stat in item["player_stats"]:
-            low, high = stat["win_rate_ci"]
-            assert 0.0 <= low <= high <= 1.0
+            assert stat["decided_games"] == 0
+            assert stat["win_rate"] is None
+            assert stat["win_rate_ci"] is None
 
 
 async def test_compare_rejects_single_id(client: AsyncClient) -> None:
@@ -550,7 +552,7 @@ async def test_comparison_snapshot_is_immutable_and_reopenable(client: AsyncClie
     )
     assert response.status_code == 201, response.text
     saved = response.json()["data"]
-    assert saved["result"]["metric_version"] == "paired-cohort-v2"
+    assert saved["result"]["metric_version"] == "paired-cohort-v5"
     assert saved["result"]["coverage"]["effective_n"] == 0
     await client.patch(f"/api/v1/experiments/{a['id']}", json={"name": "after"})
     reopened = await client.get(f"/api/v1/experiments/comparisons/{saved['id']}")

@@ -24,8 +24,8 @@ export default {
     decisions: '决策点',
     training: '训练',
     prompts: '提示词',
-    traces: '追踪',
-    puzzles: '谜题包',
+    traces: '调用记录',
+    puzzles: '局面测试集',
     settings: '设置',
     guide: '使用说明',
     experimentDetail: '实验详情',
@@ -34,6 +34,13 @@ export default {
     expandSidebar: '展开侧栏',
   },
   common: {
+    exportSaved: 'JSON 文件已保存。',
+    exportReveal: '在文件夹中显示',
+    exportRevealFailed: '无法定位已保存文件。请确认文件未被移动或删除，并在当前操作完成后重试。',
+    exportDownloadStarted: '已交给浏览器下载，请在下载列表中查看。',
+    exportSaveFailed:
+      '文件未能保存。请完成当前保存或关闭操作后重试，并检查所选位置是否可写；仅支持 JSON 文件。',
+    exportTooLarge: '此导出超过桌面 JSON 保存的 32 MiB 上限，请缩小导出范围。',
     noOutcomes: '暂无胜负样本',
     cancel: '取消',
     confirm: '确认',
@@ -100,6 +107,69 @@ export default {
     more: '更多',
   },
   error: {
+    STUDY_BUDGET_REACHED:
+      '已登记费用达到本研究预算限制，不再接受新的受控任务；已启动的任务不会自动停止。请在研究的「预算与费用」中核对记录与设置；此限制不代表完整费用或供应商余额。',
+    SUPPLIER_RECONCILIATION_PENDING:
+      '供应商费用对账仍有待复核记录，新的受控任务被拒绝。请在预算与费用中核对并记录处置；同步新快照不会自动消除差异。',
+    RECONCILIATION_SOURCE: '所选快照不存在、未成功或来源内容不可核对，请重新选择成功快照。',
+    RECONCILIATION_CSV_INVALID:
+      '无法解析费用 CSV。请检查编码、表头、数据行列数、金额及 UTC 日期。日期须为 YYYY-MM-DD 或 UTC 零点时间戳。',
+    RECONCILIATION_CSV_COLUMNS: '请为每个字段选择不同的文件列。',
+    RECONCILIATION_CSV_SCOPE:
+      'CSV 行日期超出所选服务期间，或与已填写的组织、项目或币种不一致。请核对文件筛选和列映射。',
+    RECONCILIATION_CONFLICT:
+      '对账状态已变更，或重复请求内容不一致。当前输入已保留，请载入最新记录后核对。',
+    RECONCILIATION_CHANGED: '依据或快照与预览不一致，请重新预览后明确保存。',
+    RECONCILIATION_NOT_FOUND: '当前研究不存在此对账记录。',
+    RECONCILIATION_REVIEW:
+      '此记录的当前状态不允许该复核操作。作废记录保留历史，修正内容请另建记录。',
+    SUPPLIER_BUDGET_REACHED:
+      '供应商项目费用快照达到上限，新的受控任务被拒绝。请核对「预算与费用」中的项目、查询周期和费用明细。此金额不是本研究完整费用。',
+    SUPPLIER_BILLING_UNAVAILABLE:
+      '供应商费用限制已启用，但当前快照缺失、同步失败或已过期。请在「预算与费用」中同步并核对；已接受任务继续执行。',
+    BILLING_CONFLICT: '同步配置已变更，请重新载入当前配置后操作；原输入已保留。',
+    BILLING_SCHEDULE_CONFLICT: '周期计划已被修改，请重新载入后核对；当前输入已保留。',
+    BILLING_SCHEDULE_INTERVAL: '启用周期同步时，间隔不得超过快照允许间隔的一半，请调整计划。',
+    BILLING_INTERRUPTED: '同步中断，没有采用部分费用。请核对恢复计划或手动同步。',
+    BILLING_BUSY: '该配置正在同步，请稍后刷新状态。',
+    BILLING_NOT_CONFIGURED: '请检查服务端管理凭据和组织配置是否与保存的同步范围一致。',
+    BILLING_AUTH: '管理凭据被拒绝，请检查组织及费用读取权限。',
+    BILLING_RATE_LIMIT: '供应商暂时限制请求频率，请稍后重试。',
+    BILLING_REMOTE: '供应商费用接口未成功响应；未采用本次部分结果。',
+    BILLING_NETWORK: '费用接口连接失败或超时；未采用本次部分结果。',
+    BILLING_RESPONSE: '费用响应未通过金额、项目范围或分页校验；未采用本次部分结果。',
+    BILLING_PERIOD: '查询周期为空或超过 366 天，请检查 UTC 起始日期。',
+    BILLING_NOT_FOUND: '当前研究中找不到这条同步记录。',
+    BUDGET_CONFLICT: '预算已被其他窗口修改。输入已保留，请重新载入当前预算后核对。',
+    BUDGET_CURRENCY_LOCKED: '本研究币种已固定，不能修改或混合币种。',
+    EXPENSE_CURRENCY: '请先保存本研究币种，并使用同一币种登记费用。',
+    EXPENSE_CONFLICT: '请求与已有登记或作废记录冲突，请核对当前记录后重试。',
+    EXPENSE_DUPLICATE: '此来源凭据编号已经登记，请核对记录，避免重复计算费用。',
+    EXPENSE_NOT_FOUND: '本研究中没有这条费用记录，请刷新后核对。',
+    PROMPT_DESIGN_CONFLICT: '基线或提示词已变化。当前输入已保留，请重试加载并重新核对后创建。',
+    DRAFT_CONFLICT: '另一窗口已保存新草稿。当前输入已保留，请导出副本后重新加载并合并。',
+    STUDY_NOT_FOUND: '研究不存在，请返回研究工作室重新选择。',
+    STUDY_RUN_CONFLICT: '运行已属于另一项研究，不能重复加入或跨研究创建配对对照。',
+    DRAFT_NOT_FOUND: '草稿所属的实验或比较已不存在。请导出当前输入。',
+    DRAFT_INVALID: '草稿内容不符合当前格式，请检查后重试。',
+    RESEARCH_CONFLICT: '研究结论已有新版本。请刷新版本列表并检查，再显式选择发布基准。',
+    RESEARCH_TRACE_MISSING: '调用记录已不存在。',
+    RESEARCH_TRACE_INVALID: '调用内容或对局来源无法核对，不能正式引用。',
+    RESEARCH_TRACE_SCOPE: '调用不属于该比较的冻结共同样本、席位或时间范围。',
+    RESEARCH_TRACE_CHANGED:
+      '调用内容在选择后发生变化。请返回当前调用，重新选择比较并查阅；旧草稿未被覆盖。',
+    RESEARCH_TRACE_LIMIT: '每版最多引用 5 条不同调用；每条最多 2 MiB，总计最多 8 MiB，超限不截断。',
+    RESEARCH_PUZZLE_SOURCE:
+      '测试的选取依据或逐局面来源缺失、已变化、超出 200 个局面或无法核对，不能正式引用；该记录仍可独立查阅。',
+    RESEARCH_PUZZLE_SCOPE:
+      '测试来源不属于冻结共同样本，或原决策与评估条件已变化。请核对来源后重新选择。',
+    RESEARCH_PUZZLE_CHANGED:
+      '测试文件在预览后发生变化。请移除旧引用，重新查阅后加入；草稿内容已保留。',
+    RESEARCH_PUZZLE_LIMIT:
+      '每版最多 5 条不同测试引用，冻结内容总计不得超过 8 MiB。请减少引用后重试。',
+    PUZZLE_RESULT_NOT_FOUND: '测试记录已不存在，请重新选择。',
+    PUZZLE_RESULT_INVALID: '测试记录无效或无法读取，不能用于正式引用。',
+    PUZZLE_RESULT_UNSUPPORTED: '该记录使用不支持的指标版本，不能按当前定义引用。',
     operationFailed: '操作失败',
     deleted: '已删除',
     deleteFailed: '删除失败',
@@ -116,7 +186,8 @@ export default {
     DEPLOY_MERGE_FAILED: 'LoRA 合并失败，请查看后端日志。',
     DEPLOY_NOT_LORA: '该任务不是可用的 LoRA 适配器目录，请先完成训练。',
     TRAINING_GUARD_FAILED: '训练环境检查未通过。',
-    PROVIDER_NOT_CONFIGURED: '实验座位供应商未配置。请在 .env 配置密钥，或改选手配置。',
+    PROVIDER_NOT_CONFIGURED:
+      '模型席位尚未就绪。请核对设置页中的配置文件及所选模型名称；使用 Ollama 时需启动服务并安装对应标签。',
     EXPERIMENT_VALIDATION_FAILED: '实验校验未通过，请检查选手人数、协议或对照设置。',
     OLLAMA_UNREACHABLE: '无法连接 Ollama（{url}）。请确认 Ollama 已启动，且本机可访问该地址。',
     OLLAMA_TIMEOUT: '连接 Ollama 超时（{url}）。请确认服务已启动且网络正常。',

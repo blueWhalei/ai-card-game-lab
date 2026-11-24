@@ -23,10 +23,6 @@ async def test_cancel_collect_marks_active_games_cancelled(client: AsyncClient) 
 
     with (
         patch(
-            "app.services.game_service.is_provider_configured",
-            return_value=True,
-        ),
-        patch(
             "app.services.game_service.GameService.start_game",
             new_callable=AsyncMock,
             side_effect=lambda game_id, db=None: {"id": game_id, "status": "running"},

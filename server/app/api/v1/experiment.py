@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 import aiosqlite
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -13,14 +13,39 @@ from app.schemas.experiment import (
     CloneExperimentRequest,
     CollectExperimentRequest,
     CreateExperimentRequest,
+    CreatePromptVariantRequest,
+    OfflineExperimentRequest,
     ResearchRevisionRequest,
     SaveComparisonRequest,
     UpdateExperimentRequest,
 )
 from app.services.experiment_service import ExperimentNotFoundError, ExperimentService
 from app.services.research_service import ResearchConflictError, ResearchValidationError
+from app.utils.exceptions import AppError
 
 router = APIRouter()
+
+
+@router.get("/{experiment_id}/scenarios")
+async def scenario_records(
+    experiment_id: str,
+    scenario: Literal["bidding", "playing", "endgame", "bomb"] | None = None,
+    game_id: str | None = Query(default=None, min_length=1, max_length=128),
+    decision_id: str | None = Query(default=None, min_length=1, max_length=128),
+    game_page: int = Query(default=1, ge=1, le=100000),
+    page: int = Query(default=1, ge=1, le=100000),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(
+        data=await service.scenario_records(
+            experiment_id,
+            scenario,
+            game_id,
+            decision_id,
+            game_page,
+            page,
+        )
+    )
 
 
 @router.get("")
@@ -44,6 +69,7 @@ async def create_experiment(
     service: ExperimentService = Depends(get_experiment_service),
 ) -> ApiResponse[dict[str, Any]]:
     experiment = await service.create_experiment(
+        study_id=body.study_id,
         name=body.name,
         notes=body.notes,
         hypothesis=body.hypothesis,
@@ -57,6 +83,25 @@ async def create_experiment(
         prompt_version=body.prompt_version,
     )
     return ApiResponse(data=experiment)
+
+
+@router.post("/offline", status_code=201)
+async def create_offline_experiment(
+    body: OfflineExperimentRequest,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(
+        data=await service.create_experiment(
+            study_id=body.study_id,
+            name=body.name,
+            hypothesis=body.hypothesis,
+            game_type="doudizhu",
+            notes="",
+            target_games=1,
+            collect_mode="benchmark",
+            player_ids=None,
+        )
+    )
 
 
 @router.get("/compare")
@@ -108,6 +153,94 @@ async def research_candidates(
         return ApiResponse(data=await service.research_candidates(comparison_id, limit, offset))
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/comparisons/{comparison_id}/pairs")
+async def research_pairs(
+    comparison_id: str,
+    scenario: Literal["bidding", "playing", "endgame", "bomb"] | None = None,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(data=await service.research_pairs(comparison_id, scenario))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/evidence/decisions/{decision_id}/comparisons")
+async def research_decision_targets(
+    decision_id: str,
+    offset: int = Query(default=0, ge=0),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(data=await service.research_decision_targets(decision_id, offset))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Decision not found") from exc
+
+
+@router.get("/comparisons/{comparison_id}/decisions/{decision_id}")
+async def research_decision(
+    comparison_id: str,
+    decision_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(data=await service.research_decision(comparison_id, decision_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/evidence/traces/{trace_id}/comparisons")
+async def research_trace_targets(
+    trace_id: str,
+    offset: int = Query(default=0, ge=0),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.research_trace_targets(trace_id, offset))
+
+
+@router.get("/comparisons/{comparison_id}/traces/{trace_id}")
+async def research_trace_preview(
+    comparison_id: str,
+    trace_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(data=await service.research_trace_preview(comparison_id, trace_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
+
+
+@router.get("/evidence/puzzle-results/{pack_id}/{run_id}/comparisons")
+async def research_puzzle_targets(
+    pack_id: str,
+    run_id: str,
+    offset: int = Query(default=0, ge=0),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.research_puzzle_targets(pack_id, run_id, offset))
+
+
+@router.get("/comparisons/{comparison_id}/pairs/{seed}")
+async def research_pair(
+    comparison_id: str,
+    seed: int,
+    scenario: Literal["bidding", "playing", "endgame", "bomb"] | None = None,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(data=await service.research_pair(comparison_id, seed, scenario))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.get("/comparisons/{comparison_id}/conclusions")
@@ -138,12 +271,43 @@ async def save_research(
                 body.interpretation,
                 body.limitations,
                 [item.model_dump() for item in body.evidence],
+                [item.model_dump() for item in body.puzzle_evidence],
+                [item.model_dump() for item in body.trace_evidence],
             )
         )
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
     except ResearchConflictError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
+        raise AppError(str(exc), "RESEARCH_CONFLICT", 409) from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/comparisons/{comparison_id}/puzzle-packs")
+async def research_puzzle_packs(
+    comparison_id: str, service: ExperimentService = Depends(get_experiment_service)
+) -> ApiResponse[list[dict[str, Any]]]:
+    try:
+        return ApiResponse(data=await service.research_puzzle_packs(comparison_id))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
+    except ResearchValidationError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get("/comparisons/{comparison_id}/puzzle-results/{pack_id}/{run_id}")
+async def research_puzzle_preview(
+    comparison_id: str,
+    pack_id: str,
+    run_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    try:
+        return ApiResponse(
+            data=await service.research_puzzle_preview(comparison_id, pack_id, run_id)
+        )
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Comparison snapshot not found") from exc
     except ResearchValidationError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -180,6 +344,32 @@ async def get_experiment(
     return ApiResponse(data=experiment)
 
 
+@router.get("/{experiment_id}/prompt-design")
+async def prompt_design(
+    experiment_id: str,
+    source_revision_id: str | None = Query(default=None, min_length=1, max_length=128),
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.prompt_design(experiment_id, source_revision_id))
+
+
+@router.post("/{experiment_id}/prompt-variant", status_code=201)
+async def create_prompt_variant(
+    experiment_id: str,
+    body: CreatePromptVariantRequest,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.create_prompt_variant(experiment_id, body))
+
+
+@router.put("/{experiment_id}/holdout")
+async def reserve_prompt_holdout(
+    experiment_id: str,
+    service: ExperimentService = Depends(get_experiment_service),
+) -> ApiResponse[dict[str, str]]:
+    return ApiResponse(data=await service.reserve_prompt_holdout(experiment_id))
+
+
 @router.get("/{experiment_id}/export")
 async def export_experiment_pack(
     experiment_id: str,
@@ -206,6 +396,7 @@ async def update_experiment(
             hypothesis=body.hypothesis,
             conclusion=body.conclusion,
             tags=body.tags,
+            expected_draft_revision=body.expected_draft_revision,
         )
     except ExperimentNotFoundError:
         raise

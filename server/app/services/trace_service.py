@@ -127,6 +127,8 @@ class TraceService:
         player_id: str | None = None,
         model: str | None = None,
         parser_ok: bool | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -139,6 +141,8 @@ class TraceService:
                 player_id=player_id,
                 model=model,
                 parser_ok=parser_ok,
+                start_time=start_time,
+                end_time=end_time,
                 limit=limit,
                 offset=offset,
             )
@@ -159,11 +163,27 @@ class TraceService:
         items, _ = await self.list_traces(experiment_id=experiment_id, limit=limit, offset=offset)
         return items
 
-    async def get_trace_by_id(self, trace_id: str) -> dict[str, Any] | None:
+    async def get_trace_by_id(
+        self,
+        trace_id: str,
+        *,
+        game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
+        model: str | None = None,
+        parser_ok: bool | None = None,
+    ) -> dict[str, Any] | None:
         """Get a single trace by ID with its spans."""
         async with connect_or_reuse(self._sqlite_path) as db:
             repo = TraceRepository(db)
-            trace = await repo.get_by_id(trace_id)
+            trace = await repo.get_by_id(
+                trace_id,
+                game_id=game_id,
+                experiment_id=experiment_id,
+                player_id=player_id,
+                model=model,
+                parser_ok=parser_ok,
+            )
             if not trace:
                 return None
             trace["spans"] = await repo.get_spans(trace_id)
@@ -201,23 +221,3 @@ class TraceService:
                 start_time=start_time,
                 end_time=end_time,
             )
-
-    async def compare_prompt_versions(
-        self,
-        version1: str,
-        version2: str,
-    ) -> dict[str, Any]:
-        """Compare metrics between two prompt versions."""
-        async with connect_or_reuse(self._sqlite_path) as db:
-            repo = TraceRepository(db)
-            stats1 = await repo.get_version_stats(version1)
-            stats2 = await repo.get_version_stats(version2)
-
-        return {
-            "version1": stats1,
-            "version2": stats2,
-            "response_time_diff": round(
-                stats2["avg_response_time_ms"] - stats1["avg_response_time_ms"], 2
-            ),
-            "success_rate_diff": round(stats2["success_rate"] - stats1["success_rate"], 2),
-        }

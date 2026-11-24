@@ -17,9 +17,10 @@ const props = defineProps<{
   playerNames?: Record<string, string>
   loading?: boolean
   emptyHint?: string
+  compact?: boolean
 }>()
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const phaseLabel = computed(() => {
   const p = props.snapshot?.phase
@@ -61,7 +62,7 @@ function displayName(id: string): string {
 }
 
 function actionLabel(type?: string, label?: string): string {
-  if (type === 'PASS') return t('action.PASS')
+  if (type && te(`action.${type}`)) return t(`action.${type}`)
   if (label) return label
   return type || ''
 }
@@ -75,6 +76,7 @@ function badgeLabel(badge: string): string {
 
 function slotDisplayLabel(key: string, label: string): string {
   if (key === 'landlord') return t('game.bottomCards')
+  if (key === 'last_play') return t('decision.lastPlay')
   return label
 }
 
@@ -105,7 +107,13 @@ function seatClasses(player: ObserverPlayer): string {
       </p>
 
       <div
-        :class="cn('board-grid min-h-0 flex-1 gap-ink-3 overflow-y-auto px-ink-4 py-ink-4', layoutClass)"
+        :class="
+          cn(
+            'board-grid min-h-0 flex-1 gap-ink-3 overflow-y-auto px-ink-4 py-ink-4',
+            layoutClass,
+            compact && 'board-grid--compact',
+          )
+        "
       >
         <div
           v-for="(player, index) in players"
@@ -122,10 +130,7 @@ function seatClasses(player: ObserverPlayer): string {
             >
               {{ badgeLabel(badge) }}
             </span>
-            <span
-              v-if="thinkingPlayerId === player.id"
-              class="text-caption text-ink-obs-accent"
-            >
+            <span v-if="thinkingPlayerId === player.id" class="text-caption text-ink-obs-accent">
               {{ t('game.thinking') }}
             </span>
             <span v-else-if="player.is_active" class="text-caption text-ink-obs-accent">{{
@@ -201,8 +206,7 @@ function seatClasses(player: ObserverPlayer): string {
 
 <style scoped>
 .ink-obs-felt {
-  background:
-    radial-gradient(ellipse 90% 70% at 50% 30%, #1a2a24 0%, var(--ink-obs-bg) 72%);
+  background: radial-gradient(ellipse 90% 70% at 50% 30%, #1a2a24 0%, var(--ink-obs-bg) 72%);
 }
 
 .board-grid {
@@ -251,5 +255,14 @@ function seatClasses(player: ObserverPlayer): string {
     'seat-bottom seat-bottom seat-bottom';
   grid-template-columns: 1fr minmax(10rem, 1.2fr) 1fr;
   grid-template-rows: auto minmax(7rem, 1fr) auto;
+}
+
+.board-grid--compact.board-grid--three {
+  grid-template-areas: 'seat-top seat-top' 'table table' 'seat-left seat-right';
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+}
+.board-grid--compact > div {
+  min-width: 0;
 }
 </style>

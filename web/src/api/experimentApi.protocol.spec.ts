@@ -21,6 +21,10 @@ describe('flattenProtocol', () => {
           { id: 'a', name: 'A', notes: '', model_config: { provider: 'ollama', model_name: 'm' } },
         ],
         prompt_version: 'v3',
+        prompts: {
+          playing: { version: 'followup', content_hash: 'hash-play' },
+          bidding: { version: 'v3', content_hash: 'hash-bid' },
+        },
       },
       scorer: { eval_metric_ids: ['parser_success'] },
       engine: {
@@ -40,6 +44,8 @@ describe('flattenProtocol', () => {
     expect(flat?.deal_seeds).toEqual([1, 2])
     expect(flat?.players[0]?.id).toBe('a')
     expect(flat?.engine_version).toBe('1')
+    expect(flat?.prompt_versions).toEqual({ playing: 'followup', bidding: 'v3' })
+    expect(flat?.prompt_hashes).toEqual({ playing: 'hash-play', bidding: 'hash-bid' })
     expect(isBenchmarkExperiment({ protocol })).toBe(true)
   })
 })

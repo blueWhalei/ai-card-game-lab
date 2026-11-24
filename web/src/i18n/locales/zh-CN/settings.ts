@@ -4,7 +4,7 @@ export default {
     loadError: '设置加载失败，请确认后端已启动后重试。',
     runtime: '运行环境',
     runtimeHint:
-      '路径与 API 密钥写在项目根目录 {env}，重启后生效。库路径不能存进数据库本身。选手的模型与采样在',
+      '路径与 API 密钥写在当前配置文件 {env}，重启后生效。库路径不能存进数据库本身。选手的模型与采样在',
     runtimeHintMid: '，提示词在',
     app: '应用',
     version: '版本',
@@ -45,10 +45,16 @@ export default {
     },
   },
   preflight: {
-    providers_any:
-      '未配置可用模型供应商。请在项目根目录 .env 填写云厂商 API 密钥，或安装 Ollama 并拉取至少一个本地模型（如 ollama pull qwen2.5:7b）。',
+    passed: {
+      protocol: '运行协议完整',
+      providers_seats: '各座位所需供应商均已配置',
+      providers_any: '至少一个供应商已有配置',
+      training_deps: '训练依赖已安装',
+    },
+    providers_any: '可直接运行离线预设。使用模型席位时，在创建实验中查看所需配置。',
     protocol: '实验协议缺失或不完整，请重新创建实验后再开始对局',
-    providers_seats: '实验座位供应商未配置：{providers}。请在 .env 配置密钥，或改选手配置。',
+    providers_seats:
+      '以下席位的模型配置未就绪：{providers}。请核对配置文件和本地模型标签；若需更换冻结的模型，请新建运行。',
     providers_seatsIncomplete: '无法校验座位供应商（协议不完整）',
     training_deps:
       '未安装训练依赖，无法创建训练任务。请执行：cd server && poetry install --with training',

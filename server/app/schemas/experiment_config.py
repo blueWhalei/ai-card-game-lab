@@ -9,6 +9,11 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 PolicyKind = Literal["llm", "tool_loop", "search", "heuristic", "random", "first"]
 
 
+class SeatCheckRequest(BaseModel):
+    player_ids: list[str] = Field(min_length=1, max_length=16)
+    check_connection: bool = False
+
+
 class ModelConfig(BaseModel):
     provider: str
     model_name: str

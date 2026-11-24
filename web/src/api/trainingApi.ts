@@ -32,12 +32,28 @@ export interface TrainingTask {
   training_type: string
   config: TrainingConfig
   status: string
-  progress: number
+  progress: number | null
+  progress_state?: 'recorded' | 'missing' | 'invalid'
+  result_state?: 'recorded' | 'missing' | 'invalid'
+  config_state?: 'recorded' | 'missing' | 'invalid'
   result: Record<string, unknown> | null
   model_path: string | null
   created_at: string
   finished_at: string | null
   experiment_id?: string | null
+  study_id?: string | null
+  run_name?: string | null
+}
+
+export interface TrainingTaskPage extends PaginatedData<TrainingTask> {
+  read_at: string
+  filters: {
+    study_id: string | null
+    experiment_id: string | null
+    task_id: string | null
+    state: string
+    status: string | null
+  }
 }
 
 export interface ModelItem {
@@ -51,7 +67,7 @@ export interface ModelItem {
 
 export const trainingApi = {
   listTasks: (params?: Record<string, string | number>) =>
-    apiClient.get<never, ApiResponse<PaginatedData<TrainingTask>>>('/api/v1/training/tasks', {
+    apiClient.get<never, ApiResponse<TrainingTaskPage>>('/api/v1/training/tasks', {
       params,
     }),
 
@@ -62,14 +78,10 @@ export const trainingApi = {
     apiClient.get<never, ApiResponse<TrainingTask>>(`/api/v1/training/tasks/${id}`),
 
   deleteTask: (id: string) =>
-    apiClient.delete<never, ApiResponse<Record<string, string>>>(
-      `/api/v1/training/tasks/${id}`,
-    ),
+    apiClient.delete<never, ApiResponse<Record<string, string>>>(`/api/v1/training/tasks/${id}`),
 
   cancelTask: (id: string) =>
-    apiClient.post<never, ApiResponse<TrainingTask>>(
-      `/api/v1/training/tasks/${id}/cancel`,
-    ),
+    apiClient.post<never, ApiResponse<TrainingTask>>(`/api/v1/training/tasks/${id}/cancel`),
 
   listModels: () => apiClient.get<never, ApiResponse<ModelItem[]>>('/api/v1/models'),
 
@@ -85,10 +97,7 @@ export const trainingApi = {
       data ?? {},
     ),
 
-  pushToOllama: (
-    id: string,
-    data?: { ollama_tag?: string; force_convert?: boolean },
-  ) =>
+  pushToOllama: (id: string, data?: { ollama_tag?: string; force_convert?: boolean }) =>
     apiClient.post<never, ApiResponse<Record<string, unknown>>>(
       `/api/v1/models/${id}/push-ollama`,
       data ?? {},

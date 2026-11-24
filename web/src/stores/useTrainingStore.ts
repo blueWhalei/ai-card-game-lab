@@ -9,21 +9,64 @@ export const useTrainingStore = defineStore('training', () => {
   const models = ref<ModelItem[]>([])
   const isLoading = ref(false)
   const currentTask = ref<TrainingTask | null>(null)
+  const tasksFailed = ref(false)
+  const tasksReadAt = ref('')
+  let taskRequest = 0
+  let taskScope = ''
 
   async function fetchTasks(params?: {
     page?: number
     page_size?: number
     status?: string
     experiment_id?: string
+    study_id?: string
+    task_id?: string
   }): Promise<void> {
+    const scope = JSON.stringify(params ?? {})
+    if (isLoading.value && scope === taskScope) return
+    const request = ++taskRequest
+    if (scope !== taskScope) {
+      tasks.value = []
+      total.value = 0
+      tasksReadAt.value = ''
+    }
+    taskScope = scope
+    tasksFailed.value = false
     isLoading.value = true
     try {
       const res = await trainingApi.listTasks({ page_size: 100, ...params })
+      if (request !== taskRequest) return
+      if (
+        Object.entries(params ?? {}).some(
+          ([key, value]) =>
+            ['study_id', 'task_id', 'experiment_id'].includes(key) &&
+            res.data.filters[key as 'study_id' | 'task_id' | 'experiment_id'] !== value,
+        )
+      )
+        throw new Error('Task scope mismatch')
       tasks.value = res.data.items
       total.value = res.data.total
+      tasksReadAt.value = res.data.read_at
+    } catch {
+      if (request === taskRequest) {
+        tasks.value = []
+        total.value = 0
+        tasksReadAt.value = ''
+        tasksFailed.value = true
+      }
     } finally {
-      isLoading.value = false
+      if (request === taskRequest) isLoading.value = false
     }
+  }
+
+  function clearTasks() {
+    taskRequest++
+    taskScope = ''
+    tasks.value = []
+    total.value = 0
+    tasksReadAt.value = ''
+    tasksFailed.value = false
+    isLoading.value = false
   }
 
   async function fetchTask(id: string): Promise<void> {
@@ -38,7 +81,6 @@ export const useTrainingStore = defineStore('training', () => {
 
   async function createTask(data: CreateTaskRequest): Promise<TrainingTask> {
     const res = await trainingApi.createTask(data)
-    await fetchTasks()
     return res.data
   }
 
@@ -59,13 +101,8 @@ export const useTrainingStore = defineStore('training', () => {
   }
 
   async function fetchModels(): Promise<void> {
-    isLoading.value = true
-    try {
-      const res = await trainingApi.listModels()
-      models.value = res.data
-    } finally {
-      isLoading.value = false
-    }
+    const res = await trainingApi.listModels()
+    models.value = res.data
   }
 
   async function deleteModel(id: string): Promise<void> {
@@ -103,6 +140,9 @@ export const useTrainingStore = defineStore('training', () => {
     models,
     isLoading,
     currentTask,
+    tasksFailed,
+    tasksReadAt,
+    clearTasks,
     fetchTasks,
     fetchTask,
     createTask,

@@ -5,6 +5,8 @@ from __future__ import annotations
 from collections import Counter, defaultdict
 from typing import Any
 
+from app.core.research.prompt_design import declared_prompt_changes, paired_design
+
 
 def seed_value(value: Any) -> int | None:
     if isinstance(value, bool):
@@ -17,16 +19,23 @@ def seed_value(value: Any) -> int | None:
 
 
 def paired_cohort(
-    rows: list[dict[str, Any]], games: dict[str, list[dict[str, Any]]]
+    rows: list[dict[str, Any]],
+    games: dict[str, list[dict[str, Any]]],
+    *,
+    attributable_games: set[str] | None = None,
 ) -> tuple[dict[str, Any], dict[str, dict[int, dict[str, Any]]]]:
     plans: list[set[int]] = []
     indexes: dict[str, dict[int, dict[str, Any]]] = {}
     coverage: list[dict[str, Any]] = []
+    exclusions: dict[str, dict[int, str]] = {}
+    holdout_origins = set()
     for row in rows:
         protocol = row.get("protocol") or {}
         dataset = protocol.get("dataset") or {}
+        holdout_origins.add(dataset.get("holdout_for"))
         plan = [s for raw in dataset.get("deal_seeds", []) if (s := seed_value(raw)) is not None]
-        plans.append(set(plan))
+        planned_seeds = set(plan)
+        plans.append(planned_seeds)
         grouped: dict[int, list[dict[str, Any]]] = defaultdict(list)
         missing_seed = 0
         for game in games.get(str(row["id"]), []):
@@ -36,52 +45,73 @@ def paired_cohort(
             else:
                 grouped[seed].append(game)
         valid: dict[int, dict[str, Any]] = {}
-        reasons: Counter[str] = Counter()
+        reasons: dict[int, str] = {}
         conflicts = []
         duplicate_plan = {s for s, n in Counter(plan).items() if n > 1}
-        for seed in sorted(set(plan)):
+        for seed in sorted(planned_seeds):
             candidates = grouped.get(seed, [])
             if len(candidates) > 1 or seed in duplicate_plan:
-                reasons["duplicate"] += 1
+                reasons[seed] = "duplicate"
                 conflicts.append(
                     {"seed": seed, "game_ids": sorted(str(g["id"]) for g in candidates)}
                 )
             elif not candidates:
-                reasons["missing"] += 1
+                reasons[seed] = "missing"
             else:
                 game = candidates[0]
                 if game.get("status") != "finished":
-                    reasons["unfinished"] += 1
+                    reasons[seed] = "unfinished"
                 elif not game.get("winner_id") or game.get("winner_role") not in (
                     "landlord",
                     "peasant",
                 ):
-                    reasons["invalid_outcome"] += 1
+                    reasons[seed] = "invalid_outcome"
                 elif row.get("player_ids") and (
                     game.get("player_ids") != row["player_ids"]
                     or game.get("winner_id") not in row["player_ids"]
                 ):
-                    reasons["seat_mismatch"] += 1
+                    reasons[seed] = "seat_mismatch"
+                elif attributable_games is not None and game["id"] not in attributable_games:
+                    reasons[seed] = "missing_seat_outcome"
                 else:
                     valid[seed] = game
+        exclusions[str(row["id"])] = reasons
         indexes[str(row["id"])] = valid
         coverage.append(
             {
                 "experiment_id": row["id"],
-                "planned": len(set(plan)),
+                "planned": len(planned_seeds),
                 "valid": len(valid),
-                "excluded": dict(reasons),
+                "excluded": dict(Counter(reasons.values())),
                 "conflicts": conflicts,
                 "missing_seed_games": missing_seed,
-                "unplanned_games": sum(len(v) for k, v in grouped.items() if k not in set(plan)),
+                "unplanned_games": sum(
+                    len(v) for k, v in grouped.items() if k not in planned_seeds
+                ),
             }
         )
     common_plan = set.intersection(*plans) if plans else set()
     effective = common_plan.intersection(*(set(i) for i in indexes.values()))
+    excluded_pairs = [
+        {
+            "seed": seed,
+            "reasons": {eid: causes[seed] for eid, causes in exclusions.items() if seed in causes},
+        }
+        for seed in sorted(common_plan - effective)
+    ]
+    if holdout_origins == {None}:
+        purpose = "development"
+    elif len(holdout_origins) == 1 and len(rows) == 2 and paired_design(rows):
+        purpose = "holdout"
+    else:
+        purpose = "mixed"
     for item in coverage:
         item["not_shared"] = item["valid"] - len(effective)
     return {
         "unit": "deal_seed_fixed_seats",
+        "deal_purpose": purpose,
+        "excluded_n": len(excluded_pairs),
+        "excluded_pairs": excluded_pairs,
         "planned_shared": len(common_plan),
         "effective_n": len(effective),
         "effective_seeds": sorted(effective),
@@ -123,6 +153,8 @@ def change_allowed(path: str) -> bool:
 
 
 def protocol_review(rows: list[dict[str, Any]], allowed: list[str]) -> dict[str, Any]:
+    design_changes = declared_prompt_changes(rows)
+    allowed = sorted(set(allowed) | set(design_changes))
     normalized = []
     unknown = []
     for row in rows:
@@ -171,7 +203,9 @@ def protocol_review(rows: list[dict[str, Any]], allowed: list[str]) -> dict[str,
                     "engine": p.get("engine"),
                     "solver": solver,
                     "scorer": p.get("scorer"),
-                    "dataset": {"deal_seeds": (p.get("dataset") or {}).get("deal_seeds")},
+                    "dataset": {
+                        k: (p.get("dataset") or {}).get(k) for k in ("deal_seeds", "holdout_for")
+                    },
                 }
             )
         )
@@ -229,6 +263,7 @@ def protocol_review(rows: list[dict[str, Any]], allowed: list[str]) -> dict[str,
         reasons.append("unsupported_metric")
     return {
         "baseline_id": rows[0]["id"] if rows else None,
+        **({"design_changes": design_changes} if design_changes else {}),
         "allowed_changes": sorted(set(allowed)),
         "differences": differences,
         "unknown": unknown,

@@ -1,14 +1,14 @@
 """Deal-seed state replay: rebuild a ``GameState`` from a seed and actions.
 
 The puzzle extractor needs the live state at a past decision point to recompute
-gold labels with the current evaluator. A stored decision point is not enough --
+action payoff estimates with the current evaluator. A stored decision point is not enough --
 it carries no hidden information -- so the extractor replays the deal from the
 recorded seed and the ordered action list (see
 ``docs/designs/step4-puzzle-set.md`` §3.1).
 
 This module is engine-agnostic and lives in ``core/eval`` because the replay
 contract (same seed + same actions ⇒ same state) is the foundation under every
-puzzle gold label. The service layer is responsible for turning ``rounds`` rows
+stored puzzle estimate. The service layer is responsible for turning ``rounds`` rows
 into ``GameAction`` objects; ``action_from_round_row`` is the engine-agnostic
 helper that builds the action body from the row's ``action_type`` / ``cards``
 fields. Callers must set ``player_id`` (and, for games that need it, ``target``)
@@ -30,9 +30,9 @@ def rebuild_state(
 
     The engine is the single source of truth for state transitions, so replay
     is just ``initialize`` followed by ``apply_action`` for each recorded move.
-    Because engines are deterministic given a seed and an action sequence, the
-    rebuilt state is bit-for-bit the state the live game reached -- which is the
-    contract the puzzle extractor relies on.
+    Matching the historical state requires the same engine behavior, seed and
+    complete action sequence. Callers must verify retained context; this helper
+    alone does not prove historical identity or reproduce the model runtime.
 
     Args:
         engine: The game engine that produced the original run.

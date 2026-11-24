@@ -3,7 +3,6 @@ import type { Experiment, ExperimentDelta } from '@/api/experimentApi'
 import {
   experimentProgressParts,
   formatExperimentProgress,
-  gamesNeededForPower,
   remainingGames,
   resolveStageId,
   verdictHeadlineOf,
@@ -44,19 +43,26 @@ function makeExperiment(overrides: Partial<Experiment> = {}): Experiment {
 function makeDelta(overrides: Partial<ExperimentDelta> = {}): ExperimentDelta {
   return {
     verdict_key: 'stronger',
+    primary_metric: { kind: 'landlord_win_rate' },
+    affected_player_ids: [],
+    deal_purpose: 'development',
+    paired_excluded_n: 0,
+    outcome_counts: { both_won: 12, a_only_won: 6, b_only_won: 14, both_lost: 8 },
+    ci_method: 'clopper_pearson_bonferroni',
+    difference_basis: 'paired',
+    design_hypothesis: null,
     peer_id: 'exp-2',
     peer_name: 'control',
     relation: 'vs_control',
     peer_ready: true,
-    this_landlord_win_rate: 0.6,
-    peer_landlord_win_rate: 0.4,
-    landlord_win_rate_diff: 0.2,
-    this_landlord_win_rate_ci: null,
-    peer_landlord_win_rate_ci: null,
+    this_win_rate: 0.6,
+    peer_win_rate: 0.4,
+    win_rate_diff: 0.2,
+    this_win_rate_ci: null,
+    peer_win_rate_ci: null,
     this_decisive_n: 40,
     peer_decisive_n: 40,
     paired_n: 40,
-    paired_landlord_win_rate_diff: 0.2,
     low_power: false,
     can_conclude: true,
     inconclusive_reason: null,
@@ -99,6 +105,14 @@ describe('verdictKeyOf', () => {
 })
 
 describe('verdictHeadlineOf', () => {
+  it.each([
+    ['missing_paired_evidence', 'evidence.missingPaired'],
+    ['uncertain_difference', 'evidence.uncertainDifference'],
+  ] as const)('explains %s instead of displaying a directional headline', (reason, key) => {
+    expect(
+      verdictHeadlineOf(makeDelta({ can_conclude: false, inconclusive_reason: reason })),
+    ).toEqual({ key, isEvidence: true })
+  })
   it('uses the causal verdict when the sample can conclude', () => {
     expect(verdictHeadlineOf(makeDelta({ verdict_key: 'stronger' }))).toEqual({
       key: 'verdict.stronger',
@@ -115,11 +129,10 @@ describe('verdictHeadlineOf', () => {
           paired_n: 0,
           verdict_key: 'weaker',
         }),
-        15,
       ),
     ).toEqual({
-      key: 'evidence.lowPowerNeed',
-      params: { n: 0, need: 15 },
+      key: 'evidence.lowPower',
+      params: { n: 0 },
       isEvidence: true,
     })
   })
@@ -137,23 +150,12 @@ describe('verdictHeadlineOf', () => {
   })
 })
 
-describe('remainingGames and gamesNeededForPower', () => {
+describe('remainingGames', () => {
   it('never goes negative when collection overshoots the target', () => {
     const experiment = makeExperiment({
       summary: { target_games: 10, finished_games: 14 } as never,
     })
     expect(remainingGames(experiment)).toBe(0)
-  })
-
-  it('reports how many decisive games are still missing', () => {
-    const experiment = makeExperiment({
-      delta: makeDelta({ this_decisive_n: 6, peer_decisive_n: 12 }),
-    })
-    expect(gamesNeededForPower(experiment)).toBe(14)
-  })
-
-  it('reports nothing missing once both sides are powered', () => {
-    expect(gamesNeededForPower(makeExperiment({ delta: makeDelta() }))).toBe(0)
   })
 })
 

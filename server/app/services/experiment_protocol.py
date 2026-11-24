@@ -22,7 +22,6 @@ from app.core.task_protocol import (
     protocol_thinking_budget,
     set_protocol_deal_seeds,
     set_protocol_pair_deals,
-    validate_protocol,
 )
 
 __all__ = [
@@ -45,5 +44,4 @@ __all__ = [
     "protocol_thinking_budget",
     "set_protocol_deal_seeds",
     "set_protocol_pair_deals",
-    "validate_protocol",
 ]

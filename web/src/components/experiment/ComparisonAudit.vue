@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n'
 import type { ExperimentCompareResult } from '@/api/experimentApi'
+import { formatPValue } from '@/utils/experimentWorkbench'
 import UiCheckbox from '@/components/ui/Checkbox.vue'
 const props = defineProps<{
   result: ExperimentCompareResult
@@ -61,7 +62,15 @@ function toggle(path: string, enabled: boolean) {
           {{ name(item.experiment_id) }}: {{ item.fields.join(', ') }}
         </p>
       </details>
-      <p class="text-caption text-ink-text-secondary">{{ t('compare.audit.declarationHint') }}</p>
+      <p class="text-caption text-ink-text-secondary">
+        {{
+          t(
+            result.protocol_review.design_changes?.length
+              ? 'compare.audit.designDeclarationHint'
+              : 'compare.audit.declarationHint',
+          )
+        }}
+      </p>
       <details v-if="result.protocol_review.differences.length">
         <summary class="cursor-pointer text-body font-medium">
           {{ t('compare.audit.differenceCount', { n: result.protocol_review.differences.length }) }}
@@ -100,7 +109,9 @@ function toggle(path: string, enabled: boolean) {
                   <UiCheckbox
                     v-if="diff.allowable"
                     :model-value="allowed.includes(diff.path)"
-                    :disabled="readonly"
+                    :disabled="
+                      readonly || result.protocol_review.design_changes?.includes(diff.path)
+                    "
                     :label="diff.path"
                     @update:model-value="toggle(diff.path, $event)"
                   /><span v-else>{{ t('compare.audit.fixed') }}</span>
@@ -117,6 +128,7 @@ function toggle(path: string, enabled: boolean) {
           t('compare.audit.coverage', {
             planned: result.coverage.planned_shared,
             effective: result.coverage.effective_n,
+            excluded: result.coverage.excluded_n,
           })
         }}
       </h3>
@@ -165,11 +177,27 @@ function toggle(path: string, enabled: boolean) {
           </tbody>
         </table>
       </div>
+      <details v-if="result.coverage.excluded_pairs.length" class="text-caption">
+        <summary class="cursor-pointer">
+          {{ t('focus.excludedDeals', { n: result.coverage.excluded_n }) }}
+        </summary>
+        <ul class="mt-ink-2 space-y-ink-1">
+          <li v-for="pair in result.coverage.excluded_pairs" :key="pair.seed">
+            <span class="font-mono">{{ pair.seed }}</span>
+            <span v-for="(reason, id) in pair.reasons" :key="id" class="ml-2"
+              >{{ name(String(id)) }} · {{ t(`compare.audit.exclusions.${reason}`) }}</span
+            >
+          </li>
+        </ul>
+      </details>
     </template>
-    <p v-if="result.paired_summary?.paired_ci" class="text-caption text-ink-text-secondary">
+    <p
+      v-if="result.paired_summary?.paired_ci && result.paired_summary.paired_p != null"
+      class="text-caption text-ink-text-secondary"
+    >
       {{
         t('compare.audit.statistics', {
-          p: result.paired_summary.paired_p?.toFixed(4),
+          p: formatPValue(result.paired_summary.paired_p),
           low: (result.paired_summary.paired_ci[0] * 100).toFixed(1),
           high: (result.paired_summary.paired_ci[1] * 100).toFixed(1),
         })

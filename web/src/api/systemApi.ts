@@ -16,6 +16,7 @@ export type SystemConfig = {
   version: string
   debug: boolean
   data_dir: string
+  config_file: string
   sqlite_path: string
   models_dir: string
   max_concurrent_games?: number
@@ -81,20 +82,25 @@ export type BenchmarkSeedsInfo = {
 }
 
 export const systemApi = {
-  listGameTypes: () =>
-    apiClient.get<never, ApiResponse<string[]>>('/api/v1/system/game-types'),
+  listGameTypes: () => apiClient.get<never, ApiResponse<string[]>>('/api/v1/system/game-types'),
 
-  listEngines: () =>
-    apiClient.get<never, ApiResponse<EngineInfo[]>>('/api/v1/system/engines'),
+  listEngines: () => apiClient.get<never, ApiResponse<EngineInfo[]>>('/api/v1/system/engines'),
 
   benchmarkSeeds: () =>
     apiClient.get<never, ApiResponse<BenchmarkSeedsInfo>>('/api/v1/system/benchmark-seeds'),
 
+  providerOptions: () =>
+    apiClient.get<never, ApiResponse<Omit<ProviderInfo, 'configured'>[]>>(
+      '/api/v1/system/providers',
+      {
+        params: { include_status: false },
+      },
+    ),
+
   listProviders: () =>
     apiClient.get<never, ApiResponse<ProviderInfo[]>>('/api/v1/system/providers'),
 
-  getConfig: () =>
-    apiClient.get<never, ApiResponse<SystemConfig>>('/api/v1/system/config'),
+  getConfig: () => apiClient.get<never, ApiResponse<SystemConfig>>('/api/v1/system/config'),
 
   getRuntimeStats: () =>
     apiClient.get<never, ApiResponse<RuntimeStats>>('/api/v1/system/runtime-stats'),

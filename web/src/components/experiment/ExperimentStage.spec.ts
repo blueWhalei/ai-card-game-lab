@@ -7,6 +7,7 @@ import { createI18n } from 'vue-i18n'
 import type { Experiment } from '@/api/experimentApi'
 import zhCN from '@/i18n/locales/zh-CN'
 import ExperimentStage from './ExperimentStage.vue'
+import StageVerdict from './StageVerdict.vue'
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -55,7 +56,6 @@ function mountStage(experiment: Experiment, blockedMessage = '') {
     props: {
       experiment,
       blockedMessage,
-      remainingCollect: 5,
     },
     global: {
       plugins: [i18n],
@@ -69,6 +69,19 @@ function mountStage(experiment: Experiment, blockedMessage = '') {
 }
 
 describe('ExperimentStage blocking CTA', () => {
+  it('does not offer another batch when the finished variant has no remaining games', () => {
+    const wrapper = mountStage(
+      makeExperiment({
+        delta: {
+          relation: 'vs_source',
+          can_conclude: false,
+          inconclusive_reason: 'low_power',
+          verdict_key: 'no_data',
+        } as never,
+      }),
+    )
+    expect(wrapper.findComponent(StageVerdict).props('actionLabel')).toBeUndefined()
+  })
   it('replaces empty-phase collect with settings when blocked', async () => {
     const wrapper = mountStage(
       makeExperiment({

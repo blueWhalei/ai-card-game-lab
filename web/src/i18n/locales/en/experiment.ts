@@ -1,4 +1,20 @@
 export default {
+  draftStorage: {
+    unresolved: '{n} drafts need attention. Expand recovery options.',
+    discard: 'Discard unsaved edits',
+    discardConfirm: 'Discard this window’s unsaved edits? The saved database draft is unchanged.',
+    loading: 'Loading draft…',
+    ready: 'Edits save automatically without publishing a conclusion.',
+    pending: 'Draft pending. Keep the application open.',
+    saving: 'Saving draft…',
+    saved: 'Draft saved to the local database.',
+    error:
+      'Could not save or load the draft. Your input is retained. Retry, or export a copy before reloading.',
+    export: 'Export input copy',
+    reload: 'Reload saved draft',
+    reloadConfirm:
+      'Reloading replaces unsaved input. Export anything you need to keep first. Continue?',
+  },
   researchReport: {
     back: 'Back to comparison and conclusions',
     title: 'Conclusions and evidence',
@@ -13,11 +29,18 @@ export default {
     noEvidence: 'This revision cites no decisions.',
     frozen: 'Inspect frozen evidence',
     revise: 'Revise from this version',
-    export: 'Export research report',
-    draft: 'Write the next revision',
+    export: 'Export report JSON',
+    draft: 'Research conclusion draft',
+    replaceDraftConfirm:
+      'Replace the current draft with this revision? The current draft will not be kept as a published revision.',
+    basisChanged:
+      'Draft based on v{base}; latest published revision is v{latest}. Review it before publishing.',
+    adoptLatest: 'Keep draft and adopt latest publication basis',
+    adoptLatestConfirm:
+      'Have you reviewed the latest conclusion? Keep this draft and allow publication after that revision?',
     evidence: 'Cite decisions',
     candidateHint:
-      'Candidates belong to captured games and predate the comparison cutoff. They include games excluded from paired statistics; explain why each citation matters.',
+      'Candidates belong to the frozen common valid games and predate the comparison cutoff. Explain what each selected record supports or contradicts.',
     previous: 'Previous',
     next: 'Next',
     note: 'Explain what this evidence supports or contradicts',
@@ -31,14 +54,50 @@ export default {
       identity_mismatch: 'Original identity differs; frozen evidence is preserved',
     },
   },
+  runSetup: {
+    lineup: 'Choose a lineup',
+    offline: 'Try one offline game',
+    custom: 'Choose players',
+    offlineName: 'Offline trial',
+    offlineHint:
+      'Play one fixed Dou Dizhu deal with heuristic, first-legal and random policies. All three seats run locally without credentials. Confirm the start on the run page.',
+    noEngine: 'No game engine is available.',
+    needSeats:
+      'Select {count} more players. You can create a player here and add them to the lineup.',
+    conditions: 'Start conditions',
+    offlineReady: 'All selected seats run locally without model credentials.',
+    checkFailed: 'Could not read the selected player configurations. Please retry.',
+    probe: 'Check model connection',
+    probeHint:
+      'This check reads the model catalog only. You can save the experiment now and confirm the game start on the run page.',
+    configFile: 'Edit {path} and restart the CardLab service to apply changes.',
+    status: {
+      configured: 'Local settings are present. Connection unchecked.',
+      invalid_model:
+        'Enter a model name without leading or trailing spaces in the player configuration.',
+      unknown_provider: 'Choose a supported provider in the player configuration.',
+      invalid_url: 'Set a valid {setting} in the configuration file.',
+      missing_key: 'A valid {setting} is required.',
+      listed: 'Connected. The model is listed.',
+      not_listed:
+        'Connected. The model was not listed. Check its name and your account permissions.',
+      not_installed:
+        'Connected to Ollama. Pull the requested tag or change the player’s model name.',
+      access_denied: 'Catalog access denied. Check the key and its permissions.',
+      unreachable: 'Connection failed. Check the address, network and service.',
+      catalog_unavailable:
+        'The service did not return a readable model catalog. Model availability is unconfirmed.',
+    },
+  },
   experiment: {
+    metaPanelDescription: 'Edit working notes, inspect the protocol and manage experiment exports.',
     research: {
       title: 'Research question',
-      notes: 'Edit hypothesis & conclusion',
+      notes: 'Edit experiment notes',
       compare: 'Compare experiments',
       emptyHypothesis:
         'What will this experiment test? Record the expected change and criteria, then examine the game evidence.',
-      conclusion: 'Current conclusion: ',
+      conclusion: 'Working summary: ',
     },
     libraryCount: '{n} experiments',
     collectionProgress: 'Collected {progress}',
@@ -59,16 +118,15 @@ export default {
     loadDemo: 'Load demo experiment',
     create: 'New experiment',
     openDetail: 'Open detail',
-    createMoreFields: 'More (hypothesis, notes, tags)',
+    createMoreFields: 'Run options',
     emptyTitle: 'No experiments yet',
-    emptyHintExamples: 'Or import a pack from the repo examples/ folder',
+    emptyHint: 'Start with a local game or select players for a model experiment.',
     summary: 'Summary',
     trainUsableWins: 'Trainable {usable} · Decided {winners}',
     createTitle: 'New experiment',
     namePlaceholder: 'e.g. Temp 0.6 vs 0.9',
     notesPlaceholder: 'Optional',
     pickPlayers: 'Player configs (pick {n})',
-    noConfigs: 'No player configs yet. Create some on the Player configs page first.',
     targetGames: 'Target games',
     createAndOpen: 'Create and open',
     loadFailed: 'Failed to load experiments',
@@ -80,7 +138,7 @@ export default {
     demoFailed: 'Failed to load demo experiment',
     status: {
       pending_collect: 'Ready to start',
-      collecting: 'In play',
+      collecting: 'Active tasks',
       ready_review: 'Collection ended',
       ready_more: 'Can continue',
     },
@@ -160,15 +218,18 @@ export default {
       'Frozen at create time. For same-model A/B, create two experiments with different versions.',
     hypothesis: 'Hypothesis',
     hypothesisPlaceholder: 'e.g. LoRA player wins more as landlord',
-    conclusion: 'Conclusion',
+    conclusion: 'Working summary',
     conclusionPlaceholder: 'Observations after the run',
     tags: 'Tags',
     tagsPlaceholder: 'Comma-separated, e.g. lora, baseline',
-    notebookTitle: 'Lab notebook',
+    notebookTitle: 'Experiment notes',
+    notebookScope:
+      'Hypothesis, process notes and working summary remain editable. Drafts save automatically; apply them to update the experiment. Publish formal conclusions with evidence from a comparison.',
+    applyNotes: 'Apply notes to experiment',
     notebookSaved: 'Notebook saved',
     notebookSaveFailed: 'Failed to save notebook',
     notebookNoHypothesis: 'No hypothesis',
-    notebookHasConclusion: 'Has conclusion',
+    notebookHasConclusion: 'Has working summary',
     notebookTagsCount: '{n} tags',
     notebookTimelineCount: '{n} progress events',
     notebookUnsaved: 'Unsaved',
@@ -181,10 +242,7 @@ export default {
       training_completed: 'Training completed',
       control_created: 'Control experiment created',
     },
-    validationTitle: 'Control validation',
-    validationReady: 'Control games finished',
-    validationPending: 'Control in progress',
-    validationPaired: 'Paired {n}',
+    linkedControls: 'Linked control runs',
     deltaVsSource: 'vs previous run',
     deltaVsControl: 'vs control run',
     scenarioBidding: 'Bidding',
@@ -192,14 +250,12 @@ export default {
     scenarioEndgame: 'Endgame',
     scenarioBomb: 'Bomb',
     downloadManifest: 'Export pack',
-    exportedPack: 'Experiment pack exported. API keys are not included.',
     exportFailed: 'Failed to export pack',
     importPack: 'Import pack',
     importedPack: 'Imported: {created} player(s) created · {reused} reused',
     importFailed: 'Import failed',
     importInvalidJson: 'File is not valid JSON',
-    importMissingProviders:
-      'Providers not ready on this machine: {ids}. Set keys in .env or start Ollama.',
+    importMissingProviders: 'Check settings for {ids}, including credentials and local model tags.',
     importOllamaTags: 'Need local Ollama tags: {tags}',
     cloneExperiment: 'Clone experiment',
     cloneTitle: 'Clone experiment',
@@ -212,13 +268,13 @@ export default {
     collectModeFree: 'Random deals',
     collectModeBenchmark: 'Benchmark (fixed deals)',
     collectModeBenchmarkHint:
-      'A full benchmark uses the engine’s fixed deals (50 for Dou Dizhu). You can lower the count for a connectivity check.',
+      'Built-in fixed deals are for development (50 for Dou Dizhu). Reserve independent deals from the frozen Prompt A/B variant’s conditions.',
     registerTitle: 'Register training dataset',
     registerEvalRatio: 'Eval ratio',
     registerUsable: 'Trainable {n}',
     registerNotUsable: 'Not trainable {n}',
-    registerTrainCount: 'Est. train {n}',
-    registerEvalCount: 'Est. eval {n}',
+    registerSplitHint:
+      'Split whole deal groups. The ratio applies to groups; decision counts are determined at export. At least two groups are required.',
     registerConfirm: 'Register',
     gameStatus: {
       created: 'Created',
@@ -268,14 +324,18 @@ export default {
       unknownFields: 'Inspect missing frozen fields',
       declarationHint:
         'Declare exact allowed changes, then compare again. This is a retrospective review, not preregistration. Rules, evaluator and deal plan differences cannot be waived.',
+      designDeclarationHint:
+        'Prompt changes are declared from the design frozen when B was created and cannot be unchecked here. Declare any additional fields explicitly and compare again. A may already have results; this design is not preregistration or proof of an effect.',
       field: 'Changed field / experiment',
       before: 'Reference value',
       after: 'Current value',
       declared: 'Allowed change',
       fixed: 'Must match',
-      coverage: '{planned} shared planned deals · {effective} effective pairs',
+      coverage: '{planned} shared planned deals · {effective} valid · {excluded} excluded',
+      unsupportedVersion:
+        'This snapshot uses a different measurement version. Select the runs to compute a new comparison.',
       cohortHint:
-        'Every effective seed must occur exactly once in every run, finish normally with a known outcome, and match seat order. All duplicates are excluded; retries are never silently selected.',
+        'Excluded deals count once per shared planned seed, including pending deals. Table rows use each run’s own plan. Every effective seed must occur exactly once in every run, finish normally with a known outcome, and match seat order. All duplicates are excluded; retries are never silently selected.',
       planned: 'Planned seeds',
       valid: 'Valid here',
       notShared: 'Valid but not shared',
@@ -283,7 +343,7 @@ export default {
       outside: 'Missing seed: {missing} · Outside plan: {unplanned}',
       conflicts: 'Inspect conflicting seeds and game IDs',
       metricScope:
-        'Paired rates measure the landlord side (landlord wins / effective shared seeds), not an individual player. Bidding may change the landlord. Parser and trainable rates describe execution quality. EV loss is an evaluator proxy; missing evaluation is not zero. No detected difference does not imply equivalence.',
+        'The table outcome counts wins by the landlord. The seat outcome counts wins by the selected player’s team, including games finished by a farmer teammate. Parser and trainable rates describe execution quality. EV loss is an evaluator proxy; missing evaluation is not zero. No detected difference does not imply equivalence.',
       saved: 'Saved comparisons',
       noSnapshots: 'No comparison snapshots saved yet.',
       more: 'Load more',
@@ -298,7 +358,7 @@ export default {
       saveFailed: 'Could not save comparison',
       loadFailed: 'Could not load comparison records',
       statistics:
-        'McNemar p={p} · Paired difference 95% bootstrap CI [{low}, {high}]pp (may degenerate with sparse samples; descriptive when controls fail)',
+        'Exact McNemar {p} · Conservative 95% paired difference interval [{low}, {high}]pp (Clopper–Pearson with Bonferroni adjustment)',
       reasons: {
         multiple_target_seats:
           'Multiple seats changed; attribution to one target player is not supported.',
@@ -315,6 +375,7 @@ export default {
         missing: 'No game yet',
         unfinished: 'Not normally finished',
         invalid_outcome: 'Incomplete outcome',
+        missing_seat_outcome: 'Missing seat outcome',
         seat_mismatch: 'Seat or winner mismatch',
       },
     },
@@ -327,9 +388,9 @@ export default {
     colExperiment: 'Experiment',
     colMetric: 'Metric',
     playerMatrix: 'Player win-rate matrix',
-    colFinished: 'Finished',
+    colFinished: 'Ended games (including failures)',
     colAvgResponse: 'Avg response',
-    colTrainRate: 'Trainable share',
+    colTrainRate: 'Training-format usability',
     colParser: 'Parse success',
     colPaired: 'Paired',
     colLandlordWinRate: 'Landlord WR',
@@ -348,28 +409,28 @@ export default {
     colTrainable: 'Trainable',
     failed: 'Compare failed',
     pairedHint: 'Paired games share the same deal_seed; see “Paired wins” by seat.',
-    pairedDiff: 'Paired landlord WR diff (control experiment − source experiment) {diff}pp · n={n}',
     lowPowerHint:
       'Some runs have few decisive games or a wide CI — treat point estimates cautiously.',
     protocolMismatch:
       'Selected experiments differ in protocol fingerprint (game type / engine / prompt keys / decision schema). Treat the comparison as indicative only.',
-    scenarioTitle: 'Scenario subscores (train-usable rate)',
+    scenarioTitle: 'Diagnostics by scenario (training-format usability)',
   },
   stage: {
     empty: {
       claim: 'This experiment has no games yet',
       detail:
-        'It will run {target} games with {players} players. Every game calls a real model API and costs usage.',
+        'It will run {target} games with {players} players. Model policies call APIs and consume usage; baseline policies do not call models.',
       detailBenchmark:
-        'It will run the same {target} fixed deals with {players} players. Every game calls a real model API and costs usage.',
+        'It will run the same {target} fixed deals with {players} players. Model policies call APIs and consume usage; baseline policies do not call models.',
       action: 'Start experiment',
       blockedClaim: 'One more step before the experiment can start',
       blockedAction: 'Open settings',
     },
     collecting: {
-      metricLabel: 'Games finished',
-      claim: 'Games in progress',
-      detail: '{active} running right now. Watch to see what the models are thinking.',
+      metricLabel: 'Inactive game records (including abnormal states)',
+      claim: 'Active game tasks recorded',
+      detail:
+        '{active} saved records are awaiting start, running or paused. Watching shows actions and outputs, not internal model reasoning. Progress does not represent valid research sample size.',
       action: 'Watch',
     },
     harvest: {
@@ -398,9 +459,9 @@ export default {
       needPlayerAction: 'Open model repo',
     },
     verdict: {
-      stronger: 'This experiment has a higher landlord win rate',
-      weaker: 'This experiment has a lower landlord win rate',
-      even: 'Landlord win-rate estimates are close (not evidence of equivalence)',
+      stronger: 'This experiment has a higher {metric}',
+      weaker: 'This experiment has a lower {metric}',
+      even: '{metric} estimates are equal (not evidence of equivalence)',
       peer_pending: 'The control experiment is still running, so there is nothing to compare yet',
       no_data: 'Not enough games to compare yet',
     },
@@ -409,33 +470,33 @@ export default {
       collectControl: 'Continue control experiment',
     },
     draft: {
-      generate: 'Generate conclusion draft',
-      regenerate: 'Regenerate draft',
-      dialogTitle: 'Conclusion draft',
-      dialogHint:
-        'Editable. Confirming writes the notebook conclusion field. The statistical verdict is unchanged.',
-      write: 'Write conclusion',
-      overwriteConfirm: 'This will overwrite the existing notebook conclusion. Continue?',
-      blundersHeading: 'High EV-loss moves',
+      sourceHint:
+        'Generated summaries use the applied experiment hypothesis and current statistics. They update the working draft without publishing a conclusion.',
+      generate: 'Generate working summary',
+      overwriteConfirm: 'Replace the working summary in this draft with generated text?',
+      blundersHeading: 'Decisions with large estimated payoff gaps',
       openBlunder: 'Round {round} · {action} (ev_loss {loss})',
     },
     evidence: {
+      incompleteHoldout: 'Some planned holdout deals have no valid pair yet.',
       protocolMismatch:
         'Protocols are incomplete or differ without a declaration; inspect comparability first.',
-      sufficient: '{n} same-deal pairs support this.',
+      sufficient:
+        '{n} valid pairs pass the current exploratory rule, within these conditions only; this is not a claim of general superiority.',
       peerPending: 'Wait for the control to finish before reading this number.',
       lowPower: '{n} same-deal pairs so far — not enough to conclude.',
-      lowPowerNeed: '{n} same-deal pairs so far — not enough to conclude. Run about {need} more.',
+      missingPaired:
+        'Complete paired statistics are missing. Only the observed difference is available.',
+      uncertainDifference:
+        'Paired evidence does not support a clear win-rate difference; this does not establish equivalence.',
       noData: 'Neither run has decisive games yet.',
     },
     support: {
       paired: '{n} same-deal pairs',
       interval: 'win-rate range {range}',
-      pairedP: 'McNemar p={p}',
+      pairedP: 'McNemar {p}',
       pairedCi: 'Paired Δ CI {range}',
     },
-    scenarioTitle: 'By scenario',
-    scenarioNotable: 'The gap comes mostly from {name} ({delta}).',
     collectMore: 'Run {n} more',
     collectMoreSeeds: 'Finish the remaining {n} fixed deals',
     benchmarkSeedsExhausted: 'The fixed deal seeds are already used',
@@ -460,6 +521,7 @@ export default {
     progressWithExtra: '{ratio} · {extra} beyond the target',
     progressExtraOnly: '{extra} beyond the target',
     diffLabel: 'Provisional Δ',
+    unpairedDiff: 'Unpaired full-run difference',
     diffSoFar: 'Provisional Δ {delta} (direction: {claim}) — not enough evidence to conclude.',
     sectionPlayers: 'Player performance',
   },
@@ -468,8 +530,8 @@ export default {
     transfer: 'Import & export',
     actionsFor: 'Actions for {name}',
 
-    finishedGames: '{n} completed games',
-    noFinishedGames: 'No completed games yet',
+    finishedGames: '{n} decided games',
+    noFinishedGames: 'No games with attributable team outcomes',
     add: 'Add player',
     emptyTitle: 'No player configs yet',
     empty: 'No player configs yet. Use the button above to create one.',
@@ -500,7 +562,6 @@ export default {
     deleteTitle: 'Delete',
     exportPack: 'Export players',
     importPack: 'Import players',
-    exportedPack: 'Player configs exported. API keys are not included.',
     exportFailed: 'Failed to export players',
     importedPack: 'Imported players: {created} created · {reused} reused',
     importFailed: 'Failed to import players',
@@ -529,8 +590,8 @@ export default {
   playersTab: {
     empty: 'Player stats appear after games start',
     colPlayer: 'Player',
-    colWins: 'Wins',
-    colWinRate: 'Win rate',
+    colWins: 'Team wins / decided games',
+    colWinRate: 'Team win rate',
     colCi: '95% interval',
     colLandlordWinRate: 'As-landlord WR',
     colUsable: 'Trainable decisions',

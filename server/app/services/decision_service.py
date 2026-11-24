@@ -12,15 +12,17 @@ import structlog
 
 from app.core.stats.highlights import BLUNDER_EV_LOSS, pick_game_highlights
 from app.core.training.data_quality import evaluate_train_usable
+from app.core.training.data_split import validation_groups
 from app.core.training.distill import (
-    index_decisions_by_match_key,
     normalize_game_row,
-    pair_distill_indexes,
+    pair_distill_decisions,
 )
 from app.core.training.preference import DEFAULT_MIN_EV_GAP, build_preference_pair
-from app.database import connect_or_reuse
+from app.database import connect_or_reuse, connect_sqlite
 from app.repositories.decision_repo import DecisionRepository
+from app.repositories.experiment_repo import ExperimentRepository
 from app.repositories.game_repo import GameRepository
+from app.utils.exceptions import AppError, NoExportableDataError
 from app.utils.id_generator import generate_id
 
 logger = structlog.get_logger()
@@ -109,38 +111,11 @@ class DecisionService:
 
         return decision_id
 
-    async def update_outcome(
-        self,
-        game_id: str,
-        winner_id: str | None,
-    ) -> int:
-        """Update outcome and quality score for all decision points in a game.
-
-        quality_score is an end-game outcome proxy only (not reasoning quality).
-        """
-        async with connect_or_reuse(self._sqlite_path) as db:
-            repo = DecisionRepository(db)
-            if winner_id:
-                updated = await repo.update_outcome_by_winner(game_id, winner_id)
-            else:
-                updated = await repo.update_outcome_draw(game_id)
-
-        logger.info(
-            "decision_outcome_updated",
-            game_id=game_id,
-            winner_id=winner_id,
-            updated_count=updated,
-        )
-
-        return updated
-
     async def list_decision_points(
         self,
         game_id: str | None = None,
         experiment_id: str | None = None,
         player_id: str | None = None,
-        min_quality: float | None = None,
-        max_quality: float | None = None,
         game_phase: str | None = None,
         outcome: str | None = None,
         train_usable: bool | None = None,
@@ -156,8 +131,6 @@ class DecisionService:
                 game_id=game_id,
                 experiment_id=experiment_id,
                 player_id=player_id,
-                min_quality=min_quality,
-                max_quality=max_quality,
                 game_phase=game_phase,
                 outcome=outcome,
                 train_usable=train_usable,
@@ -263,8 +236,6 @@ class DecisionService:
         return rows
 
     async def _game_type_for(self, game_id: str) -> str | None:
-        from app.repositories.game_repo import GameRepository
-
         async with connect_or_reuse(self._sqlite_path) as db:
             try:
                 game = await GameRepository(db).get_by_id(game_id)
@@ -281,7 +252,6 @@ class DecisionService:
             total = await repo.count_total(experiment_id)
             usability = await repo.count_usability(experiment_id)
             reason_counts = await repo.count_not_usable_by_reason(experiment_id)
-            quality = await repo.get_quality_stats(experiment_id)
             ev_stats = await repo.get_ev_loss_stats(
                 experiment_id, blunder_threshold=BLUNDER_EV_LOSS
             )
@@ -298,7 +268,6 @@ class DecisionService:
             "not_usable_count": not_usable,
             "usable_rate": round(usable_rate, 4),
             "not_usable_reason_counts": reason_counts,
-            **quality,
             **ev_stats,
             "outcome_counts": outcome_counts,
             "phase_counts": phase_counts,
@@ -309,7 +278,6 @@ class DecisionService:
         game_id: str | None = None,
         experiment_id: str | None = None,
         player_id: str | None = None,
-        min_quality: float | None = None,
         outcome: str | None = None,
         game_phase: str | None = None,
         train_usable: bool | None = None,
@@ -337,7 +305,6 @@ class DecisionService:
             game_id=game_id,
             experiment_id=experiment_id,
             player_id=player_id,
-            min_quality=min_quality,
             outcome=outcome,
             game_phase=game_phase,
             train_usable=train_usable_filter,
@@ -351,7 +318,6 @@ class DecisionService:
                 "export_chatml_no_data",
                 game_id=game_id,
                 experiment_id=experiment_id,
-                min_quality=min_quality,
                 train_usable=train_usable_filter,
                 max_ev_loss=max_ev_loss,
             )
@@ -378,8 +344,16 @@ class DecisionService:
         eval_items: list[dict[str, Any]] = []
         if eval_ratio > 0 and items:
             game_ids = sorted({str(item["game_id"]) for item in items})
-            eval_count = max(1, int(len(game_ids) * eval_ratio))
-            eval_game_ids = set(game_ids[:eval_count])
+            async with connect_or_reuse(self._sqlite_path) as db:
+                games = {
+                    game["id"]: normalize_game_row(game)
+                    for game in await GameRepository(db).get_many(game_ids)
+                }
+            try:
+                eval_game_ids, group_meta = validation_groups(game_ids, games, eval_ratio)
+            except ValueError as error:
+                raise NoExportableDataError(str(error)) from error
+            split_meta.update(group_meta)
             train_items = [i for i in items if str(i["game_id"]) not in eval_game_ids]
             eval_items = [i for i in items if str(i["game_id"]) in eval_game_ids]
             split_meta["eval_game_ids"] = sorted(eval_game_ids)
@@ -420,7 +394,6 @@ class DecisionService:
         game_id: str | None = None,
         experiment_id: str | None = None,
         player_id: str | None = None,
-        min_quality: float | None = None,
         outcome: str | None = None,
         game_phase: str | None = None,
         train_usable: bool | None = None,
@@ -447,7 +420,6 @@ class DecisionService:
             game_id=game_id,
             experiment_id=experiment_id,
             player_id=player_id,
-            min_quality=min_quality,
             outcome=outcome,
             game_phase=game_phase,
             train_usable=train_usable_filter,
@@ -525,32 +497,13 @@ class DecisionService:
         include_thinking: bool = False,
         output_path: str | None = None,
     ) -> tuple[str, int, dict[str, Any]]:
-        """Export teacher-vs-student preference pairs matched by deal/round/seat.
+        """Export teacher preferences at the first verified action divergence.
 
         Returns ``(filepath, count, meta)``. Empty filepath when no pairs written.
         """
-        teacher_items, _ = await self.list_decision_points(
-            experiment_id=teacher_experiment_id,
-            limit=10000,
-        )
-        student_items, _ = await self.list_decision_points(
-            experiment_id=student_experiment_id,
-            limit=10000,
-        )
-
-        meta: dict[str, Any] = {
-            "teacher_experiment_id": teacher_experiment_id,
-            "student_experiment_id": student_experiment_id,
-            "skipped_tie": 0,
-            "skipped_missing_prompt": 0,
-            "skipped_missing_action": 0,
-            "skipped_seat_mismatch": 0,
-            "skipped_unpaired": 0,
-            "skipped_missing_seed": 0,
-            "matched_keys": 0,
-        }
-
-        async with connect_or_reuse(self._sqlite_path) as db:
+        # One read snapshot; no 10,000-row truncation of the decision histories.
+        async with connect_sqlite(self._sqlite_path) as db:
+            await db.execute("BEGIN")
             games_repo = GameRepository(db)
             teacher_games = {
                 str(g["id"]): normalize_game_row(g)
@@ -560,25 +513,52 @@ class DecisionService:
                 str(g["id"]): normalize_game_row(g)
                 for g in await games_repo.list_by_experiment(student_experiment_id)
             }
+            decision_repo = DecisionRepository(db)
+            cutoff = datetime.now(tz=UTC).isoformat()
+            sequences: list[list[dict[str, Any]]] = []
+            for games in (teacher_games, student_games):
+                items = []
+                for gid in games:
+                    items.extend(await decision_repo.evidence_sequence(gid, cutoff))
+                sequences.append(items)
+            teacher_items, student_items = sequences
+            if teacher_items and student_items:
+                protocols = [
+                    (await ExperimentRepository(db).get_by_id(eid)).get("protocol") or {}
+                    for eid in (teacher_experiment_id, student_experiment_id)
+                ]
+                engine = protocols[0].get("engine") or {}
+                if (
+                    any(p.get("schema_version") != 2 for p in protocols)
+                    or not all(
+                        key in engine
+                        for key in (
+                            "game_type",
+                            "engine_version",
+                            "decision_schema_version",
+                            "rules_ref",
+                        )
+                    )
+                    or engine != protocols[1].get("engine")
+                ):
+                    raise AppError(
+                        message="Teacher and student require matching frozen engine and decision protocols",
+                        code="DISTILL_PROTOCOL_MISMATCH",
+                        status_code=400,
+                    )
 
-        teacher_index, t_skips = index_decisions_by_match_key(teacher_items, teacher_games)
-        student_index, s_skips = index_decisions_by_match_key(student_items, student_games)
-        meta["skipped_missing_seed"] = int(t_skips["missing_seed"]) + int(s_skips["missing_seed"])
-        meta["skipped_seat_mismatch"] = int(t_skips["seat_mismatch"]) + int(
-            s_skips["seat_mismatch"]
-        )
-        meta["skipped_missing_action"] = int(t_skips["missing_action"]) + int(
-            s_skips["missing_action"]
-        )
-
-        records, pair_meta = pair_distill_indexes(
-            teacher_index,
-            student_index,
+        records, pair_meta = pair_distill_decisions(
+            teacher_items,
+            student_items,
+            teacher_games,
+            student_games,
             include_thinking=include_thinking,
         )
-        for key, value in pair_meta.items():
-            if key.startswith("skipped_") or key == "matched_keys":
-                meta[key] = int(meta.get(key, 0)) + int(value)
+        meta: dict[str, Any] = {
+            "teacher_experiment_id": teacher_experiment_id,
+            "student_experiment_id": student_experiment_id,
+            **pair_meta,
+        }
 
         if not records:
             logger.warning(
@@ -644,7 +624,7 @@ def _to_chatml(item: dict[str, Any], *, include_thinking: bool = False) -> dict[
             "game_id": item["game_id"],
             "round_number": item["round_number"],
             "player_id": item["player_id"],
-            "quality_score": item.get("quality_score", 0.5),
+            "outcome": item["outcome"],
             "train_usable": item.get("train_usable", True),
             "ev_loss": item.get("ev_loss"),
         },

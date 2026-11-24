@@ -77,12 +77,14 @@ class TestDecisionServiceList:
         points, total = await decision_service.list_decision_points(
             game_id="game-1",
             player_id="p1",
-            min_quality=0.0,
             train_usable=True,
         )
         assert total == 1
         assert len(points) == 1
         assert points[0]["train_usable"] is True
+        assert points[0]["outcome"] is None
+        _, scored = await decision_service.list_decision_points(game_id="game-1", outcome="win")
+        assert scored == 0
 
 
 class TestDecisionServiceCreate:
@@ -181,7 +183,7 @@ class TestDecisionServiceStats:
     async def test_get_stats_empty(self, decision_service: DecisionService) -> None:
         stats = await decision_service.get_stats()
         assert stats["total"] == 0
-        assert stats["avg_quality"] == 0
+        assert stats["avg_ev_loss"] is None
 
     @pytest.mark.asyncio
     async def test_get_stats_filters_by_experiment(
@@ -221,18 +223,9 @@ class TestDecisionServiceStats:
         assert all_stats["total"] == 2
 
 
-class TestDecisionServiceUpdateOutcome:
-    """Test updating decision outcomes."""
-
-    @pytest.mark.asyncio
-    async def test_update_outcome_nonexistent_game(self, decision_service: DecisionService) -> None:
-        updated = await decision_service.update_outcome("nonexistent-game", "winner-1")
-        assert updated == 0
-
-
 class TestDecisionExplainAttach:
     @pytest.mark.asyncio
-    async def test_list_includes_parser_and_win_probability(
+    async def test_list_includes_parser_and_hand_analysis(
         self, decision_service: DecisionService
     ) -> None:
         await _create_sample(decision_service, parse_fallback=True)
@@ -246,11 +239,6 @@ class TestDecisionExplainAttach:
                 model="m",
                 prompt_version="v3",
                 input_snapshot={
-                    "win_probability": {
-                        "probability": 0.62,
-                        "confidence": "中",
-                        "reasoning": "局势均衡",
-                    },
                     "hand_analysis": {
                         "bomb_count": 1,
                         "rocket": False,
@@ -265,5 +253,4 @@ class TestDecisionExplainAttach:
         assert total == 1
         assert points[0]["parser_ok"] is False
         assert points[0]["parse_fallback"] is True
-        assert points[0]["win_probability"]["probability"] == 0.62
         assert points[0]["hand_analysis"]["bomb_count"] == 1

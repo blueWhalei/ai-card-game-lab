@@ -48,11 +48,6 @@ export interface ThinkingEntry {
   answer?: string
   legalActions?: Array<{ action_type?: string; cards?: string[] }>
   parserOk?: boolean | null
-  winProbability?: {
-    probability?: number
-    confidence?: string
-    reasoning?: string
-  }
   handAnalysis?: {
     bomb_count?: number
     rocket?: boolean
@@ -79,7 +74,6 @@ interface PendingThinkingEntry {
   answer?: string
   legalActions?: Array<{ action_type?: string; cards?: string[] }>
   parserOk?: boolean | null
-  winProbability?: ThinkingEntry['winProbability']
   handAnalysis?: ThinkingEntry['handAnalysis']
 }
 
@@ -104,7 +98,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
   const currentRawResponseFull = ref('')
   const currentLegalActions = ref<Array<{ action_type?: string; cards?: string[] }>>([])
   const currentParserOk = ref<boolean | null>(null)
-  const currentWinProbability = ref<ThinkingEntry['winProbability']>(undefined)
   const currentHandAnalysis = ref<ThinkingEntry['handAnalysis']>(undefined)
   const pendingThinking = ref<Record<string, PendingThinkingEntry>>({})
   const lastResponseTimeMs = ref<Record<string, number>>({})
@@ -168,7 +161,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponseFull.value = ''
       currentLegalActions.value = data.legal_actions || []
       currentParserOk.value = null
-      currentWinProbability.value = undefined
       currentHandAnalysis.value = undefined
     })
 
@@ -197,7 +189,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       if (data.legal_actions) currentLegalActions.value = data.legal_actions
       currentParserOk.value =
         typeof data.parser_ok === 'boolean' ? data.parser_ok : null
-      currentWinProbability.value = data.win_probability
       currentHandAnalysis.value = data.hand_analysis
 
       const pid = data.player_id || thinkingPlayer.value
@@ -220,7 +211,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
         answer: answerContent.value,
         legalActions: data.legal_actions || currentLegalActions.value,
         parserOk: currentParserOk.value,
-        winProbability: data.win_probability,
         handAnalysis: data.hand_analysis,
       }
       if (data.response_time_ms) {
@@ -300,7 +290,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
           answer: pending.answer,
           legalActions: pending.legalActions,
           parserOk: pending.parserOk,
-          winProbability: pending.winProbability,
           handAnalysis: pending.handAnalysis,
         })
       }
@@ -321,7 +310,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
       currentRawResponseFull.value = ''
       currentLegalActions.value = []
       currentParserOk.value = null
-      currentWinProbability.value = undefined
       currentHandAnalysis.value = undefined
       nextTick(() => {
         if (historyPanel.value) {
@@ -426,7 +414,6 @@ export function useGameWebSocket(gameIdSource: MaybeRefOrGetter<string>) {
     currentRawResponseFull,
     currentLegalActions,
     currentParserOk,
-    currentWinProbability,
     currentHandAnalysis,
     pendingThinking,
     lastResponseTimeMs,

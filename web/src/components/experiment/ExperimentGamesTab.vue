@@ -41,7 +41,10 @@ function gameLabel(index: number): string {
     <section v-if="activeGames.length > 0" class="space-y-ink-2">
       <div class="flex flex-wrap items-center justify-between gap-ink-2">
         <h2 class="text-body font-semibold text-ink-text">{{ t('gamesTab.active') }}</h2>
-        <div v-if="runningGames.length > 0 || pausedGames.length > 0" class="flex flex-wrap gap-ink-2">
+        <div
+          v-if="runningGames.length > 0 || pausedGames.length > 0"
+          class="flex flex-wrap gap-ink-2"
+        >
           <UiButton
             v-if="runningGames.length > 0"
             variant="secondary"
@@ -70,7 +73,9 @@ function gameLabel(index: number): string {
             <tr>
               <th class="px-3 py-ink-2 font-medium text-caption">{{ t('gamesTab.colGame') }}</th>
               <th class="px-3 py-ink-2 font-medium text-caption">{{ t('gamesTab.colStatus') }}</th>
-              <th class="px-3 py-ink-2 font-medium text-caption">{{ t('gamesTab.colProgress') }}</th>
+              <th class="px-3 py-ink-2 font-medium text-caption">
+                {{ t('gamesTab.colProgress') }}
+              </th>
               <th class="px-3 py-ink-2 font-medium text-caption">{{ t('gamesTab.colActions') }}</th>
             </tr>
           </thead>
@@ -118,7 +123,9 @@ function gameLabel(index: number): string {
                   >
                     {{ t('common.resume') }}
                   </UiButton>
-                  <span v-else class="text-caption text-ink-text-muted">{{ t('common.dash') }}</span>
+                  <span v-else class="text-caption text-ink-text-muted">{{
+                    t('common.dash')
+                  }}</span>
                 </div>
               </td>
             </tr>
@@ -127,7 +134,7 @@ function gameLabel(index: number): string {
       </div>
     </section>
 
-    <section class="space-y-ink-2">
+    <section v-if="finishedGames.length > 0 || activeGames.length === 0" class="space-y-ink-2">
       <h2 class="text-body font-semibold text-ink-text">{{ t('gamesTab.finished') }}</h2>
       <div
         v-if="finishedGames.length === 0"
@@ -166,8 +173,12 @@ function gameLabel(index: number): string {
               <td class="px-3 py-ink-2 align-middle">
                 {{ g.winner_id ? configLabel(g.winner_id) : t('common.dash') }}
               </td>
-              <td class="px-3 py-ink-2 align-middle tabular-nums">{{ g.total_rounds ?? t('common.dash') }}</td>
-              <td class="px-3 py-ink-2 align-middle whitespace-nowrap tabular-nums text-ink-text-secondary">
+              <td class="px-3 py-ink-2 align-middle tabular-nums">
+                {{ g.total_rounds ?? t('common.dash') }}
+              </td>
+              <td
+                class="px-3 py-ink-2 align-middle whitespace-nowrap tabular-nums text-ink-text-secondary"
+              >
                 {{ formatDateTime(g.finished_at ?? g.created_at) }}
               </td>
             </tr>

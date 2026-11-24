@@ -11,7 +11,6 @@ class CreateDatasetFromDecisionsRequest(BaseModel):
     game_id: str | None = None
     experiment_id: str | None = None
     player_id: str | None = None
-    min_quality: float | None = None
     outcome: str | None = None
     game_phase: str | None = None
     train_usable: bool | None = None

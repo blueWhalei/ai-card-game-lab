@@ -8,18 +8,19 @@ from typing import TYPE_CHECKING, Any
 
 import structlog
 
-from app.core.policy.kinds import is_baseline_policy_kind, normalize_player_policy_kind
+from app.core.task_protocol import validate_runtime_protocol
 from app.database import open_db_connection
+from app.repositories.experiment_repo import ExperimentRepository
 from app.repositories.game_repo import GameRepository
+from app.services.experiment_errors import ExperimentValidationError
 from app.utils.exceptions import (
     GameAlreadyStartedError,
     GameNotFoundError,
     InvalidPlayerCountError,
-    InvalidPlayerIdsError,
     ProviderNotConfiguredError,
 )
 from app.utils.id_generator import generate_id
-from app.utils.providers import is_provider_configured
+from app.utils.providers import unconfigured_providers_from_players
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -63,24 +64,10 @@ class GameService:
         self._settings = settings
 
     def _validate_player_ids(self, player_ids: list[str]) -> None:
-        missing = [
-            pid for pid in player_ids if self._experiment_config_service.get_config(pid) is None
-        ]
+        players = self._experiment_config_service.resolve_configs(player_ids)
+        missing = unconfigured_providers_from_players(self._settings, players)
         if missing:
-            raise InvalidPlayerIdsError(missing)
-
-        unconfigured: list[str] = []
-        for pid in player_ids:
-            config = self._experiment_config_service.get_config(pid)
-            if config is None:
-                continue
-            if is_baseline_policy_kind(normalize_player_policy_kind(config.get("policy_kind"))):
-                continue
-            provider = str((config.get("model_config") or {}).get("provider") or "")
-            if provider and not is_provider_configured(self._settings, provider):
-                unconfigured.append(provider)
-        if unconfigured:
-            raise ProviderNotConfiguredError(unconfigured)
+            raise ProviderNotConfiguredError(missing)
 
     def _validate_player_count(self, game_type: str, player_ids: list[str]) -> None:
         engine = self._engine_registry.get(game_type)
@@ -178,7 +165,9 @@ class GameService:
         Returns:
             The created game record
         """
-        self._validate_player_ids(player_ids)
+        # Experiment collection validates the frozen lineup once for the entire batch.
+        if frozen_players is None:
+            self._validate_player_ids(player_ids)
         self._validate_player_count(game_type, player_ids)
 
         import secrets
@@ -259,6 +248,13 @@ class GameService:
             if game["status"] not in ("created",):
                 raise GameAlreadyStartedError(game_id)
 
+            if experiment_id := game.get("experiment_id"):
+                run = await ExperimentRepository(conn).get_by_id(experiment_id)
+                try:
+                    validate_runtime_protocol(run["protocol"], self._engine_registry)
+                except ValueError as exc:
+                    raise ExperimentValidationError(str(exc)) from exc
+
             player_ids_raw = game["player_ids"]
             player_ids = (
                 json_mod.loads(player_ids_raw)
@@ -278,11 +274,20 @@ class GameService:
 
                 deal_seed = secrets.randbits(31)
                 metadata["deal_seed"] = deal_seed
-            cursor = await conn.execute(
-                "UPDATE games SET status = 'running', metadata = ? WHERE id = ? AND status = 'created'",
-                (json_mod.dumps(metadata, ensure_ascii=False), game_id),
-            )
-            await conn.commit()
+            from app.services.study_finance_service import ensure_study_budget
+
+            await conn.execute("BEGIN IMMEDIATE")
+            try:
+                await ensure_study_budget(conn, game.get("experiment_id"))
+                cursor = await conn.execute(
+                    "UPDATE games SET status = 'running', metadata = ? "
+                    "WHERE id = ? AND status = 'created'",
+                    (json_mod.dumps(metadata, ensure_ascii=False), game_id),
+                )
+                await conn.commit()
+            except BaseException:
+                await conn.rollback()
+                raise
             if cursor.rowcount != 1:
                 raise GameAlreadyStartedError(game_id)
 

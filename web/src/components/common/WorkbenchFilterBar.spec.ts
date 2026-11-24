@@ -15,9 +15,9 @@ describe('decision trainability filter', () => {
     vi.spyOn(experimentConfigApi, 'list').mockResolvedValue({ data: [] } as never)
     const router = createRouter({
       history: createMemoryHistory(),
-      routes: [{ path: '/decisions', component: { template: '<div />' } }],
+      routes: [{ path: '/pipeline/decisions', component: { template: '<div />' } }],
     })
-    await router.push('/decisions?train_usable=all')
+    await router.push('/pipeline/decisions?train_usable=all')
     const options = {
       props: { mode: 'decision' as const },
       global: {

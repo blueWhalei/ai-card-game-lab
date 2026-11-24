@@ -9,7 +9,7 @@ import asyncio
 import json
 import re
 import shutil
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -27,10 +27,13 @@ from app.core.training.verify import (
 from app.database import open_db_connection
 from app.repositories.dataset_repo import DatasetRepository
 from app.repositories.experiment_repo import ExperimentRepository
+from app.repositories.study_repo import StudyRepository
 from app.repositories.training_repo import TrainingTaskRepository
 from app.schemas.training import CreateTrainingTaskRequest
 from app.services.experiment_service import ExperimentNotFoundError
+from app.services.study_finance_service import ensure_study_budget
 from app.utils.exceptions import (
+    AppError,
     DatasetNotFoundError,
     DeployNotLoraError,
     TrainingTaskNotFoundError,
@@ -121,14 +124,26 @@ class TrainingService:
         experiment_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        study_id: str | None = None,
+        task_id: str | None = None,
+        state: str = "all",
     ) -> tuple[list[dict[str, Any]], int]:
         async with self._get_bg_db() as db:
+            await db.execute("BEGIN")
+            if study_id is not None:
+                try:
+                    await StudyRepository(db).get(study_id)
+                except KeyError as exc:
+                    raise AppError("Research not found", "STUDY_NOT_FOUND", 404) from exc
             repo = TrainingTaskRepository(db)
             return await repo.list_all(
                 status=status,
                 experiment_id=experiment_id,
                 page=page,
                 page_size=page_size,
+                study_id=study_id,
+                task_id=task_id,
+                state=state,
             )
 
     async def get_task(self, task_id: str) -> dict[str, Any]:
@@ -164,10 +179,11 @@ class TrainingService:
         # Per-task cancel flag, threaded into the LoRA path so cancel_task
         # can cooperatively interrupt the Trainer loop.
         cancel_flag: dict[str, bool] = {"cancel": False}
-        self._cancel_flags[task_id] = cancel_flag
 
         # Persist task with the (possibly clamped) config
         async with self._get_bg_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await ensure_study_budget(db, request.experiment_id)
             repo = TrainingTaskRepository(db)
             task = await repo.create(
                 {
@@ -185,6 +201,7 @@ class TrainingService:
             )
 
         # Launch background pipeline
+        self._cancel_flags[task_id] = cancel_flag
         bg = asyncio.create_task(self._run_pipeline(task_id, dataset, cancel_flag))
         self._running_tasks[task_id] = bg
         return task
@@ -257,6 +274,9 @@ class TrainingService:
         bg = self._running_tasks.get(task_id)
         if bg and not bg.done():
             bg.cancel()
+            # Let cancellation cleanup finish its database writes before returning.
+            with suppress(asyncio.CancelledError):
+                await bg
         await self._update(task_id, "cancelled")
         return await self.get_task(task_id)
 
@@ -414,7 +434,9 @@ class TrainingService:
             return result
 
         result["available_tags"] = tags
-        tag_matched = any(t == tag or t.startswith(f"{tag}:") for t in tags)
+        from app.utils.providers import model_in_catalog
+
+        tag_matched = model_in_catalog(tag, set(tags), ollama=True)
         if not tag_matched:
             result["ok"] = False
             result["error_code"] = "OLLAMA_TAG_NOT_FOUND"

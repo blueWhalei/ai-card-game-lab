@@ -80,7 +80,6 @@ export function verdictKeyOf(experiment: Experiment): ExperimentVerdictKey {
   const delta = experiment.delta
   if (!delta) return 'no_data'
   return delta.verdict_key
-
 }
 
 /**
@@ -96,40 +95,28 @@ export type VerdictHeadline = {
   isEvidence: boolean
 }
 
-export function verdictHeadlineOf(delta: ExperimentDelta, gamesNeeded = 0): VerdictHeadline {
+export function verdictHeadlineOf(delta: ExperimentDelta): VerdictHeadline {
   if (delta.can_conclude) {
     const key = delta.verdict_key ?? 'no_data'
     return { key: `verdict.${key}`, isEvidence: false }
   }
   const reason = delta.inconclusive_reason
+  if (reason === 'incomplete_holdout')
+    return { key: 'evidence.incompleteHoldout', isEvidence: true }
   if (reason === 'protocol_mismatch') return { key: 'evidence.protocolMismatch', isEvidence: true }
   if (reason === 'peer_not_ready') {
     return { key: 'evidence.peerPending', isEvidence: true }
   }
   if (reason === 'low_power') {
-    if (gamesNeeded > 0) {
-      return {
-        key: 'evidence.lowPowerNeed',
-        params: { n: delta.paired_n, need: gamesNeeded },
-        isEvidence: true,
-      }
-    }
     return {
       key: 'evidence.lowPower',
       params: { n: delta.paired_n },
       isEvidence: true,
     }
   }
+  if (reason === 'missing_paired_evidence')
+    return { key: 'evidence.missingPaired', isEvidence: true }
+  if (reason === 'uncertain_difference')
+    return { key: 'evidence.uncertainDifference', isEvidence: true }
   return { key: 'evidence.noData', isEvidence: true }
-}
-
-/**
- * Roughly how many more decisive games would lift the pair out of low power.
- * Used to turn "not enough evidence" into an actionable number.
- */
-export function gamesNeededForPower(experiment: Experiment, minDecisive = 20): number {
-  const delta = experiment.delta
-  if (!delta) return minDecisive
-  const decisive = Math.min(delta.this_decisive_n, delta.peer_decisive_n)
-  return Math.max(0, minDecisive - decisive)
 }

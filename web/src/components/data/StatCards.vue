@@ -46,7 +46,6 @@ const hasWinsByRole = computed(() => Object.keys(stats.value?.wins_by_role ?? {}
 const roleLabels = computed((): Record<string, string> => ({
   landlord: t('game.landlord'),
   peasant: t('game.peasant'),
-  farmer: t('game.peasant'),
   no_bid: t('game.noBid'),
 }))
 

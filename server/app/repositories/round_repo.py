@@ -45,11 +45,11 @@ class RoundRepository:
         await self._db.commit()
         return cursor.lastrowid or 0
 
-    async def list_by_game(self, game_id: str) -> list[dict[str, Any]]:
+    async def list_by_game(self, game_id: str, cutoff: str | None = None) -> list[dict[str, Any]]:
         """Return all rounds for a given game, ordered by round_num."""
         cursor = await self._db.execute(
-            "SELECT * FROM rounds WHERE game_id = ? ORDER BY round_num",
-            (game_id,),
+            "SELECT * FROM rounds WHERE game_id = ? AND (? IS NULL OR created_at <= ?) ORDER BY round_num",
+            (game_id, cutoff, cutoff),
         )
         rows = await cursor.fetchall()
         return [dict(r) for r in rows]

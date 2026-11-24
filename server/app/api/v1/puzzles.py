@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Query
 from app.dependencies import get_puzzle_service
 from app.schemas.common import ApiResponse
 from app.schemas.puzzle import (
+    DecisionPuzzleRequest,
     PuzzleExtractRequest,
     PuzzlePackSummary,
     PuzzleProbeRequest,
@@ -17,6 +18,27 @@ from app.schemas.puzzle import (
 from app.services.puzzle_service import PuzzleService
 
 router = APIRouter(tags=["puzzles"])
+
+
+@router.get("/decisions/{decision_id}", response_model=ApiResponse[dict[str, Any]])
+async def inspect_decision_source(
+    decision_id: str,
+    service: PuzzleService = Depends(get_puzzle_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=await service.decision_source(decision_id))
+
+
+@router.post("/from-decision", response_model=ApiResponse[dict[str, Any]])
+async def create_decision_puzzle(
+    body: DecisionPuzzleRequest,
+    service: PuzzleService = Depends(get_puzzle_service),
+) -> ApiResponse[dict[str, Any]]:
+    manifest = await service.from_decision(
+        body.decision_id,
+        question=body.question,
+        expected_source_hash=body.expected_source_hash,
+    )
+    return ApiResponse(data=_manifest_summary(manifest))
 
 
 def _manifest_summary(manifest: Any) -> dict[str, Any]:
@@ -84,6 +106,24 @@ async def run_puzzle_pack(
     return ApiResponse(data=report)
 
 
+@router.get("/packs/{pack_id}/results", response_model=ApiResponse[dict[str, Any]])
+def list_puzzle_results(
+    pack_id: str,
+    page: int = Query(default=1, ge=1, le=100000),
+    service: PuzzleService = Depends(get_puzzle_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=service.results(pack_id, page=page))
+
+
+@router.get("/packs/{pack_id}/results/{run_id}", response_model=ApiResponse[dict[str, Any]])
+def get_puzzle_result(
+    pack_id: str,
+    run_id: str,
+    service: PuzzleService = Depends(get_puzzle_service),
+) -> ApiResponse[dict[str, Any]]:
+    return ApiResponse(data=service.result(pack_id, run_id))
+
+
 @router.post("/packs/{pack_id}/probe", response_model=ApiResponse[dict[str, Any]])
 async def probe_puzzle_pack(
     pack_id: str,
@@ -95,6 +135,6 @@ async def probe_puzzle_pack(
         baseline_kind=body.baseline_kind,
         seed=body.seed,
         n_trials=body.n_trials,
-        kinds=body.kinds,
+        kinds=[*body.kinds] if body.kinds is not None else None,
     )
     return ApiResponse(data=report)

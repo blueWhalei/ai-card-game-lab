@@ -30,19 +30,26 @@ vi.mock('@/api/experimentApi', async () => {
 
 function makeDelta(overrides: Partial<ExperimentDelta> = {}): ExperimentDelta {
   return {
+    primary_metric: { kind: 'landlord_win_rate' },
+    affected_player_ids: [],
+    deal_purpose: 'development',
+    paired_excluded_n: 0,
+    outcome_counts: { both_won: 12, a_only_won: 12, b_only_won: 4, both_lost: 12 },
+    ci_method: 'clopper_pearson_bonferroni',
+    difference_basis: 'paired',
+    design_hypothesis: null,
     peer_id: 'exp-2',
     peer_name: 'control',
     relation: 'vs_control',
     peer_ready: true,
-    this_landlord_win_rate: 0.6,
-    peer_landlord_win_rate: 0.4,
-    landlord_win_rate_diff: 0.2,
-    this_landlord_win_rate_ci: null,
-    peer_landlord_win_rate_ci: null,
+    this_win_rate: 0.6,
+    peer_win_rate: 0.4,
+    win_rate_diff: 0.2,
+    this_win_rate_ci: null,
+    peer_win_rate_ci: null,
     this_decisive_n: 40,
     peer_decisive_n: 40,
     paired_n: 40,
-    paired_landlord_win_rate_diff: 0.2,
     low_power: false,
     can_conclude: true,
     inconclusive_reason: null,
@@ -61,15 +68,13 @@ function mountVerdict(delta: ExperimentDelta) {
   })
   return mount(StageVerdict, {
     props: {
-      experimentId: 'exp-1',
+      runName: 'Test',
       delta,
       verdictKey: delta.verdict_key ?? 'stronger',
-      gamesNeeded: 0,
     },
     global: {
       plugins: [i18n],
       stubs: {
-        ExperimentScenarioBars: true,
         MetricHint: true,
         UiDialog: true,
         UiTextarea: true,
@@ -83,7 +88,7 @@ const GOOD_BAD_CLASS = /ink-success|ink-danger|text-success|text-danger|text-gre
 
 describe('StageVerdict delta presentation', () => {
   it('does not color a positive Δ as success/good', () => {
-    const wrapper = mountVerdict(makeDelta({ landlord_win_rate_diff: 0.2 }))
+    const wrapper = mountVerdict(makeDelta({ win_rate_diff: 0.2 }))
     const number = wrapper.get('.ink-verdict-number')
     expect(number.text()).toContain('+')
     expect(number.classes().join(' ')).not.toMatch(GOOD_BAD_CLASS)
@@ -93,10 +98,11 @@ describe('StageVerdict delta presentation', () => {
   it('does not color a negative Δ as danger/bad', () => {
     const wrapper = mountVerdict(
       makeDelta({
-        landlord_win_rate_diff: -0.15,
+        win_rate_diff: -0.15,
+        outcome_counts: { both_won: 12, a_only_won: 2, b_only_won: 8, both_lost: 18 },
         verdict_key: 'weaker',
-        this_landlord_win_rate: 0.35,
-        peer_landlord_win_rate: 0.5,
+        this_win_rate: 0.35,
+        peer_win_rate: 0.5,
       }),
     )
     const number = wrapper.get('.ink-verdict-number')
@@ -109,7 +115,10 @@ describe('StageVerdict delta presentation', () => {
       makeDelta({
         can_conclude: false,
         inconclusive_reason: 'low_power',
-        landlord_win_rate_diff: 0.2,
+        win_rate_diff: 1 / 3,
+        this_win_rate: 2 / 3,
+        peer_win_rate: 1 / 3,
+        outcome_counts: { both_won: 1, a_only_won: 1, b_only_won: 0, both_lost: 1 },
         verdict_key: 'stronger',
         paired_n: 3,
         this_decisive_n: 3,

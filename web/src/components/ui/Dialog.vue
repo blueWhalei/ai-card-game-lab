@@ -9,7 +9,7 @@ import {
   DialogTitle,
 } from 'reka-ui'
 import { Icon } from '@iconify/vue'
-import { computed } from 'vue'
+import { computed, useId, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
 
@@ -20,11 +20,13 @@ const props = withDefaults(
     description?: string
     /** default 520px; lg 672px for create forms; wide 896px for archives */
     size?: 'default' | 'lg' | 'wide'
+    placement?: 'center' | 'side'
     class?: string
   }>(),
   {
     open: false,
     size: 'default',
+    placement: 'center',
   },
 )
 
@@ -33,6 +35,22 @@ const emit = defineEmits<{
 }>()
 
 const { t } = useI18n()
+const descriptionId = useId()
+let returnFocus: HTMLElement | null = null
+watch(
+  () => props.open,
+  (open) => {
+    if (open)
+      returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null
+  },
+  { flush: 'sync' },
+)
+function restoreFocus(event: Event) {
+  if (returnFocus?.isConnected) {
+    event.preventDefault()
+    returnFocus.focus()
+  }
+}
 
 const sizeClass = computed(() => {
   if (props.size === 'wide') return 'w-[min(94vw,56rem)]'
@@ -46,10 +64,17 @@ const sizeClass = computed(() => {
     <DialogPortal>
       <DialogOverlay class="ink-dialog-overlay fixed inset-0 z-50 bg-black/40" />
       <DialogContent
+        @close-auto-focus="restoreFocus"
+        :aria-describedby="description ? descriptionId : undefined"
         :class="
           cn(
-            'ink-dialog-content fixed top-1/2 left-1/2 z-50 max-h-[85vh] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-ink-md border border-ink-border bg-ink-surface p-ink-6 shadow-[var(--ink-shadow-md)] focus:outline-none',
-            sizeClass,
+            'fixed z-50 overflow-y-auto border border-ink-border bg-ink-surface p-ink-6 shadow-[var(--ink-shadow-md)] focus:outline-none',
+            placement === 'side'
+              ? 'inset-y-0 right-0 w-full max-w-3xl'
+              : [
+                  'ink-dialog-content top-1/2 left-1/2 max-h-[85vh] -translate-x-1/2 -translate-y-1/2 rounded-ink-md',
+                  sizeClass,
+                ],
             props.class,
           )
         "
@@ -59,7 +84,11 @@ const sizeClass = computed(() => {
             <DialogTitle v-if="title" class="text-title font-semibold text-ink-text">
               {{ title }}
             </DialogTitle>
-            <DialogDescription v-if="description" class="mt-ink-1 text-caption text-ink-text-secondary">
+            <DialogDescription
+              v-if="description"
+              :id="descriptionId"
+              class="mt-ink-1 text-caption text-ink-text-secondary"
+            >
               {{ description }}
             </DialogDescription>
           </div>
@@ -71,7 +100,10 @@ const sizeClass = computed(() => {
           </DialogClose>
         </div>
         <slot />
-        <div v-if="$slots.footer" class="mt-ink-6 flex justify-end gap-ink-2 border-t border-ink-border pt-ink-4">
+        <div
+          v-if="$slots.footer"
+          class="mt-ink-6 flex justify-end gap-ink-2 border-t border-ink-border pt-ink-4"
+        >
           <slot name="footer" />
         </div>
       </DialogContent>

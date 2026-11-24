@@ -7,14 +7,9 @@ from typing import Any
 
 import aiosqlite
 
+from app.core.stats.scenarios import SCENARIO_SQL
+
 _TRACE_EXPLAIN_SQL = """
-json_extract((
-    SELECT t.input_snapshot FROM traces t
-    WHERE t.game_id = decision_points.game_id
-      AND t.round_number = decision_points.round_number
-      AND t.player_id = decision_points.player_id
-    ORDER BY t.created_at DESC LIMIT 1
-), '$.win_probability') AS win_probability_json,
 json_extract((
     SELECT t.input_snapshot FROM traces t
     WHERE t.game_id = decision_points.game_id
@@ -30,6 +25,94 @@ class DecisionRepository:
 
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
+
+    async def scenario_records(
+        self,
+        experiment_id: str,
+        scenario: str | None,
+        game_id: str | None,
+        game_page: int,
+        page: int,
+    ) -> dict[str, Any]:
+        """One run's current records, with the canonical mutually exclusive buckets."""
+        scope = (
+            "FROM decision_points dp JOIN games g ON g.id = dp.game_id WHERE g.experiment_id = ?"
+        )
+        counts = "COUNT(*) AS decision_n, COUNT(dp.ev_loss) AS evaluated_n"
+        cursor = await self._db.execute(
+            f"SELECT {SCENARIO_SQL} AS scenario, {counts}, COUNT(DISTINCT dp.game_id) AS game_n "
+            f"{scope} GROUP BY scenario",
+            (experiment_id,),
+        )
+        groups = [dict(row) for row in await cursor.fetchall()]
+        cursor = await self._db.execute(
+            f"SELECT {counts}, COUNT(DISTINCT dp.game_id) AS game_n {scope}", (experiment_id,)
+        )
+        totals_row = await cursor.fetchone()
+        assert totals_row is not None  # An aggregate without GROUP BY always returns one row.
+        totals = dict(totals_row)
+        total_games = int(
+            await self._scalar(
+                "SELECT COUNT(*) FROM games WHERE experiment_id = ?", [experiment_id]
+            )
+        )
+        totals["unrecorded_game_n"] = total_games - totals["game_n"]
+        params: list[Any] = [experiment_id]
+        if scenario is not None:
+            scope += f" AND ({SCENARIO_SQL}) = ?"
+            params.append(scenario)
+        game_total = int(await self._scalar(f"SELECT COUNT(DISTINCT dp.game_id) {scope}", params))
+        game_fields = f"g.id, g.status, g.created_at, {counts}"
+        cursor = await self._db.execute(
+            f"SELECT {game_fields} {scope} GROUP BY g.id "
+            "ORDER BY g.created_at DESC, g.id LIMIT 20 OFFSET ?",
+            [*params, (game_page - 1) * 20],
+        )
+        games = [dict(row) for row in await cursor.fetchall()]
+        selected_game = None
+        points: list[dict[str, Any]] = []
+        if game_id is not None:
+            selected_scope = scope + " AND g.id = ?"
+            cursor = await self._db.execute(
+                f"SELECT {game_fields} {selected_scope} GROUP BY g.id", [*params, game_id]
+            )
+            row = await cursor.fetchone()
+            selected_game = dict(row) if row else None
+            if selected_game:
+                cursor = await self._db.execute(
+                    f"SELECT dp.* {selected_scope} "
+                    "ORDER BY dp.round_number, dp.created_at, dp.id LIMIT 20 OFFSET ?",
+                    [*params, game_id, (page - 1) * 20],
+                )
+                fields = (
+                    "id",
+                    "game_id",
+                    "round_number",
+                    "player_id",
+                    "game_phase",
+                    "hand_cards",
+                    "chosen_action",
+                    "action_id",
+                    "ev_loss",
+                    "evaluator_params",
+                    "created_at",
+                )
+                points = [
+                    {key: value for key, value in _row_to_dict(row).items() if key in fields}
+                    for row in await cursor.fetchall()
+                ]
+        return {
+            "totals": totals,
+            "groups": groups,
+            "games": {"items": games, "total": game_total, "page": game_page, "page_size": 20},
+            "selected_game": selected_game,
+            "decisions": {
+                "items": points,
+                "total": selected_game["decision_n"] if selected_game else 0,
+                "page": page,
+                "page_size": 20,
+            },
+        }
 
     async def create(
         self,
@@ -96,56 +179,12 @@ class DecisionRepository:
         )
         await self._db.commit()
 
-    async def update_outcome_by_winner(
-        self,
-        game_id: str,
-        winner_id: str,
-    ) -> int:
-        """Set outcome='win' for winner, 'lose' for the rest. Returns total updated count."""
-        cursor = await self._db.execute(
-            """
-            UPDATE decision_points
-            SET outcome = 'win', quality_score = 0.8
-            WHERE game_id = ? AND player_id = ?
-            """,
-            (game_id, winner_id),
-        )
-        updated = cursor.rowcount or 0
-
-        cursor = await self._db.execute(
-            """
-            UPDATE decision_points
-            SET outcome = 'lose', quality_score = 0.3
-            WHERE game_id = ? AND player_id != ?
-            """,
-            (game_id, winner_id),
-        )
-        updated += cursor.rowcount or 0
-        await self._db.commit()
-        return updated
-
-    async def update_outcome_draw(self, game_id: str) -> int:
-        """Set outcome='draw' for all decision points in a game. Returns updated count."""
-        cursor = await self._db.execute(
-            """
-            UPDATE decision_points
-            SET outcome = 'draw', quality_score = 0.5
-            WHERE game_id = ?
-            """,
-            (game_id,),
-        )
-        count = cursor.rowcount or 0
-        await self._db.commit()
-        return count
-
     async def list_decision_points(
         self,
         *,
         game_id: str | None = None,
         experiment_id: str | None = None,
         player_id: str | None = None,
-        min_quality: float | None = None,
-        max_quality: float | None = None,
         game_phase: str | None = None,
         outcome: str | None = None,
         train_usable: bool | None = None,
@@ -173,12 +212,6 @@ class DecisionRepository:
         if player_id:
             conditions.append("player_id = ?")
             params.append(player_id)
-        if min_quality is not None:
-            conditions.append("quality_score >= ?")
-            params.append(min_quality)
-        if max_quality is not None:
-            conditions.append("quality_score <= ?")
-            params.append(max_quality)
         if game_phase:
             conditions.append("game_phase = ?")
             params.append(game_phase)
@@ -233,6 +266,32 @@ class DecisionRepository:
         row = await cursor.fetchone()
         return _row_to_dict(row) if row else None
 
+    async def evidence_sequence(self, game_id: str, cutoff: str) -> list[dict[str, Any]]:
+        """Bound one game's records at the comparison's frozen cutoff."""
+        async with self._db.execute(
+            f"SELECT dp.*, {SCENARIO_SQL} AS scenario FROM decision_points dp "
+            "WHERE game_id = ? AND created_at <= ? "
+            "ORDER BY round_number, id LIMIT 2001",
+            (game_id, cutoff),
+        ) as cursor:
+            return [
+                {**_row_to_dict(row), "scenario": row["scenario"]}
+                for row in await cursor.fetchall()
+            ]
+
+    async def evidence_scenario_counts(
+        self, game_ids: list[str], cutoff: str
+    ) -> list[dict[str, Any]]:
+        """Current records inside frozen membership and the snapshot cutoff."""
+        async with self._db.execute(
+            f"SELECT dp.game_id, {SCENARIO_SQL} AS scenario, COUNT(*) AS n "
+            "FROM decision_points dp "
+            "WHERE dp.game_id IN (SELECT value FROM json_each(?)) AND dp.created_at <= ? "
+            "GROUP BY dp.game_id, scenario",
+            (json.dumps(game_ids), cutoff),
+        ) as cursor:
+            return [dict(row) for row in await cursor.fetchall()]
+
     async def update_annotation(self, decision_id: str, annotation: str | None) -> bool:
         """Set or clear human annotation. Returns False if the row is missing."""
         cursor = await self._db.execute(
@@ -267,27 +326,6 @@ class DecisionRepository:
             "usable": int(row["usable"] or 0),
             "not_usable": int(row["not_usable"] or 0),
             "total": int(row["total"] or 0),
-        }
-
-    async def get_quality_stats(self, experiment_id: str | None = None) -> dict[str, Any]:
-        """Return avg/min/max quality scores."""
-        where, params = self._experiment_where(experiment_id, extra="quality_score IS NOT NULL")
-        cursor = await self._db.execute(
-            f"""
-            SELECT
-                AVG(quality_score) as avg_quality,
-                MIN(quality_score) as min_quality,
-                MAX(quality_score) as max_quality
-            FROM decision_points
-            {where}
-            """,
-            params,
-        )
-        row = await cursor.fetchone()
-        return {
-            "avg_quality": row["avg_quality"] if row and row["avg_quality"] else 0,
-            "min_quality": row["min_quality"] if row and row["min_quality"] else 0,
-            "max_quality": row["max_quality"] if row and row["max_quality"] else 0,
         }
 
     async def get_ev_loss_stats(
@@ -499,7 +537,6 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "prompt_messages": json.loads(row["prompt_messages"]) if row["prompt_messages"] else None,
         "thinking": row["thinking"],
         "outcome": row["outcome"],
-        "quality_score": row["quality_score"],
         "train_usable": bool(row["train_usable"]),
         "train_usable_reason": row["train_usable_reason"],
         "parse_fallback": bool(row["parse_fallback"]),
@@ -510,9 +547,6 @@ def _row_to_dict(row: aiosqlite.Row) -> dict[str, Any]:
         "tool_calls": _parse_json_list(row["tool_calls"] if "tool_calls" in keys else None),
         "annotation": row["annotation"] if "annotation" in keys else None,
         "created_at": row["created_at"],
-        "win_probability": _parse_json_object(
-            row["win_probability_json"] if "win_probability_json" in keys else None
-        ),
         "hand_analysis": _parse_json_object(
             row["hand_analysis_json"] if "hand_analysis_json" in keys else None
         ),

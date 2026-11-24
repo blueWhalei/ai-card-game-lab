@@ -59,6 +59,8 @@ async def test_seed_demo_experiment_has_delta(client: AsyncClient) -> None:
     data = detail.json()["data"]
     assert data["delta"] is not None
     assert data["delta"]["peer_id"] == "exp_demo_control"
+    assert data["delta"]["paired_n"] == data["delta"]["outcome_counts"]["a_only_won"] == 2
+    assert data["delta"]["paired_excluded_n"] == 0
     assert data["summary"]["finished_games"] >= 2
 
 

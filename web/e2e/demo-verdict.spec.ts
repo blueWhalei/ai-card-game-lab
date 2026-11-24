@@ -1,12 +1,12 @@
 import { expect, test } from '@playwright/test'
 
 test.describe('demo → verdict smoke', () => {
-  test('home load-demo opens experiment verdict stage', async ({ page }) => {
+  test('run library load-demo opens experiment verdict stage', async ({ page }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('ink-locale', 'en')
     })
 
-    await page.goto('/')
+    await page.goto('/experiments')
     await expect(page.getByTestId('load-demo-experiment').first()).toBeVisible({
       timeout: 30_000,
     })

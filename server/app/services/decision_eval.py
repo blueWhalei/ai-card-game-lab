@@ -28,7 +28,7 @@ logger = structlog.get_logger()
 SELF_OPPONENT_KIND = "self"
 
 
-def resolve_baseline_opponent(kind: str) -> ActionSelector:
+def resolve_baseline_opponent(kind: str) -> BaselinePolicy:
     """Map a baseline ``opponent_kind`` to a policy (never ``self``)."""
     normalized = (kind or "heuristic").strip() or "heuristic"
     if normalized == SELF_OPPONENT_KIND:
@@ -65,23 +65,13 @@ def resolve_opponent_for_score(
     kind = (params.opponent_kind or "heuristic").strip() or "heuristic"
     if kind != SELF_OPPONENT_KIND:
         opponent = resolve_baseline_opponent(kind)
-        return opponent, {}
-
-    if isinstance(self_selector, BaselinePolicy):
-        return self_selector, {
-            "opponent_kind_requested": SELF_OPPONENT_KIND,
-            "opponent_kind_effective": self_selector.kind,
-        }
-
-    proxy_kind = (params.self_proxy or "heuristic").strip() or "heuristic"
-    opponent = resolve_baseline_opponent(proxy_kind)
-    if isinstance(opponent, BaselinePolicy):
-        effective = opponent.kind
+    elif isinstance(self_selector, BaselinePolicy):
+        opponent = self_selector
     else:
-        effective = "heuristic"
+        opponent = resolve_baseline_opponent(params.self_proxy)
     return opponent, {
-        "opponent_kind_requested": SELF_OPPONENT_KIND,
-        "opponent_kind_effective": effective,
+        "opponent_kind_requested": kind,
+        "opponent_kind_effective": opponent.kind,
     }
 
 
@@ -159,8 +149,6 @@ class DecisionEvaluator:
         observation = engine.observe(state, player_id)
         legal_actions = engine.legal_actions(state, player_id)
         result = evaluator.ev_loss(observation, legal_actions, engine.action_id(chosen_action))
-        if not honesty:
-            return result
         merged = dict(result.params)
         merged.update(honesty)
         return replace(result, params=merged)

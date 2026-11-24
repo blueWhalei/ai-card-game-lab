@@ -1,5 +1,7 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { formatRolloutScope } from '@/utils/gameHighlights'
+import { scenarioReturn } from '@/utils/scenarioNavigation'
+import { ref, computed, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
@@ -33,6 +35,8 @@ import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiDialog from '@/components/ui/Dialog.vue'
 import UiPagination from '@/components/ui/Pagination.vue'
 import CardDisplay from '@/components/game/CardDisplay.vue'
+import DecisionPuzzle from '@/components/puzzle/DecisionPuzzle.vue'
+import EvidenceCitationEntry from '@/components/experiment/EvidenceCitationEntry.vue'
 import MoveExplainStrip from '@/components/common/MoveExplainStrip.vue'
 import { DEFAULT_PAGE_SIZE, parsePageSize, type PageSizeOption } from '@/utils/pagination'
 
@@ -50,6 +54,7 @@ const props = withDefaults(
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const scenarioBack = computed(() => scenarioReturn(route.query))
 const { registerDataset } = useRegisterAndTrain()
 const defaultGameType = ref('')
 const playerNames = ref<Record<string, string>>({})
@@ -64,6 +69,13 @@ const registering = ref(false)
 const registerOpen = ref(false)
 const registerEvalRatio = ref(0.1)
 const selectedPoint = ref<DecisionPoint | null>(null)
+const selectionMissing = ref(false)
+let listRequest = 0
+let statsRequest = 0
+onBeforeUnmount(() => {
+  listRequest++
+  statsRequest++
+})
 const stats = ref<DecisionStats | null>(null)
 const howToOpen = ref(false)
 const exportIncludeThinking = ref(false)
@@ -104,10 +116,6 @@ const routeTrainUsable = computed(() => {
   if (v === 'false') return false
   return undefined
 })
-const routeMinQuality = computed(() => {
-  const q = route.query.min_quality
-  return typeof q === 'string' && q ? parseFloat(q) : undefined
-})
 const routeMaxEvLoss = computed(() => {
   const q = route.query.max_ev_loss
   return typeof q === 'string' && q ? parseFloat(q) : undefined
@@ -145,13 +153,6 @@ const trainUsableFilter = computed(() => {
   if (routeDecisionId.value) return undefined
   return routeTrainUsable.value
 })
-const minQuality = computed(() => {
-  if (props.embedded) {
-    const q = localFilters.value.min_quality
-    return q ? parseFloat(q) : undefined
-  }
-  return routeMinQuality.value
-})
 const maxEvLossFilter = computed(() => {
   if (props.embedded) {
     const q = localFilters.value.max_ev_loss
@@ -168,10 +169,7 @@ const pageSize = computed(() => (props.embedded ? localPageSize.value : routePag
 const registerPreview = computed(() => {
   const usable = stats.value?.train_usable_count ?? 0
   const notUsable = stats.value?.not_usable_count ?? 0
-  const totalGames = Math.max(1, stats.value?.total ?? 1)
-  const gameEstimate = Math.max(1, Math.ceil(totalGames * registerEvalRatio.value))
-  const evalCount = registerEvalRatio.value > 0 ? Math.max(0, Math.min(usable, gameEstimate)) : 0
-  return { usable, notUsable, train: Math.max(0, usable - evalCount), eval: evalCount }
+  return { usable, notUsable }
 })
 
 const playerCandidates = computed(() => [
@@ -179,6 +177,14 @@ const playerCandidates = computed(() => [
 ])
 
 async function fetchDecisionPoints() {
+  const token = ++listRequest
+  const wanted = routeDecisionId.value
+  const previous = selectedPoint.value?.id
+  const scopedGame = gameId.value
+  selectedPoint.value = null
+  selectionMissing.value = false
+  decisionPoints.value = []
+  listTotal.value = 0
   loading.value = true
   try {
     const params: {
@@ -187,7 +193,6 @@ async function fetchDecisionPoints() {
       player_id?: string
       outcome?: string
       game_phase?: string
-      min_quality?: number
       train_usable?: boolean
       max_ev_loss?: number
       annotation?: DecisionAnnotation
@@ -195,20 +200,17 @@ async function fetchDecisionPoints() {
       page_size: number
     } = { page: page.value, page_size: pageSize.value }
     if (gameId.value) params.game_id = gameId.value
-    else if (effectiveExperimentId.value) params.experiment_id = effectiveExperimentId.value
+    if (effectiveExperimentId.value) params.experiment_id = effectiveExperimentId.value
     if (playerId.value) params.player_id = playerId.value
     if (outcome.value) params.outcome = outcome.value
     if (gamePhase.value) params.game_phase = gamePhase.value
-    if (minQuality.value !== undefined && !Number.isNaN(minQuality.value)) {
-      params.min_quality = minQuality.value
-    }
     if (trainUsableFilter.value !== undefined) params.train_usable = trainUsableFilter.value
     if (maxEvLossFilter.value !== undefined) params.max_ev_loss = maxEvLossFilter.value
     if (annotationFilter.value) params.annotation = annotationFilter.value
     const res = await decisionApi.list(params)
+    if (token !== listRequest) return
     decisionPoints.value = res.data.items
     listTotal.value = res.data.total
-    const wanted = routeDecisionId.value
     if (wanted) {
       const found = decisionPoints.value.find((p) => p.id === wanted)
       if (found) {
@@ -216,24 +218,24 @@ async function fetchDecisionPoints() {
       } else {
         try {
           const one = await decisionApi.get(wanted)
+          if (token !== listRequest) return
+          if (one.data.id !== wanted || (scopedGame && one.data.game_id !== scopedGame))
+            throw new Error('Decision identity mismatch')
           selectedPoint.value = one.data
         } catch {
-          selectedPoint.value =
-            decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
-            decisionPoints.value[0] ??
-            null
+          if (token !== listRequest) return
+          selectedPoint.value = null
+          selectionMissing.value = true
         }
       }
     } else {
       selectedPoint.value =
-        decisionPoints.value.find((p) => p.id === selectedPoint.value?.id) ??
-        decisionPoints.value[0] ??
-        null
+        decisionPoints.value.find((p) => p.id === previous) ?? decisionPoints.value[0] ?? null
     }
   } catch (e: unknown) {
-    showApiError(e, t('decision.loadFailed'))
+    if (token === listRequest) showApiError(e, t('decision.loadFailed'))
   } finally {
-    loading.value = false
+    if (token === listRequest) loading.value = false
   }
 }
 
@@ -317,15 +319,15 @@ async function setPointAnnotation(value: DecisionAnnotation | null): Promise<voi
 }
 
 async function fetchStats() {
+  const token = ++statsRequest
+  stats.value = null
   try {
     const res = await decisionApi.stats(
-      effectiveExperimentId.value && !gameId.value
-        ? { experiment_id: effectiveExperimentId.value }
-        : undefined,
+      effectiveExperimentId.value ? { experiment_id: effectiveExperimentId.value } : undefined,
     )
-    stats.value = res.data
+    if (token === statsRequest) stats.value = res.data
   } catch (e: unknown) {
-    showApiError(e, t('decision.statsFailed'))
+    if (token === statsRequest) showApiError(e, t('decision.statsFailed'))
   }
 }
 
@@ -336,7 +338,6 @@ function exportScopeParams() {
     player_id: playerId.value,
     outcome: outcome.value,
     game_phase: gamePhase.value,
-    min_quality: minQuality.value,
     max_ev_loss: maxEvLossFilter.value,
     include_thinking: exportIncludeThinking.value,
     annotation: annotationFilter.value || undefined,
@@ -397,7 +398,10 @@ async function registerAsDataset(evalRatio = 0): Promise<void> {
 
 function selectPointById(id: string): void {
   const point = decisionPoints.value.find((p) => p.id === id)
-  if (point) selectedPoint.value = point
+  if (point) {
+    selectionMissing.value = false
+    selectedPoint.value = point
+  }
 }
 
 function formatAction(action: { action_type: string; cards: string[] } | null): string {
@@ -450,7 +454,6 @@ watch(
     playerId,
     outcome,
     gamePhase,
-    minQuality,
     trainUsableFilter,
     page,
     pageSize,
@@ -497,8 +500,49 @@ onMounted(async () => {
 <template>
   <div :class="embedded ? 'space-y-3' : 'page-container'">
     <RouterLink
+      v-if="!embedded && typeof route.query.puzzle_pack === 'string' && route.query.puzzle_pack"
+      :to="{
+        path: '/pipeline/puzzles',
+        query: {
+          pack_id: route.query.puzzle_pack,
+          result_id: route.query.puzzle_result,
+          result_page: route.query.puzzle_page,
+          report_id: route.query.report_id,
+          puzzle_evidence: route.query.puzzle_evidence,
+        },
+      }"
+      class="mb-3 mr-4 inline-block text-caption text-ink-primary"
+      >{{ t('puzzle.backToPack') }}</RouterLink
+    >
+    <RouterLink
+      v-if="!embedded && scenarioBack"
+      :to="scenarioBack"
+      class="mb-3 mr-4 inline-block text-caption text-ink-primary"
+      >{{ t('scenarioRecords.back') }}</RouterLink
+    >
+    <RouterLink
+      v-if="!embedded && typeof route.query.report_id === 'string'"
+      :to="{
+        name: 'research-report',
+        params: { id: route.query.report_id },
+        query: { evidence: route.query.evidence, puzzle_evidence: route.query.puzzle_evidence },
+      }"
+      class="mb-3 mr-4 inline-block text-caption text-ink-primary"
+      >{{ t('report.back') }}</RouterLink
+    >
+    <RouterLink
       v-if="!embedded && typeof route.query.comparison_id === 'string'"
-      :to="{ path: '/experiments/compare', query: { snapshot: route.query.comparison_id } }"
+      :to="{
+        path: '/experiments/compare',
+        query: {
+          snapshot: route.query.comparison_id,
+          seed: route.query.compare_seed,
+          turn: route.query.compare_turn,
+          scenario: route.query.compare_scenario,
+          report_id: route.query.report_id,
+          evidence: route.query.evidence,
+        },
+      }"
       class="mb-3 inline-block text-caption text-ink-primary"
       >{{ t('researchReport.back') }}</RouterLink
     >
@@ -692,8 +736,8 @@ onMounted(async () => {
           type="button"
           @click="
             router.push({
-              path: `/experiments/${experimentId}`,
-              query: { tab: 'traces' },
+              path: '/pipeline/traces',
+              query: { experiment_id: experimentId },
             })
           "
         >
@@ -720,16 +764,13 @@ onMounted(async () => {
         v-if="stats && !embedded"
         class="flex flex-wrap gap-x-3 gap-y-1 text-xs text-ink-text-muted tabular-nums"
       >
+        <span>{{
+          t(effectiveExperimentId ? 'decision.runStatsScope' : 'decision.allStatsScope')
+        }}</span>
         <span>{{ t('decision.total', { n: stats.total }) }}</span>
-        <span>{{ t('decision.avgQuality', { n: stats.avg_quality.toFixed(2) }) }}</span>
-        <span v-if="stats.avg_ev_loss != null">
-          {{
-            t('decision.avgEvLoss', {
-              n: stats.avg_ev_loss.toFixed(2),
-              evaluated: stats.evaluated_count ?? 0,
-            })
-          }}
-        </span>
+        <span>{{
+          t('decision.evaluatedDecisions', { n: stats.evaluated_count, total: stats.total })
+        }}</span>
         <span class="text-ink-success">{{
           t('decision.wins', { n: stats.outcome_counts.win || 0 })
         }}</span>
@@ -813,6 +854,16 @@ onMounted(async () => {
               {{ playerNames[selectedPoint.player_id] || selectedPoint.player_id }} ·
               {{ t('decision.roundLabel', { n: selectedPoint.round_number }) }}
             </h3>
+            <div class="mt-ink-3 flex flex-wrap items-center gap-ink-3">
+              <EvidenceCitationEntry
+                :source="{
+                  kind: 'decision',
+                  id: selectedPoint.id,
+                  turn: selectedPoint.round_number,
+                }"
+              />
+              <DecisionPuzzle :decision-id="selectedPoint.id" />
+            </div>
           </div>
 
           <div class="space-y-4">
@@ -909,15 +960,6 @@ onMounted(async () => {
                     </UiBadge>
                     <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
                       {{
-                        t('decision.qualityLabel', { n: selectedPoint.quality_score.toFixed(2) })
-                      }}
-                      <MetricHint
-                        :plain="t('metricHint.quality.plain')"
-                        :formula="t('metricHint.quality.formula')"
-                      />
-                    </span>
-                    <span class="inline-flex items-center gap-1 text-xs text-ink-text-muted">
-                      {{
                         selectedPoint.ev_loss == null
                           ? t('decision.evLossUnknown')
                           : t('decision.evLossLabel', { n: selectedPoint.ev_loss.toFixed(2) })
@@ -928,6 +970,12 @@ onMounted(async () => {
                       />
                     </span>
                   </div>
+                  <p
+                    v-if="selectedPoint.ev_loss != null"
+                    class="mt-2 text-caption text-ink-text-secondary"
+                  >
+                    {{ formatRolloutScope(selectedPoint.evaluator_params, t) }}
+                  </p>
                   <div class="mt-2 flex flex-wrap items-center gap-1.5">
                     <span class="text-xs text-ink-text-muted">{{ t('decision.annotation') }}</span>
                     <UiButton
@@ -977,7 +1025,6 @@ onMounted(async () => {
                 :legal-actions="selectedPoint.legal_actions"
                 :chosen="selectedPoint.chosen_action"
                 :parser-ok="selectedPoint.parser_ok"
-                :win-probability="selectedPoint.win_probability"
                 :hand-analysis="selectedPoint.hand_analysis"
               />
             </details>
@@ -985,7 +1032,8 @@ onMounted(async () => {
         </div>
 
         <div v-else class="rounded-ink-md border border-ink-border bg-ink-surface p-5">
-          <UiEmpty :title="t('decision.pickOne')" />
+          <p v-if="selectionMissing" role="alert">{{ t('decision.selectionMissing') }}</p>
+          <UiEmpty v-else :title="t('decision.pickOne')" />
         </div>
       </div>
     </div>
@@ -1003,8 +1051,7 @@ onMounted(async () => {
           <UiInputNumber v-model="registerEvalRatio" :min="0" :max="0.5" :step="0.05" />
         </div>
         <p class="text-sm text-ink-text-secondary">
-          {{ t('experiment.registerTrainCount', { n: registerPreview.train }) }} ·
-          {{ t('experiment.registerEvalCount', { n: registerPreview.eval }) }}
+          {{ t('experiment.registerSplitHint') }}
         </p>
       </div>
       <template #footer>

@@ -4,6 +4,7 @@ export type CompareMetricDef = {
   id: string
   /** Core metrics stay visible below xl; others use xl:table-cell */
   core?: boolean
+  diagnostic?: boolean
   kind: CompareMetricKind
 }
 
@@ -12,11 +13,11 @@ export const COMPARE_METRICS: CompareMetricDef[] = [
   { id: 'landlord', kind: 'higher', core: true },
   { id: 'pairedN', kind: 'higher', core: true },
   { id: 'pairedLandlord', kind: 'higher', core: true },
-  { id: 'p50', kind: 'lower' },
-  { id: 'p95', kind: 'lower' },
-  { id: 'tokens', kind: 'lower' },
-  { id: 'train', kind: 'higher', core: true },
-  { id: 'parser', kind: 'higher' },
+  { id: 'p50', kind: 'lower', diagnostic: true },
+  { id: 'p95', kind: 'lower', diagnostic: true },
+  { id: 'tokens', kind: 'lower', diagnostic: true },
+  { id: 'train', kind: 'higher', diagnostic: true, core: true },
+  { id: 'parser', kind: 'higher', diagnostic: true },
 ]
 
 /** Map compare UI metric ids to engine capability eval_metric_ids. */

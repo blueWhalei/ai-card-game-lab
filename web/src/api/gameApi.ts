@@ -78,6 +78,7 @@ export interface GameHighlight {
   parser_ok?: boolean | null
   /** null = the move was never evaluated, which is not the same as giving up nothing. */
   ev_loss?: number | null
+  evaluation_scope?: Record<string, unknown> | null
   action_id?: string | null
   best_action_id?: string | null
   baseline_action_id?: string | null

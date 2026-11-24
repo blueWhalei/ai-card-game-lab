@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { computed, nextTick, onMounted, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import {
@@ -31,21 +31,35 @@ import { systemApi } from '@/api/systemApi'
 import { defaultEngineId, engineById, type EngineInfo } from '@/utils/engineSlots'
 import ComparisonResearch from '@/components/experiment/ComparisonResearch.vue'
 import ComparisonAudit from '@/components/experiment/ComparisonAudit.vue'
+import ComparisonOverview from '@/components/experiment/ComparisonOverview.vue'
+import UiDialog from '@/components/ui/Dialog.vue'
 import UiInput from '@/components/ui/Input.vue'
 import { downloadJson } from '@/utils/jsonFile'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
+import HeaderToggles from '@/components/common/HeaderToggles.vue'
+import { formatDateTime } from '@/utils/format'
 import UiSpinner from '@/components/ui/Spinner.vue'
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const panel = ref<'selection' | 'audit' | 'metrics' | 'save' | 'history' | null>(null)
 const loading = ref(true)
 const comparing = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
+const playerNames = computed(() => Object.fromEntries(configs.value.map((c) => [c.id, c.name])))
 const engines = ref<EngineInfo[]>([])
 const selectedIds = ref<string[]>([])
+const studyId = computed(() => {
+  const owners = selectedIds.value.map(
+    (id) => experiments.value.find((run) => run.id === id)?.study_id,
+  )
+  return owners.length && owners[0] && owners.every((owner) => owner === owners[0])
+    ? owners[0]
+    : null
+})
 const rows = ref<ExperimentCompareRow[]>([])
 const pairedSummary = ref<ExperimentPairedSummary | null>(null)
 const result = ref<ExperimentCompareResult | null>(null)
@@ -64,6 +78,7 @@ const dirty = computed(
 )
 function applyResult(data: ExperimentCompareResult) {
   result.value = data
+  allowedChanges.value = [...(data.protocol_review?.allowed_changes ?? [])]
   rows.value = data.experiments
   pairedSummary.value = data.paired_summary ?? null
 }
@@ -82,12 +97,19 @@ async function openSnapshot(id: string) {
   try {
     const res = await experimentApi.getComparison(id)
     if (version !== requestVersion) return
+    if (res.data.result.metric_version !== 'paired-cohort-v5') {
+      showApiError(null, t('compare.audit.unsupportedVersion'))
+      return
+    }
     snapshot.value = res.data
     applyResult(res.data.result)
     selectedIds.value = res.data.result.experiments.map((r) => r.id)
     allowedChanges.value = [...(res.data.result.protocol_review?.allowed_changes ?? [])]
     snapshotTitle.value = res.data.title
-    await router.replace({ query: { snapshot: id } })
+    await router.replace({
+      query: route.query.snapshot === id ? { ...route.query, snapshot: id } : { snapshot: id },
+    })
+    panel.value = null
   } catch (e) {
     showApiError(e, t('compare.audit.loadFailed'))
   } finally {
@@ -109,6 +131,7 @@ async function saveSnapshot() {
     applyResult(res.data.result)
     await router.replace({ query: { snapshot: res.data.id } })
     await loadSnapshots()
+    panel.value = null
   } catch (e) {
     showApiError(e, t('compare.audit.saveFailed'))
   } finally {
@@ -182,6 +205,7 @@ async function submit(): Promise<void> {
   const ids = [...selectedIds.value]
   void router.replace({ query: { ids: ids.join(',') } })
   await runCompare(ids)
+  if (result.value && !dirty.value) panel.value = null
 }
 
 function metricLabel(id: string): string {
@@ -258,14 +282,16 @@ function cellFor(
           }
         : { value: null, display: dash }
     case 'train':
+      if (!row.decision_count) return { value: null, display: dash }
       return {
         value: row.train_usable_rate,
-        display: formatWinRate(row.train_usable_rate),
+        display: `${formatWinRate(row.train_usable_rate)} · n=${row.decision_count}`,
       }
     case 'parser':
+      if (!row.parser_n) return { value: null, display: dash }
       return {
         value: row.parser_success_rate,
-        display: formatWinRate(row.parser_success_rate),
+        display: `${formatWinRate(row.parser_success_rate)} · n=${row.parser_n}`,
       }
     default:
       return { value: null, display: dash }
@@ -298,6 +324,19 @@ const matrixRows = computed((): MatrixRow[] => {
   })
 })
 
+const metricGroups = computed(() =>
+  [
+    {
+      label: t('focus.gameOutcomes'),
+      rows: matrixRows.value.filter((row) => !row.metric.diagnostic),
+    },
+    {
+      label: t('focus.runDiagnostics'),
+      rows: matrixRows.value.filter((row) => row.metric.diagnostic),
+    },
+  ].filter((group) => group.rows.length),
+)
+
 function scenarioLabel(id: string): string {
   const map: Record<string, string> = {
     bidding: t('experiment.scenarioBidding'),
@@ -314,6 +353,27 @@ const showScenarioMatrix = computed(() =>
   ),
 )
 
+const canInspectScenarios = computed(
+  () =>
+    snapshot.value &&
+    rows.value.length === 2 &&
+    rows.value.every((row) => row.game_type === 'doudizhu'),
+)
+async function inspectScenario(id: string) {
+  const scenario = EXPERIMENT_SCENARIO_IDS.find((value) => `scenario-${value}` === id)
+  if (!scenario || !canInspectScenarios.value) return
+  await router.replace({
+    query: {
+      ...route.query,
+      scenario,
+      ...(route.query.scenario === scenario ? {} : { seed: undefined, turn: undefined }),
+    },
+  })
+  panel.value = null
+  await nextTick()
+  document.getElementById('comparison-evidence')?.scrollIntoView({ block: 'start' })
+}
+
 const scenarioMatrixRows = computed((): MatrixRow[] => {
   if (!showScenarioMatrix.value) return []
   return EXPERIMENT_SCENARIO_IDS.map((id) => {
@@ -328,7 +388,14 @@ const scenarioMatrixRows = computed((): MatrixRow[] => {
           : t('common.dash')
       return {
         value: score?.train_usable_rate ?? 0,
-        display: `${train} · n=${n} · ${t('compare.colParser')} ${parser}`,
+        display: t('paired.formatDiagnostics', {
+          train,
+          usable: score?.train_usable_n ?? 0,
+          n,
+          parser,
+          ok: score?.parser_ok ?? 0,
+          parser_n: score?.parser_n ?? 0,
+        }),
       }
     })
     const referenceValue = raw[0]?.value ?? null
@@ -363,11 +430,11 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
       const stat = row.player_stats.find((s) => s.player_id === pid)
       if (!stat) return null
       if (playerMatrixMode.value === 'paired_wins') {
-        if ((row.paired_n ?? 0) <= 0) return null
-        const wins = stat.paired_wins ?? 0
+        if (stat.paired_wins == null) return null
+        const wins = stat.paired_wins
         return { value: wins, display: String(wins) }
       }
-      if (row.games_with_winner <= 0) return null
+      if (stat.win_rate == null) return null
       return { value: stat.win_rate, display: formatWinRate(stat.win_rate) }
     })
     return {
@@ -377,17 +444,6 @@ const playerMatrix = computed((): PlayerMatrixRow[] => {
         display: r?.display ?? t('common.dash'),
       })),
     }
-  })
-})
-
-const pairedDiffDisplay = computed((): string | null => {
-  const ps = pairedSummary.value
-  if (!ps || ps.landlord_win_rate_diff == null) return null
-  const sign = ps.landlord_win_rate_diff >= 0 ? '+' : ''
-  const pp = (ps.landlord_win_rate_diff * 100).toFixed(1)
-  return t('compare.pairedDiff', {
-    diff: `${sign}${pp}`,
-    n: ps.shared_seeds,
   })
 })
 
@@ -433,6 +489,8 @@ onMounted(async () => {
     selectedIds.value = await resolveInitialIds()
     if (selectedIds.value.length >= 2) {
       await runCompare(selectedIds.value)
+    } else {
+      panel.value = 'selection'
     }
   } catch (e: unknown) {
     showApiError(e, t('experiment.loadFailed'))
@@ -455,25 +513,113 @@ watch(
 </script>
 
 <template>
-  <div class="page-container space-y-6">
-    <div class="flex flex-wrap items-center justify-between gap-3">
-      <button
-        type="button"
-        class="inline-flex items-center gap-1 text-sm text-ink-text-secondary hover:text-ink-text"
-        @click="router.push('/')"
+  <div class="page-container space-y-ink-6">
+    <RouterLink
+      v-if="typeof route.query.report_id === 'string'"
+      :to="{
+        name: 'research-report',
+        params: { id: route.query.report_id },
+        query: {
+          evidence: route.query.evidence,
+          puzzle_evidence: route.query.puzzle_evidence,
+          trace_evidence: route.query.trace_evidence,
+        },
+      }"
+      class="inline-block text-body text-ink-primary hover:underline"
+      >{{ t('report.back') }}</RouterLink
+    >
+    <header class="flex flex-wrap items-center justify-between gap-ink-3">
+      <UiButton
+        variant="ghost"
+        size="sm"
+        @click="router.push(studyId ? `/research/${studyId}` : '/experiments')"
+        >{{ t(studyId ? 'study.back' : 'compare.back') }}</UiButton
       >
-        {{ t('compare.back') }}
-      </button>
-      <UiButton :disabled="!canCompare || saving" :loading="comparing" @click="submit">
-        {{ t('compare.submit') }}
-      </UiButton>
-    </div>
-
-    <div v-if="loading" class="flex justify-center py-16">
+      <div class="flex flex-wrap gap-ink-2">
+        <UiButton
+          variant="ghost"
+          size="sm"
+          :disabled="saving || comparing"
+          @click="panel = 'selection'"
+          >{{ t('focus.chooseRuns') }}</UiButton
+        >
+        <UiButton
+          variant="ghost"
+          size="sm"
+          :disabled="saving || comparing"
+          @click="panel = 'history'"
+          >{{ t('compare.audit.saved') }}</UiButton
+        >
+        <HeaderToggles class="hidden md:flex" />
+      </div>
+    </header>
+    <div v-if="loading || comparing" class="flex justify-center py-ink-8">
       <UiSpinner :label="t('common.loading')" />
     </div>
-
     <template v-else>
+      <section class="space-y-ink-3">
+        <h1 class="max-w-3xl text-headline font-semibold tracking-tight text-ink-text">
+          {{ t(result ? 'focus.compareTitle' : 'focus.compareEmpty') }}
+        </h1>
+        <nav
+          v-if="rows.length"
+          class="flex flex-wrap gap-ink-3"
+          :aria-label="t('compare.colExperiment')"
+        >
+          <RouterLink
+            v-for="row in rows"
+            :key="row.id"
+            :to="`/experiments/${row.id}`"
+            class="break-words text-body text-ink-primary hover:underline"
+            >{{ row.name }}</RouterLink
+          >
+        </nav>
+        <p v-if="snapshot" class="text-caption text-ink-text-muted">
+          {{ t('compare.audit.snapshotAt', { time: formatDateTime(snapshot.created_at) }) }}
+        </p>
+      </section>
+      <div v-if="dirty && rows.length" role="status" class="space-y-ink-3">
+        <p class="text-body text-ink-text-secondary">{{ t('compare.audit.dirty') }}</p>
+        <UiButton :disabled="!canCompare || saving" @click="submit">{{
+          t('compare.submit')
+        }}</UiButton>
+      </div>
+      <template v-else-if="result">
+        <div class="flex flex-wrap gap-ink-3">
+          <UiButton variant="ghost" size="sm" @click="panel = 'audit'">{{
+            t('compare.audit.title')
+          }}</UiButton>
+          <UiButton variant="ghost" size="sm" @click="panel = 'metrics'">{{
+            t('focus.metrics')
+          }}</UiButton>
+        </div>
+        <ComparisonOverview :result="result" />
+        <ComparisonResearch
+          v-if="snapshot"
+          :key="snapshot.id"
+          :comparison-id="snapshot.id"
+          :paired="rows.length === 2 && rows.every((row) => row.game_type === 'doudizhu')"
+          :player-names="playerNames"
+        />
+        <section v-else class="space-y-ink-3 border-t border-ink-border pt-ink-6">
+          <UiButton @click="panel = 'save'">{{ t('focus.freezeEvidence') }}</UiButton>
+          <p class="max-w-2xl text-caption text-ink-text-secondary">{{ t('focus.freezeHint') }}</p>
+        </section>
+        <UiButton v-if="snapshot" variant="ghost" @click="panel = 'save'"
+          >{{ t('compare.audit.export') }} / {{ t('compare.audit.save') }}</UiButton
+        >
+      </template>
+      <section v-else class="space-y-ink-4">
+        <p class="text-body text-ink-text-secondary">{{ t('focus.compareEmptyHint') }}</p>
+        <UiButton @click="panel = 'selection'">{{ t('compare.pickRange') }}</UiButton>
+      </section>
+    </template>
+    <UiDialog
+      :open="panel === 'selection'"
+      placement="side"
+      :title="t('compare.pickRange')"
+      @update:open="!$event && (panel = null)"
+    >
       <section class="space-y-2">
         <div class="flex items-center justify-between">
           <h2 class="text-sm font-semibold text-ink-text">{{ t('compare.pickRange') }}</h2>
@@ -513,82 +659,93 @@ watch(
         </div>
       </section>
 
-      <details class="rounded-ink-md border border-ink-border p-4">
-        <summary class="cursor-pointer text-body font-medium">
-          {{ t('compare.audit.saved') }}
-        </summary>
+      <template #footer
+        ><UiButton :disabled="!canCompare || saving" :loading="comparing" @click="submit">{{
+          t('compare.submit')
+        }}</UiButton></template
+      >
+    </UiDialog>
+    <UiDialog
+      :open="panel === 'history'"
+      placement="side"
+      :title="t('compare.audit.saved')"
+      @update:open="!$event && (panel = null)"
+    >
+      <section>
         <p v-if="!snapshots.length" class="mt-3 text-caption text-ink-text-secondary">
           {{ t('compare.audit.noSnapshots') }}
         </p>
         <ul class="mt-3 space-y-2">
           <li v-for="item in snapshots" :key="item.id">
             <UiButton variant="ghost" :disabled="saving || comparing" @click="openSnapshot(item.id)"
-              >{{ item.title }} · {{ item.created_at }}</UiButton
+              >{{ item.title }} · {{ formatDateTime(item.created_at) }}</UiButton
             >
           </li>
         </ul>
         <UiButton v-if="moreSnapshots" variant="secondary" @click="loadSnapshots(true)">{{
           t('compare.audit.more')
         }}</UiButton>
-      </details>
-      <p v-if="dirty && rows.length" role="status" class="text-body text-ink-text-secondary">
-        {{ t('compare.audit.dirty') }}
-      </p>
-      <div v-if="comparing" class="flex justify-center py-8">
-        <UiSpinner :label="t('common.loading')" />
-      </div>
-
-      <section v-else-if="rows.length > 0" class="space-y-4">
-        <ComparisonAudit
-          v-if="result"
-          :result="result"
-          v-model:allowed="allowedChanges"
-          :readonly="saving"
-        />
-        <section class="space-y-3 rounded-ink-md border border-ink-border bg-ink-surface p-4">
-          <p v-if="snapshot" class="text-body font-medium">
-            {{ t('compare.audit.snapshotAt', { time: snapshot.created_at }) }}
-          </p>
-          <p class="text-caption text-ink-text-secondary">{{ t('compare.audit.snapshotHint') }}</p>
-          <label class="block text-caption"
-            >{{ t('compare.audit.name')
-            }}<UiInput v-model="snapshotTitle" :maxlength="120" :disabled="saving"
-          /></label>
-          <div class="flex flex-wrap gap-2">
-            <UiButton
-              :disabled="dirty || !snapshotTitle.trim() || comparing"
-              :loading="saving"
-              @click="saveSnapshot"
-              >{{ t('compare.audit.save') }}</UiButton
-            >
-            <UiButton
-              v-if="snapshot"
-              variant="secondary"
-              @click="downloadJson(`comparison-${snapshot.id}.json`, snapshot)"
-              >{{ t('compare.audit.export') }}</UiButton
-            >
-          </div>
-        </section>
-        <ComparisonResearch
-          v-if="snapshot && !dirty"
-          :key="snapshot.id"
-          :comparison-id="snapshot.id"
-        />
-        <div
-          v-if="pairedDiffDisplay"
-          class="rounded-ink-md border border-ink-primary/25 bg-ink-primary-muted/30 px-3 py-2.5 text-sm text-ink-text"
-        >
-          {{ pairedDiffDisplay }}
-          <UiBadge v-if="pairedSummary?.low_power" variant="muted" class="ml-2">
-            {{ t('experiment.lowPowerShort') }}
-          </UiBadge>
+      </section>
+    </UiDialog>
+    <UiDialog
+      :open="panel === 'audit'"
+      placement="side"
+      :title="t('compare.audit.title')"
+      @update:open="!$event && (panel = null)"
+    >
+      <ComparisonAudit
+        v-if="result"
+        :result="result"
+        v-model:allowed="allowedChanges"
+        :readonly="saving || comparing"
+      />
+      <template v-if="dirty" #footer
+        ><UiButton :disabled="!canCompare || saving" :loading="comparing" @click="submit">{{
+          t('compare.submit')
+        }}</UiButton></template
+      >
+    </UiDialog>
+    <UiDialog
+      :open="panel === 'save'"
+      placement="side"
+      :title="t('compare.audit.name')"
+      @update:open="!$event && (panel = null)"
+    >
+      <section class="space-y-3 rounded-ink-md border border-ink-border bg-ink-surface p-4">
+        <p v-if="snapshot" class="text-body font-medium">
+          {{ t('compare.audit.snapshotAt', { time: formatDateTime(snapshot.created_at) }) }}
+        </p>
+        <p class="text-caption text-ink-text-secondary">{{ t('compare.audit.snapshotHint') }}</p>
+        <label class="block text-caption"
+          >{{ t('compare.audit.name')
+          }}<UiInput v-model="snapshotTitle" :maxlength="120" :disabled="saving"
+        /></label>
+        <div class="flex flex-wrap gap-2">
+          <UiButton
+            :disabled="dirty || !snapshotTitle.trim() || comparing"
+            :loading="saving"
+            @click="saveSnapshot"
+            >{{ t('compare.audit.save') }}</UiButton
+          >
+          <UiButton
+            v-if="snapshot"
+            variant="secondary"
+            @click="downloadJson(`comparison-${snapshot.id}.json`, snapshot)"
+            >{{ t('compare.audit.export') }}</UiButton
+          >
         </div>
-        <div
-          v-if="showLowPowerHint"
-          class="rounded-ink-md border border-ink-border bg-ink-surface-muted/50 px-3 py-2.5 text-sm text-ink-text-secondary"
-        >
+      </section>
+    </UiDialog>
+    <UiDialog
+      :open="panel === 'metrics'"
+      placement="side"
+      :title="t('focus.metrics')"
+      @update:open="!$event && (panel = null)"
+    >
+      <div class="space-y-ink-6">
+        <p v-if="showLowPowerHint" class="text-caption text-ink-text-secondary">
           {{ t('compare.lowPowerHint') }}
-        </div>
+        </p>
         <div class="overflow-x-auto rounded-ink-md border border-ink-border">
           <table class="w-full text-left text-sm">
             <thead class="bg-ink-surface-muted text-ink-text">
@@ -612,12 +769,20 @@ watch(
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody v-for="group in metricGroups" :key="group.label">
+              <tr>
+                <th
+                  scope="rowgroup"
+                  :colspan="rows.length + 1"
+                  class="bg-ink-surface-muted px-3 py-2 text-left font-semibold"
+                >
+                  {{ group.label }}
+                </th>
+              </tr>
               <tr
-                v-for="mrow in matrixRows"
+                v-for="mrow in group.rows"
                 :key="mrow.metric.id"
                 class="border-t border-ink-border bg-ink-surface"
-                :class="mrow.metric.core ? '' : 'hidden xl:table-row'"
               >
                 <th
                   class="sticky left-0 z-10 bg-ink-surface px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-ink-text-secondary"
@@ -641,6 +806,9 @@ watch(
           </table>
         </div>
 
+        <p v-if="showScenarioMatrix" class="text-caption text-ink-text-secondary">
+          {{ t('paired.matrixScope') }}
+        </p>
         <div
           v-if="showScenarioMatrix"
           class="overflow-x-auto rounded-ink-md border border-ink-border"
@@ -666,6 +834,14 @@ watch(
                   class="sticky left-0 z-10 bg-ink-surface px-3 py-1.5 text-left text-xs font-medium whitespace-nowrap text-ink-text-secondary"
                 >
                   {{ mrow.label }}
+                  <button
+                    v-if="canInspectScenarios"
+                    type="button"
+                    class="mt-ink-2 block text-caption text-ink-primary underline"
+                    @click="inspectScenario(mrow.metric.id)"
+                  >
+                    {{ t('paired.inspectScenario') }}
+                  </button>
                 </th>
                 <td
                   v-for="(cell, i) in mrow.cells"
@@ -753,7 +929,7 @@ watch(
             </table>
           </div>
         </details>
-      </section>
-    </template>
+      </div>
+    </UiDialog>
   </div>
 </template>

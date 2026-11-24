@@ -1,6 +1,7 @@
 """Training task data access layer (SQLite)."""
 
 import json
+import math
 from typing import Any
 
 import aiosqlite
@@ -52,20 +53,36 @@ class TrainingTaskRepository:
         experiment_id: str | None = None,
         page: int = 1,
         page_size: int = 20,
+        study_id: str | None = None,
+        task_id: str | None = None,
+        state: str = "all",
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated training tasks, newest first."""
         conditions: list[str] = []
         params: list[Any] = []
         if status:
-            conditions.append("status = ?")
+            conditions.append("t.status = ?")
             params.append(status)
         if experiment_id:
-            conditions.append("experiment_id = ?")
+            conditions.append("t.experiment_id = ?")
             params.append(experiment_id)
+        if study_id is not None:
+            conditions.append("sr.study_id = ?")
+            params.append(study_id)
+        if task_id is not None:
+            conditions.append("t.id = ?")
+            params.append(task_id)
+        if state == "active":
+            conditions.append("t.status IN ('pending','exporting','training')")
+        elif state == "attention":
+            conditions.append(
+                "(t.status IS NULL OR t.status NOT IN ('pending','exporting','training','completed','cancelled'))"
+            )
         where = f"WHERE {' AND '.join(conditions)}" if conditions else ""
+        source = "FROM training_tasks t LEFT JOIN experiments e ON e.id=t.experiment_id LEFT JOIN study_runs sr ON sr.experiment_id=e.id"
 
         count_cur = await self._db.execute(
-            f"SELECT COUNT(*) FROM training_tasks {where}",
+            f"SELECT COUNT(*) {source} {where}",
             params,
         )
         count_row = await count_cur.fetchone()
@@ -74,7 +91,7 @@ class TrainingTaskRepository:
         offset = (page - 1) * page_size
         params.extend([page_size, offset])
         cursor = await self._db.execute(
-            f"SELECT * FROM training_tasks {where} ORDER BY created_at DESC LIMIT ? OFFSET ?",
+            f"SELECT t.*, sr.study_id, e.name AS run_name {source} {where} ORDER BY t.created_at DESC, t.id DESC LIMIT ? OFFSET ?",
             params,
         )
         rows = await cursor.fetchall()
@@ -113,14 +130,41 @@ class TrainingTaskRepository:
     @staticmethod
     def _normalize(row: dict[str, Any]) -> dict[str, Any]:
         """Parse JSON fields."""
-        if isinstance(row.get("config"), str):
+        for field in ("config", "result"):
+            raw = row.get(field)
+            value = raw
             try:
-                row["config"] = json.loads(row["config"])
-            except json.JSONDecodeError:
-                row["config"] = {}
-        if isinstance(row.get("result"), str):
-            try:
-                row["result"] = json.loads(row["result"])
-            except json.JSONDecodeError:
-                pass
+                if isinstance(raw, str):
+                    value = json.loads(
+                        raw, parse_constant=_reject_constant, parse_float=_finite_float
+                    )
+                if value is not None and not isinstance(value, dict):
+                    raise ValueError("Expected an object")
+                row[f"{field}_state"] = "missing" if value is None else "recorded"
+            except (ValueError, RecursionError):
+                value = None
+                row[f"{field}_state"] = "invalid"
+            row[field] = value if field == "result" else value or {}
+        progress = row.get("progress")
+        valid = (
+            isinstance(progress, (int, float))
+            and not isinstance(progress, bool)
+            and math.isfinite(progress)
+            and 0 <= progress <= 1
+        )
+        row["progress_state"] = (
+            "missing" if progress is None else "recorded" if valid else "invalid"
+        )
+        row["progress"] = progress if valid else None
         return row
+
+
+def _reject_constant(value: str) -> None:
+    raise ValueError(f"Non-finite JSON number: {value}")
+
+
+def _finite_float(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number):
+        raise ValueError("Non-finite JSON number")
+    return number

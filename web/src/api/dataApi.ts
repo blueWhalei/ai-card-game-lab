@@ -26,7 +26,7 @@ export interface DataStats {
 
 export interface ModelWinRate {
   model: string
-  games: number
+  seat_games: number
   wins: number
   win_rate: number
 }
@@ -42,12 +42,15 @@ export interface DatasetFilters {
   game_id?: string | null
   experiment_id?: string | null
   player_id?: string | null
-  min_quality?: number | null
   outcome?: string | null
   game_phase?: string | null
   eval_ratio?: number
   eval_sample_count?: number
   eval_game_ids?: string[]
+  split_method?: string
+  group_count?: number
+  eval_group_count?: number
+  eval_groups?: Array<{ key: Array<string | number>; game_ids: string[] }>
   eval_file_path?: string
 }
 
@@ -57,7 +60,6 @@ export interface CreateDatasetFromDecisionsRequest {
   game_id?: string | null
   experiment_id?: string | null
   player_id?: string | null
-  min_quality?: number | null
   outcome?: string | null
   game_phase?: string | null
   train_usable?: boolean | null

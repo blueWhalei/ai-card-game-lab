@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
@@ -10,6 +11,7 @@ from uuid import uuid4
 import aiosqlite
 import structlog
 
+from app.core.task_protocol import validate_runtime_protocol
 from app.repositories.collect_repo import CollectRepository
 from app.repositories.experiment_repo import ExperimentRepository
 from app.services.experiment_errors import ExperimentValidationError
@@ -22,9 +24,9 @@ from app.services.experiment_protocol import (
     protocol_players,
     set_protocol_deal_seeds,
     set_protocol_pair_deals,
-    validate_protocol,
 )
 from app.services.game_service import GameService
+from app.services.study_finance_service import ensure_study_budget
 from app.utils.exceptions import (
     AppError,
     GameAlreadyStartedError,
@@ -75,6 +77,7 @@ class ExperimentCollectMixin:
         db.row_factory = aiosqlite.Row
         await db.execute("BEGIN IMMEDIATE")
         try:
+            await ensure_study_budget(db, experiment_id)
             requests = CollectRepository(db)
             previous = await requests.get(experiment_id, key)
             if previous is not None:
@@ -122,7 +125,9 @@ class ExperimentCollectMixin:
 
         now = datetime.now(tz=UTC).isoformat()
         try:
-            protocol = validate_protocol(experiment.get("protocol"))
+            protocol = validate_runtime_protocol(
+                experiment.get("protocol"), self._game_service._engine_registry
+            )
         except ValueError as exc:
             raise ExperimentValidationError(str(exc)) from exc
         protocol = deepcopy(protocol)
@@ -132,7 +137,9 @@ class ExperimentCollectMixin:
         settings = getattr(self._game_service, "_settings", None)
         frozen_players = protocol_players(protocol)
         if isinstance(settings, Settings):
-            missing = unconfigured_providers_from_players(settings, frozen_players)
+            missing = await asyncio.to_thread(
+                unconfigured_providers_from_players, settings, frozen_players
+            )
             if missing:
                 raise ProviderNotConfiguredError(missing)
 
@@ -140,7 +147,7 @@ class ExperimentCollectMixin:
         pair_deals = protocol_pair_deals(protocol)
         collect_mode = protocol_collect_mode(protocol)
 
-        if collect_mode == "benchmark" and not pair_deals:
+        if collect_mode == "benchmark":
             try:
                 count = clamp_benchmark_collect_count(
                     deal_seeds=deal_seeds,

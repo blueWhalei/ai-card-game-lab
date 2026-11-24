@@ -7,6 +7,7 @@ import { i18n } from './i18n'
 import { initLocale } from './composables/useLocale'
 import { initTheme } from './composables/useTheme'
 import './styles/index.css'
+import { useDesktopWorkspace } from './stores/useDesktopWorkspace'
 
 initTheme()
 initLocale()
@@ -17,4 +18,9 @@ app.use(createPinia())
 app.use(i18n)
 app.use(router)
 
-app.mount('#app')
+async function mount() {
+  const disconnect = await useDesktopWorkspace().initialize(router)
+  app.onUnmount(disconnect)
+  app.mount('#app')
+}
+void mount()

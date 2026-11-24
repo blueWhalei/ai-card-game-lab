@@ -17,7 +17,6 @@ export type WorkbenchLocalFilters = {
   player_id?: string
   outcome?: string
   game_phase?: string
-  min_quality?: string
   train_usable?: string
   /** Cap on ev_loss; unevaluated rows stay. Empty/unset = no filter. */
   max_ev_loss?: string
@@ -87,7 +86,6 @@ const trainUsable = computed(() => {
   return ''
 })
 const gamePhase = computed(() => localOrQuery('game_phase'))
-const minQuality = computed(() => localOrQuery('min_quality'))
 const parserOk = computed(() => localOrQuery('parser_ok'))
 const maxEvLoss = computed(() => localOrQuery('max_ev_loss'))
 
@@ -246,14 +244,10 @@ function setPhase(v: string): void {
   patchFilters({ game_phase: v === ALL ? undefined : v })
 }
 
-function setMinQuality(v: string): void {
-  patchFilters({ min_quality: v === ALL ? undefined : v })
-}
-
 const parserOkOptions = computed((): SelectOption[] => [
   { label: t('filter.allParser'), value: ALL },
   { label: t('filter.parseOk'), value: 'true' },
-  { label: t('filter.ruleFallback'), value: 'false' },
+  { label: t('trace.parseFailed'), value: 'false' },
 ])
 
 const phaseOptions = computed((): SelectOption[] => [
@@ -261,12 +255,6 @@ const phaseOptions = computed((): SelectOption[] => [
   { label: t('game.phaseBidding'), value: 'bidding' },
   { label: t('game.phasePlaying'), value: 'playing' },
   { label: t('game.phaseEndgame'), value: 'endgame' },
-])
-
-const minQualityOptions = computed((): SelectOption[] => [
-  { label: t('filter.qualityAny'), value: ALL },
-  { label: '≥ 0.5', value: '0.5' },
-  { label: '≥ 0.7', value: '0.7' },
 ])
 
 const maxEvLossOptions = computed((): SelectOption[] => [
@@ -308,13 +296,6 @@ const activeExtraChips = computed((): ActiveChip[] => {
         key: 'phase',
         label: `${t('filter.phase')}: ${phaseLabel}`,
         clear: () => setPhase(ALL),
-      })
-    }
-    if (minQuality.value) {
-      chips.push({
-        key: 'quality',
-        label: `${t('filter.quality')} ≥ ${minQuality.value}`,
-        clear: () => setMinQuality(ALL),
       })
     }
     if (maxEvLoss.value) {
@@ -470,12 +451,6 @@ onMounted(() => {
           :options="phaseOptions"
           :placeholder="t('filter.phase')"
           @update:model-value="setPhase"
-        />
-        <UiSelect
-          :model-value="minQuality || ALL"
-          :options="minQualityOptions"
-          :placeholder="t('filter.quality')"
-          @update:model-value="setMinQuality"
         />
       </template>
       <template v-else>

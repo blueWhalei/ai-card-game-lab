@@ -3,8 +3,10 @@
 Loads values from environment variables and .env file.
 """
 
+import os
 from pathlib import Path
 
+from pydantic import SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -12,7 +14,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=str(_PROJECT_ROOT / ".env"),
+        env_file=os.environ.get("CARDLAB_ENV_FILE", str(_PROJECT_ROOT / ".env")),
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         extra="ignore",
@@ -26,6 +28,11 @@ class Settings(BaseSettings):
 
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
+    # Dedicated read-only billing integration; never reuse model credentials/base URL.
+    openai_billing_admin_key: SecretStr = SecretStr("")
+    openai_billing_organization_id: str = ""
+    # Plans remain opt-in per study. This switch can suspend the local worker.
+    billing_scheduler_enabled: bool = True
 
     ollama_base_url: str = "http://localhost:11434"
     ollama_bin: str = "ollama"

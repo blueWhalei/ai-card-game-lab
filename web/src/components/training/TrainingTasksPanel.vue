@@ -9,6 +9,7 @@ import { useRoute, useRouter } from 'vue-router'
 import UiTable from '@/components/ui/Table.vue'
 import { TRAINING_STATUS_MAP } from '@/utils/constants'
 import { formatDateTime } from '@/utils/format'
+import { recordedProgress, trainingError } from '@/utils/trainingRecords'
 
 defineProps<{
   columns: { key: string; label: string; class?: string }[]
@@ -16,7 +17,7 @@ defineProps<{
   loading: boolean
   canCreate: boolean
   statusVariant: (status: string) => 'muted' | 'success' | 'warning' | 'danger' | 'default'
-  formatProgress: (progress: number) => string
+  formatProgress: (progress: unknown) => string
 }>()
 
 const { t } = useI18n()
@@ -26,13 +27,6 @@ const router = useRouter()
 const emit = defineEmits<{
   delete: [id: string]
 }>()
-
-function taskError(row: Record<string, unknown>): string {
-  const result = row.result
-  if (!result || typeof result !== 'object') return ''
-  const err = (result as { error?: unknown }).error
-  return typeof err === 'string' ? err : ''
-}
 </script>
 
 <template>
@@ -67,7 +61,11 @@ function taskError(row: Record<string, unknown>): string {
             {{ TRAINING_STATUS_MAP[String(row.status)]?.label || row.status }}
           </UiBadge>
           <UiBadge
-            v-if="row.status === 'completed' && !String(row.model_path || '').endsWith('model.bin')"
+            v-if="
+              row.status === 'completed' &&
+              row.model_path &&
+              !String(row.model_path).endsWith('model.bin')
+            "
             variant="success"
           >
             LoRA
@@ -75,25 +73,38 @@ function taskError(row: Record<string, unknown>): string {
         </div>
       </template>
       <template #cell-progress="{ row }">
+        <span v-if="recordedProgress(row.progress) === null" class="text-caption">{{
+          t(row.progress_state === 'invalid' ? 'operations.invalidProgress' : 'operations.missing')
+        }}</span>
         <UiProgress
-          v-if="['exporting', 'training'].includes(String(row.status))"
-          :value="Math.round(Number(row.progress) * 100)"
+          v-else-if="['exporting', 'training'].includes(String(row.status))"
+          :value="recordedProgress(row.progress)!"
           class="mt-1"
         />
         <span v-else-if="row.status === 'completed'" class="text-sm text-ink-success">
-          {{ formatProgress(Number(row.progress)) }}
+          {{ formatProgress(row.progress) }}
         </span>
         <div v-else-if="row.status === 'failed'" class="max-w-xs space-y-0.5">
           <span class="text-sm text-ink-danger">{{ t('training.status.failed') }}</span>
-          <p
-            v-if="taskError(row)"
-            class="line-clamp-2 text-xs text-ink-text-muted"
-            :title="taskError(row)"
-          >
-            {{ taskError(row) }}
-          </p>
         </div>
         <span v-else class="text-sm text-ink-text-muted">-</span>
+        <details v-if="trainingError(row.result)" class="mt-ink-2 max-w-xs">
+          <summary class="cursor-pointer text-caption text-ink-primary">
+            {{ t('operations.recordedError') }}
+          </summary>
+          <p class="whitespace-pre-wrap break-words text-caption">
+            {{ trainingError(row.result) }}
+          </p>
+        </details>
+        <p v-else-if="row.status === 'failed'" class="max-w-xs text-caption">
+          {{ t('operations.noRecordedError') }}
+        </p>
+        <p v-if="row.result_state === 'invalid'" class="max-w-xs text-caption">
+          {{ t('operations.invalidResult') }}
+        </p>
+        <p v-if="row.config_state === 'invalid'" class="max-w-xs text-caption">
+          {{ t('operations.invalidConfig') }}
+        </p>
       </template>
       <template #cell-created_at="{ row }">
         {{ formatDateTime(String(row.created_at)) }}

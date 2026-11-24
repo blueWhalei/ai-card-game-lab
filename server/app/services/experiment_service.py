@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import UTC, datetime
 from typing import Any
 
 import aiosqlite
 import structlog
 
-from app.core.engine.base import EngineCapability
+from app.core.engine.base import EngineCapability, GameEngine
 from app.core.eval.evaluator_protocol import freeze_evaluator_snapshot
 from app.core.eval.scorer import ScorerRegistry
 from app.core.eval.scorers import build_scorer_registry
@@ -23,8 +22,12 @@ from app.core.stats.benchmark import build_benchmark_coverage
 from app.database import open_db_connection
 from app.repositories.comparison_repo import ComparisonRepository
 from app.repositories.decision_repo import DecisionRepository
+from app.repositories.draft_repo import DraftRepository
 from app.repositories.experiment_repo import ExperimentRepository
+from app.repositories.study_repo import StudyRepository
+from app.schemas.experiment import CreatePromptVariantRequest
 from app.services.experiment_collect import ExperimentCollectMixin
+from app.services.experiment_config_service import OFFLINE_LINEUP
 from app.services.experiment_delta import (
     ExperimentDeltaMixin,
     _games_with_progress,
@@ -46,7 +49,11 @@ from app.services.experiment_protocol import (
     protocol_prompts,
 )
 from app.services.game_service import GameService
+from app.services.prompt_design_service import create_variant, preview_design, reserve_holdout
+from app.services.puzzle_service import PuzzleService
 from app.services.research_service import ResearchMixin
+from app.services.scenario_service import scenario_records
+from app.utils.exceptions import AppError
 from app.utils.id_generator import generate_id
 from app.utils.providers import unconfigured_providers_from_players
 
@@ -67,11 +74,21 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         sqlite_path: str,
         game_service: GameService,
         scorer_registry: ScorerRegistry | None = None,
+        puzzle_service: PuzzleService | None = None,
     ) -> None:
         self._sqlite_path = sqlite_path
         self._game_service = game_service
         # When injected (tests), always use that registry. Otherwise build per game_type.
         self._scorer_registry = scorer_registry
+        self._puzzle_service = puzzle_service
+
+    def _puzzles(self) -> PuzzleService:
+        if self._puzzle_service is None:
+            raise RuntimeError("Puzzle service is not configured")
+        return self._puzzle_service
+
+    def _research_engine(self, game_type: str) -> GameEngine:
+        return self._game_service._engine_registry.get(game_type)
 
     def _registry_for(self, protocol: dict[str, Any] | None, game_type: str) -> ScorerRegistry:
         if self._scorer_registry is not None:
@@ -81,6 +98,55 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
 
     async def _conn(self) -> aiosqlite.Connection:
         return await open_db_connection(self._sqlite_path)
+
+    async def scenario_records(
+        self,
+        experiment_id: str,
+        scenario: str | None,
+        game_id: str | None,
+        decision_id: str | None,
+        game_page: int,
+        page: int,
+    ) -> dict[str, Any]:
+        conn = await self._conn()
+        try:
+            await conn.execute("BEGIN")
+            return await scenario_records(
+                conn, experiment_id, scenario, game_id, decision_id, game_page, page
+            )
+        finally:
+            await conn.close()
+
+    async def prompt_design(
+        self, experiment_id: str, source_revision_id: str | None = None
+    ) -> dict[str, Any]:
+        conn = await self._conn()
+        try:
+            await conn.execute("BEGIN")
+            return await preview_design(
+                conn, experiment_id, self._game_service._engine_registry, source_revision_id
+            )
+        finally:
+            await conn.close()
+
+    async def create_prompt_variant(
+        self, experiment_id: str, body: CreatePromptVariantRequest
+    ) -> dict[str, Any]:
+        conn = await self._conn()
+        try:
+            new_id = await create_variant(
+                conn, experiment_id, body, self._game_service._engine_registry
+            )
+        finally:
+            await conn.close()
+        return await self.get_experiment(new_id)
+
+    async def reserve_prompt_holdout(self, variant_id: str) -> dict[str, str]:
+        conn = await self._conn()
+        try:
+            return await reserve_holdout(conn, variant_id, self._game_service._engine_registry)
+        finally:
+            await conn.close()
 
     async def save_comparison(
         self, experiment_ids: list[str], title: str, allowed_changes: list[str]
@@ -159,24 +225,6 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
             await conn.close()
         return out
 
-    def _snapshot_players(self, player_ids: list[str]) -> list[dict[str, Any]]:
-        cfg_svc = self._game_service._experiment_config_service
-        players: list[dict[str, Any]] = []
-        for pid in player_ids:
-            cfg = cfg_svc.get_config(pid)
-            if cfg is None:
-                continue
-            players.append(
-                {
-                    "id": cfg["id"],
-                    "name": cfg["name"],
-                    "notes": cfg.get("notes") or "",
-                    "policy_kind": cfg.get("policy_kind") or "llm",
-                    "model_config": deepcopy(cfg.get("model_config") or {}),
-                }
-            )
-        return players
-
     def _engine_capability(self, game_type: str) -> EngineCapability:
         return self._game_service._engine_registry.get_capability(game_type)
 
@@ -186,7 +234,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
     def _build_protocol(
         self,
         *,
-        player_ids: list[str],
+        players: list[dict[str, Any]],
         source_experiment_id: str | None,
         pair_deals: bool,
         deal_seeds: list[int],
@@ -213,7 +261,10 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
             thinking_budget["max_thinking_tokens"] = int(settings.thinking_budget_max_tokens)
         memory = settings.memory_scope.strip() or "none"
         return build_protocol(
-            players=self._snapshot_players(player_ids),
+            players=[
+                {key: player[key] for key in ("id", "name", "notes", "policy_kind", "model_config")}
+                for player in players
+            ],
             source_experiment_id=source_experiment_id,
             pair_deals=pair_deals,
             deal_seeds=deal_seeds,
@@ -230,10 +281,11 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
     async def create_experiment(
         self,
         *,
+        study_id: str | None = None,
         name: str,
         notes: str,
         game_type: str,
-        player_ids: list[str],
+        player_ids: list[str] | None,
         target_games: int,
         source_experiment_id: str | None = None,
         pair_deals: bool = False,
@@ -245,7 +297,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         frozen_prompts: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         min_players, max_players = self._game_service.player_slots(game_type)
-        n_players = len(player_ids)
+        n_players = len(OFFLINE_LINEUP) if player_ids is None else len(player_ids)
         if n_players < min_players or n_players > max_players:
             if min_players == max_players:
                 raise ExperimentValidationError(
@@ -254,18 +306,11 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
             raise ExperimentValidationError(
                 f"{game_type} 实验需要 {min_players}-{max_players} 个选手配置"
             )
-        if len(set(player_ids)) != n_players:
+        if player_ids is not None and len(set(player_ids)) != n_players:
             raise ExperimentValidationError("选手配置不能重复")
 
-        missing = [
-            pid
-            for pid in player_ids
-            if self._game_service._experiment_config_service.get_config(pid) is None
-        ]
-        if missing:
-            from app.utils.exceptions import InvalidPlayerIdsError
-
-            raise InvalidPlayerIdsError(missing)
+        config_service = self._game_service._experiment_config_service
+        players = [] if player_ids is None else config_service.resolve_configs(player_ids)
 
         deal_seeds: list[int] = []
         source_id: str | None = None
@@ -274,12 +319,20 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
             if not source_experiment_id:
                 raise ExperimentValidationError("配对发牌需要指定源实验")
             source = await self.get_experiment(source_experiment_id, include_games=False)
+            source_study = source.get("study_id")
+            if study_id is not None and source_study is not None and study_id != source_study:
+                raise AppError(
+                    "Control must remain in its source research", "STUDY_RUN_CONFLICT", 409
+                )
+            study_id = study_id or source_study
             if str(source["game_type"]) != game_type:
                 raise ExperimentValidationError("对照实验的游戏类型必须与源实验一致")
             if len(source.get("player_ids") or []) != n_players:
                 raise ExperimentValidationError("对照实验的座位数必须与源实验一致")
             source_id = str(source["id"])
             raw_source_protocol = source.get("protocol") or {}
+            if (raw_source_protocol.get("dataset") or {}).get("holdout_for"):
+                raise ExperimentValidationError("独立验证组已锁定，请从原调试设计创建对照")
             if isinstance(raw_source_protocol, dict):
                 source_protocol = raw_source_protocol
                 deal_seeds = protocol_deal_seeds(source_protocol)
@@ -310,34 +363,46 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         if prompts is None:
             prompts = await self._snapshot_prompts(game_type=game_type, prompt_version=version)
 
-        protocol = self._build_protocol(
-            player_ids=player_ids,
-            source_experiment_id=source_id,
-            pair_deals=bool(pair_deals and source_id),
-            deal_seeds=deal_seeds,
-            frozen_at=now,
-            collect_mode=effective_mode,
-            game_type=game_type,
-            prompt_version=version,
-            prompts=prompts,
-        )
-
         conn = await self._conn()
         try:
+            await conn.execute("BEGIN IMMEDIATE")
+            if study_id is not None:
+                try:
+                    await StudyRepository(conn).get(study_id)
+                except KeyError as exc:
+                    raise AppError("Research not found", "STUDY_NOT_FOUND", 404) from exc
+            if player_ids is None:
+                players = await config_service.offline_lineup(conn)
+            protocol = self._build_protocol(
+                players=players,
+                source_experiment_id=source_id,
+                pair_deals=bool(pair_deals and source_id),
+                deal_seeds=deal_seeds,
+                frozen_at=now,
+                collect_mode=effective_mode,
+                game_type=game_type,
+                prompt_version=version,
+                prompts=prompts,
+            )
             repo = ExperimentRepository(conn)
             await repo.create(
+                study_id=study_id,
                 experiment_id=experiment_id,
                 name=name.strip(),
                 notes=notes.strip(),
                 hypothesis=hypothesis.strip(),
                 tags=tags or [],
                 game_type=game_type,
-                player_ids=player_ids,
+                player_ids=[player["id"] for player in players],
                 target_games=target_games,
                 created_at=now,
                 updated_at=now,
                 protocol=protocol,
+                commit=False,
             )
+            await conn.commit()
+            if player_ids is None:
+                config_service.cache_committed(players)
         finally:
             await conn.close()
         logger.info(
@@ -357,14 +422,21 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         hypothesis: str | None = None,
         conclusion: str | None = None,
         tags: list[str] | None = None,
+        expected_draft_revision: int | None = None,
     ) -> dict[str, Any]:
         conn = await self._conn()
         try:
+            await conn.execute("BEGIN IMMEDIATE")
             repo = ExperimentRepository(conn)
             try:
                 await repo.get_by_id(experiment_id)
             except KeyError as exc:
                 raise ExperimentNotFoundError(experiment_id) from exc
+            if expected_draft_revision is not None:
+                saved_draft = await DraftRepository(conn).get("experiment", experiment_id)
+                revision = saved_draft.revision if saved_draft else 0
+                if revision != expected_draft_revision:
+                    raise AppError("A newer notebook draft exists", "DRAFT_CONFLICT", 409)
             fields: dict[str, Any] = {}
             if name is not None:
                 fields["name"] = name.strip()
@@ -469,11 +541,14 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         source = await self.get_experiment(experiment_id, include_games=False)
         protocol = source.get("protocol") or {}
         deal_seeds: list[int] | None = None
+        if copy_deal_seeds and (protocol.get("dataset") or {}).get("holdout_for"):
+            raise ExperimentValidationError("复制验证运行时请选择新的调试用牌")
         if copy_deal_seeds and isinstance(protocol, dict):
             deal_seeds = protocol_deal_seeds(protocol)
         clone_name = (name or f"{source['name']} (copy)").strip()
         collect_mode = protocol_collect_mode(protocol) if isinstance(protocol, dict) else "free"
         return await self.create_experiment(
+            study_id=source.get("study_id"),
             name=clone_name,
             notes=str(source.get("notes") or ""),
             hypothesis=str(source.get("hypothesis") or "") if copy_hypothesis else "",
@@ -577,11 +652,12 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
         payload["experiment"] = created
         return payload
 
-    async def list_experiments(self) -> list[dict[str, Any]]:
+    async def list_experiments(self, study_id: str | None = None) -> list[dict[str, Any]]:
         conn = await self._conn()
         try:
+            await conn.execute("BEGIN")
             repo = ExperimentRepository(conn)
-            rows = await repo.list_all()
+            rows = await repo.list_all(study_id=study_id)
             results: list[dict[str, Any]] = []
             for row in rows:
                 summary = await self._build_summary(repo, row)
@@ -613,6 +689,7 @@ class ExperimentService(ExperimentCollectMixin, ExperimentDeltaMixin, ResearchMi
     ) -> dict[str, Any]:
         conn = await self._conn()
         try:
+            await conn.execute("BEGIN")
             repo = ExperimentRepository(conn)
             try:
                 row = await repo.get_by_id(experiment_id)

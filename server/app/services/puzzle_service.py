@@ -27,6 +27,7 @@ from app.core.eval.perturb import (
     perturb_puzzle,
 )
 from app.core.eval.puzzle import (
+    PUZZLE_METRIC_VERSION,
     Puzzle,
     PuzzleAnswerScore,
     PuzzlePackManifest,
@@ -34,7 +35,18 @@ from app.core.eval.puzzle import (
     save_pack,
     score_answer,
     select_by_spread,
+    summarize_answers,
 )
+from app.core.eval.puzzle_results import (
+    RESULT_ID,
+    UnsupportedResultError,
+    digest,
+    pack_fingerprint,
+    pack_snapshot,
+    read_result,
+    save_result,
+)
+from app.core.eval.puzzle_selection import validate_selection
 from app.core.eval.replay import rebuild_state
 from app.core.eval.rollout import EvaluatorParams, RolloutEvaluator
 from app.core.policy import (
@@ -50,7 +62,9 @@ from app.core.policy.baselines import HeuristicPolicy as HeuristicOpponent
 from app.database import connect_sqlite
 from app.repositories.decision_repo import DecisionRepository
 from app.repositories.experiment_repo import ExperimentRepository
+from app.repositories.game_repo import GameRepository
 from app.repositories.round_repo import RoundRepository
+from app.services.puzzle_source import recorded_puzzle
 from app.utils.exceptions import AppError
 
 logger = structlog.get_logger()
@@ -159,6 +173,247 @@ class PuzzleService:
         self._evaluators: dict[str, RolloutEvaluator] = {}
         self._opponent = HeuristicOpponent()
 
+    def _pack_root(self, pack_id: str) -> Path:
+        base = self._puzzle_dir.resolve()
+        root = base / pack_id
+        if (
+            not pack_id
+            or pack_id in (".", "..")
+            or any(c in pack_id for c in "/\\:")
+            or root.resolve().parent != base
+        ):
+            raise AppError("Invalid pack identifier", "PUZZLE_PACK_INVALID", 422)
+        return root
+
+    def _results_root(self, pack_id: str) -> Path:
+        root = self._pack_root(pack_id)
+        if not root.is_dir():
+            raise AppError("Test pack directory not found", "PUZZLE_PACK_NOT_FOUND", 404)
+        results = root / "runs"
+        if results.resolve().parent != root:
+            raise AppError("Invalid results directory", "PUZZLE_RESULT_INVALID", 422)
+        return results
+
+    def _read_result(self, pack_id: str, run_id: str) -> dict[str, Any]:
+        if not RESULT_ID.fullmatch(run_id):
+            raise AppError("Invalid test identifier", "PUZZLE_RESULT_INVALID", 422)
+        root = self._results_root(pack_id)
+        path = root / f"{run_id}.json"
+        if path.resolve().parent != root:
+            raise AppError("Invalid result path", "PUZZLE_RESULT_INVALID", 422)
+        try:
+            return read_result(path, pack_id, run_id)
+        except FileNotFoundError as error:
+            raise AppError("Test record not found", "PUZZLE_RESULT_NOT_FOUND", 404) from error
+        except UnsupportedResultError as error:
+            raise AppError(str(error), "PUZZLE_RESULT_UNSUPPORTED", 422) from error
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise AppError("Test record is invalid", "PUZZLE_RESULT_INVALID", 422) from error
+
+    def results(self, pack_id: str, *, page: int = 1) -> dict[str, Any]:
+        root = self._results_root(pack_id)
+        items = []
+        for path in root.glob("*.json"):
+            if not RESULT_ID.fullmatch(path.stem):
+                continue
+            item: dict[str, Any] = {
+                "run_id": path.stem,
+                "kind": "probe" if path.stem.startswith("probe_") else "run",
+                "status": "available",
+                "created_at": None,
+                "baseline_kind": None,
+            }
+            try:
+                report = self._read_result(pack_id, path.stem)
+                item.update(created_at=report["created_at"], baseline_kind=report["baseline_kind"])
+            except AppError as error:
+                item["status"] = (
+                    "unsupported" if error.code == "PUZZLE_RESULT_UNSUPPORTED" else "invalid"
+                )
+            items.append(item)
+        items.sort(key=lambda item: (item["created_at"] or "", item["run_id"]), reverse=True)
+        return {
+            "items": items[(page - 1) * 20 : page * 20],
+            "total": len(items),
+            "page": page,
+            "page_size": 20,
+            "read_at": datetime.now(UTC).isoformat(),
+        }
+
+    def result(self, pack_id: str, run_id: str) -> dict[str, Any]:
+        report = self._read_result(pack_id, run_id)
+        status = "unrecorded"
+        if report.get("pack_fingerprint"):
+            try:
+                manifest, puzzles = self._load_pack(pack_id)
+                status = (
+                    "matched"
+                    if pack_fingerprint(manifest, puzzles) == report["pack_fingerprint"]
+                    else "changed"
+                )
+            except FileNotFoundError:
+                status = "missing"
+            except (ValueError, KeyError, TypeError, OSError, AppError):
+                status = "unreadable"
+        return {
+            "report": report,
+            "source_status": status,
+            "read_at": datetime.now(UTC).isoformat(),
+            "report_hash": digest(report),
+        }
+
+    def _load_pack(self, pack_id: str) -> tuple[PuzzlePackManifest, list[Puzzle]]:
+        root = self._pack_root(pack_id)
+        for name in ("manifest.json", "puzzles.jsonl"):
+            path = root / name
+            if path.resolve().parent != root:
+                raise ValueError("Pack files must stay in their own directory")
+            if not path.is_file():
+                raise FileNotFoundError(name)
+        try:
+            manifest, puzzles = load_pack(root)
+        except (AttributeError, OverflowError, RecursionError) as error:
+            raise ValueError("Invalid pack structure") from error
+        if manifest.pack_id != pack_id or manifest.puzzle_count != len(puzzles):
+            raise ValueError("Pack identity or position count mismatch")
+        return manifest, puzzles
+
+    def citation_result(self, pack_id: str, run_id: str) -> tuple[dict[str, Any], list[Puzzle]]:
+        """Require a complete, matching source snapshot before formal citation."""
+        result = self.result(pack_id, run_id)
+        if result["source_status"] != "matched":
+            raise AppError(
+                "测试时来源缺失、已变化或无法核对，不能加入正式引用", "RESEARCH_PUZZLE_SOURCE", 422
+            )
+        report = result["report"]
+        try:
+            manifest, puzzles = self._load_pack(pack_id)
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            raise AppError(
+                "来源读取期间发生变化，请重新核对", "RESEARCH_PUZZLE_SOURCE", 422
+            ) from error
+        if (
+            pack_fingerprint(manifest, puzzles) != report["pack_fingerprint"]
+            or pack_snapshot(manifest, puzzles) != report["pack_snapshot"]
+        ):
+            raise AppError("来源摘要与当前测试集不一致，请重新核对", "RESEARCH_PUZZLE_SOURCE", 422)
+        if manifest.extract.get("method") == "decision_record":
+            source = manifest.extract.get("source")
+            if (
+                len(puzzles) != 1
+                or not isinstance(source, dict)
+                or digest(puzzles[0].to_dict()) != source.get("source_hash")
+            ):
+                raise AppError("测试局面内容与来源指纹不一致", "RESEARCH_PUZZLE_SOURCE", 422)
+        elif manifest.extract.get("method") == "rollout_spread":
+            try:
+                validate_selection(manifest, puzzles)
+            except (ValueError, KeyError, TypeError) as error:
+                raise AppError(
+                    "抽取依据或逐局面来源核对不完整，不能正式引用", "RESEARCH_PUZZLE_SOURCE", 422
+                ) from error
+        else:
+            raise AppError("缺少可核对的测试来源，不能正式引用", "RESEARCH_PUZZLE_SOURCE", 422)
+        return result, puzzles
+
+    async def _decision_source(
+        self, decision_id: str, evaluation: dict[str, Any] | None = None
+    ) -> tuple[Puzzle, dict[str, Any]]:
+        read_at = datetime.now(tz=UTC).isoformat()
+        async with connect_sqlite(self._sqlite_path) as db:
+            await db.execute("BEGIN")
+            repo = DecisionRepository(db)
+            point = await repo.get_by_id(decision_id)
+            if point is None:
+                raise AppError("Source decision not found", "PUZZLE_SOURCE_MISSING", 404)
+            try:
+                game = await GameRepository(db).get_by_id(point["game_id"])
+                experiment = await self._load_experiment(db, game["experiment_id"])
+            except KeyError as error:
+                raise AppError("Source game not found", "PUZZLE_SOURCE_MISSING", 404) from error
+            sequence = await repo.evidence_sequence(game["id"], read_at)
+            rounds = await RoundRepository(db).list_by_game(game["id"])
+        try:
+            seed = self._deal_seed(game)
+            metadata = game.get("metadata") or {}
+            if isinstance(metadata, str):
+                metadata = json.loads(metadata)
+            players = self._player_ids(game)
+            if (
+                game["status"] != "finished"
+                or game["game_type"] != experiment["game_type"]
+                or seed is None
+                or not isinstance(metadata, dict)
+                or type(metadata.get("deal_seed")) is not int
+                or len(players) != len(set(players))
+                or not players
+            ):
+                raise ValueError("Source requires a finished run game with recorded deal and seats")
+            engine = self._engine_registry.get(game["game_type"])
+            puzzle = await asyncio.to_thread(
+                recorded_puzzle, engine, game, players, seed, point, sequence, rounds, evaluation
+            )
+        except (ValueError, KeyError, TypeError) as error:
+            raise AppError(str(error), "PUZZLE_SOURCE_INVALID", 422) from error
+        source = {
+            **puzzle.source,
+            "decision_hash": digest(point),
+            "experiment_name": experiment["name"],
+            "game_phase": point["game_phase"],
+            "read_at": read_at,
+            "candidates_evaluated": puzzle.candidates_evaluated,
+            "legal_action_count": puzzle.legal_action_count,
+            "evaluator_params": puzzle.evaluator_params,
+        }
+        source["source_hash"] = hashlib.sha256(
+            json.dumps(puzzle.to_dict(), sort_keys=True, ensure_ascii=False).encode()
+        ).hexdigest()
+        return puzzle, source
+
+    async def batch_source(self, puzzle: Puzzle) -> dict[str, Any]:
+        """Verify an extracted position using its own estimates, with no new simulation."""
+        rebuilt, source = await self._decision_source(
+            puzzle.source["decision_point_id"],
+            {
+                **puzzle.evaluator_params,
+                "action_values": puzzle.action_values,
+                "best_action_id": puzzle.best_action_id,
+                "candidates_evaluated": puzzle.candidates_evaluated,
+                "legal_action_count": puzzle.legal_action_count,
+                "truncated": puzzle.truncated,
+            },
+        )
+        rebuilt.puzzle_id = puzzle.puzzle_id
+        rebuilt.evaluator_params = puzzle.evaluator_params
+        rebuilt.spread = round(rebuilt.spread, 6)
+        expected = puzzle.to_dict()
+        expected["source"] = {**puzzle.source, "decision_created_at": source["decision_created_at"]}
+        if rebuilt.to_dict() != expected:
+            raise AppError("抽取局面与来源观测或合法行动不一致", "RESEARCH_PUZZLE_SOURCE", 422)
+        return source
+
+    async def decision_source(self, decision_id: str) -> dict[str, Any]:
+        """Inspect eligibility; never create a pack or recompute action estimates."""
+        _puzzle, source = await self._decision_source(decision_id)
+        return source
+
+    async def from_decision(
+        self, decision_id: str, *, question: str, expected_source_hash: str
+    ) -> PuzzlePackManifest:
+        puzzle, source = await self._decision_source(decision_id)
+        if source["source_hash"] != expected_source_hash:
+            raise AppError("Source changed; inspect it again", "PUZZLE_SOURCE_CHANGED", 409)
+        manifest = PuzzlePackManifest(
+            pack_id=f"decision_{secrets.token_hex(12)}",
+            created_at=datetime.now(tz=UTC).isoformat(),
+            game_type=puzzle.game_type,
+            source_experiment_id=puzzle.source["experiment_id"],
+            puzzle_count=1,
+            extract={"method": "decision_record", "question": question, "source": source},
+        )
+        save_pack(self._puzzle_dir / manifest.pack_id, manifest, [puzzle])
+        return manifest
+
     def list_packs(self) -> list[PuzzlePackManifest]:
         """List local pack manifests under ``puzzle_dir``."""
         if not self._puzzle_dir.exists():
@@ -170,8 +425,8 @@ class PuzzleService:
             if not (child / "manifest.json").exists():
                 continue
             try:
-                manifest, _puzzles = load_pack(child)
-            except ValueError:
+                manifest, _puzzles = self._load_pack(child.name)
+            except (AppError, OSError, ValueError, KeyError, TypeError):
                 logger.info("puzzle_pack_skip", reason="invalid_pack", path=str(child))
                 continue
             manifests.append(manifest)
@@ -181,7 +436,7 @@ class PuzzleService:
         self, pack_id: str, *, preview: int = 5
     ) -> tuple[PuzzlePackManifest, list[Puzzle]]:
         """Load one pack; ``preview`` limits returned puzzles."""
-        root = self._puzzle_dir / pack_id
+        root = self._pack_root(pack_id)
         if not root.is_dir():
             raise AppError(
                 message=f"Puzzle pack not found: {pack_id}",
@@ -189,8 +444,8 @@ class PuzzleService:
                 status_code=404,
             )
         try:
-            manifest, puzzles = load_pack(root)
-        except ValueError as error:
+            manifest, puzzles = self._load_pack(pack_id)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             raise AppError(
                 message=str(error),
                 code="PUZZLE_PACK_INVALID",
@@ -208,7 +463,7 @@ class PuzzleService:
         seed: int = 0,
     ) -> dict[str, Any]:
         """Score a baseline policy against a frozen pack (no rollout, no API)."""
-        root = self._puzzle_dir / pack_id
+        root = self._pack_root(pack_id)
         if not root.is_dir():
             raise AppError(
                 message=f"Puzzle pack not found: {pack_id}",
@@ -216,8 +471,8 @@ class PuzzleService:
                 status_code=404,
             )
         try:
-            manifest, puzzles = load_pack(root)
-        except ValueError as error:
+            manifest, puzzles = self._load_pack(pack_id)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             raise AppError(
                 message=str(error),
                 code="PUZZLE_PACK_INVALID",
@@ -249,8 +504,9 @@ class PuzzleService:
             )
 
         summary = self._summarize(scores, puzzles)
-        run_id = f"run_{secrets.token_hex(4)}"
+        run_id = f"run_{secrets.token_hex(12)}"
         report = {
+            "metric_version": PUZZLE_METRIC_VERSION,
             "run_id": run_id,
             "pack_id": pack_id,
             "baseline_kind": baseline_kind,
@@ -258,13 +514,10 @@ class PuzzleService:
             "created_at": datetime.now(tz=UTC).isoformat(),
             "summary": summary,
             "puzzles": rows,
+            "pack_snapshot": pack_snapshot(manifest, puzzles),
+            "pack_fingerprint": pack_fingerprint(manifest, puzzles),
         }
-        runs_dir = root / "runs"
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        (runs_dir / f"{run_id}.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        save_result(self._results_root(pack_id), report)
         logger.info(
             "puzzle_run_done",
             pack_id=pack_id,
@@ -290,7 +543,7 @@ class PuzzleService:
                 code="PUZZLE_INVALID_N_TRIALS",
                 status_code=400,
             )
-        root = self._puzzle_dir / pack_id
+        root = self._pack_root(pack_id)
         if not root.is_dir():
             raise AppError(
                 message=f"Puzzle pack not found: {pack_id}",
@@ -298,8 +551,8 @@ class PuzzleService:
                 status_code=404,
             )
         try:
-            manifest, puzzles = load_pack(root)
-        except ValueError as error:
+            manifest, puzzles = self._load_pack(pack_id)
+        except (OSError, ValueError, KeyError, TypeError) as error:
             raise AppError(
                 message=str(error),
                 code="PUZZLE_PACK_INVALID",
@@ -321,6 +574,7 @@ class PuzzleService:
 
         puzzle_rows: list[dict[str, Any]] = []
         consistent_flags: list[bool] = []
+        repeat_flags: list[bool] = []
         base_scores: list[PuzzleAnswerScore] = []
         pert_scores: list[PuzzleAnswerScore] = []
 
@@ -331,7 +585,6 @@ class PuzzleService:
             legal = legal_actions_from_dicts(puzzle.legal_actions, player_id=observation.player_id)
             base_chosen = await self._decide_action_id(policy, observation, legal, budget, base_ctx)
             base_answer = score_answer(puzzle.best_action_id, puzzle.action_values, base_chosen)
-            base_scores.append(base_answer)
 
             trials: list[dict[str, Any]] = []
             for trial in range(n_trials):
@@ -341,18 +594,28 @@ class PuzzleService:
                 pert_legal = legal_actions_from_dicts(
                     pert.legal_actions, player_id=pert_obs.player_id
                 )
-                decide_rng = random.Random(self._probe_seed(seed, puzzle.puzzle_id, trial + 10_000))
-                pert_ctx = PolicyContext(advisor=engine, rng=decide_rng)
+                decision_seed = self._probe_seed(seed, puzzle.puzzle_id, trial + 10_000)
+                repeat_ctx = PolicyContext(advisor=engine, rng=random.Random(decision_seed))
+                repeat_chosen = await self._decide_action_id(
+                    policy, observation, legal, budget, repeat_ctx
+                )
+                base_scores.append(
+                    score_answer(puzzle.best_action_id, puzzle.action_values, repeat_chosen)
+                )
+                repeat_flags.append(repeat_chosen == base_chosen)
+                pert_ctx = PolicyContext(advisor=engine, rng=random.Random(decision_seed))
                 pert_chosen = await self._decide_action_id(
                     policy, pert_obs, pert_legal, budget, pert_ctx
                 )
-                consistent = pert_chosen == base_chosen
+                consistent = pert_chosen == repeat_chosen
                 consistent_flags.append(consistent)
                 pert_answer = score_answer(puzzle.best_action_id, puzzle.action_values, pert_chosen)
                 pert_scores.append(pert_answer)
                 trials.append(
                     {
                         "trial": trial,
+                        "control_action_id": repeat_chosen,
+                        "repeat_consistent": repeat_chosen == base_chosen,
                         "chosen_action_id": pert_chosen,
                         "consistent": consistent,
                         "hit": pert_answer.hit,
@@ -373,28 +636,21 @@ class PuzzleService:
 
         n = len(puzzles)
         n_flags = len(consistent_flags)
+        base_summary = summarize_answers(base_scores)
+        pert_summary = summarize_answers(pert_scores)
         summary = {
             "n": n,
             "n_trials": n_trials,
             "kinds": active_kinds,
-            "consistency": (
-                round(sum(1 for flag in consistent_flags if flag) / n_flags, 4) if n_flags else 0.0
-            ),
-            "base_accuracy": (round(sum(1 for s in base_scores if s.hit) / n, 4) if n else 0.0),
-            "pert_accuracy": (
-                round(sum(1 for s in pert_scores if s.hit) / len(pert_scores), 4)
-                if pert_scores
-                else 0.0
-            ),
-            "base_mean_ev_loss": (round(sum(s.ev_loss for s in base_scores) / n, 4) if n else 0.0),
-            "pert_mean_ev_loss": (
-                round(sum(s.ev_loss for s in pert_scores) / len(pert_scores), 4)
-                if pert_scores
-                else 0.0
-            ),
+            "comparisons_n": n_flags,
+            "repeat_consistency": round(sum(repeat_flags) / n_flags, 4) if n_flags else None,
+            "consistency": (round(sum(consistent_flags) / n_flags, 4) if n_flags else None),
+            **{f"base_{key}": value for key, value in base_summary.items()},
+            **{f"pert_{key}": value for key, value in pert_summary.items()},
         }
-        run_id = f"probe_{secrets.token_hex(4)}"
+        run_id = f"probe_{secrets.token_hex(12)}"
         report = {
+            "metric_version": PUZZLE_METRIC_VERSION,
             "run_id": run_id,
             "pack_id": pack_id,
             "baseline_kind": baseline_kind,
@@ -402,13 +658,10 @@ class PuzzleService:
             "created_at": datetime.now(tz=UTC).isoformat(),
             "summary": summary,
             "puzzles": puzzle_rows,
+            "pack_snapshot": pack_snapshot(manifest, puzzles),
+            "pack_fingerprint": pack_fingerprint(manifest, puzzles),
         }
-        runs_dir = root / "runs"
-        runs_dir.mkdir(parents=True, exist_ok=True)
-        (runs_dir / f"{run_id}.json").write_text(
-            json.dumps(report, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        save_result(self._results_root(pack_id), report)
         logger.info(
             "puzzle_probe_done",
             pack_id=pack_id,
@@ -448,11 +701,9 @@ class PuzzleService:
     @staticmethod
     def _summarize(results: list[PuzzleAnswerScore], puzzles: list[Puzzle]) -> dict[str, Any]:
         n = len(results)
-        hits = sum(1 for result in results if result.hit)
         return {
             "n": n,
-            "accuracy": round(hits / n, 4) if n else 0.0,
-            "mean_ev_loss": (round(sum(result.ev_loss for result in results) / n, 4) if n else 0.0),
+            **summarize_answers(results),
             "truncated_n": sum(1 for puzzle in puzzles if puzzle.truncated),
         }
 
@@ -524,6 +775,30 @@ class PuzzleService:
             max_total=max_total,
             count=len(picked),
         )
+        manifest.extract.update(
+            method="rollout_spread",
+            selection={
+                "order": "spread_desc_stable",
+                "source_game_ids": [str(game["id"]) for game in games],
+                "selected_game_ids": sorted({str(p.source["game_id"]) for p in picked}),
+                "candidates": [
+                    {"puzzle_id": p.puzzle_id, "game_id": p.source["game_id"], "spread": p.spread}
+                    for p in candidates
+                ],
+            },
+            source_checks={},
+        )
+        for puzzle in picked:
+            try:
+                source = await self.batch_source(puzzle)
+                puzzle.source["decision_created_at"] = source["decision_created_at"]
+                manifest.extract["source_checks"][puzzle.puzzle_id] = {
+                    "decision_hash": source["decision_hash"],
+                    "puzzle_hash": digest(puzzle.to_dict()),
+                }
+            except (AppError, ValueError, KeyError, TypeError):
+                # Retain the independently readable diagnostic, never invent missing provenance.
+                manifest.extract["source_checks"][puzzle.puzzle_id] = {"unverified": True}
         save_pack(self._puzzle_dir / manifest.pack_id, manifest, picked)
         logger.info(
             "puzzle_extract_done",
@@ -676,6 +951,7 @@ class PuzzleService:
         values = await asyncio.to_thread(evaluator.action_values, observation, legal)
         if not values:
             return None
+        values = {aid: round(float(v), 6) for aid, v in values.items()}
         best_id = max(values, key=lambda aid: values[aid])
         spread = max(values.values()) - min(values.values())
         return Puzzle(
@@ -691,13 +967,13 @@ class PuzzleService:
             },
             observation=asdict(observation),
             legal_actions=self._legal_actions_json(legal),
-            action_values={aid: round(float(v), 6) for aid, v in values.items()},
+            action_values=values,
             best_action_id=best_id,
             spread=round(float(spread), 6),
             candidates_evaluated=len(values),
             legal_action_count=len(legal),
             truncated=len(values) < len(legal),
-            evaluator_params=evaluator.params.to_dict(),
+            evaluator_params={**evaluator.params.to_dict(), "opponent_kind_effective": "heuristic"},
         )
 
     def _evaluator_for(self, engine: GameEngine, params: EvaluatorParams) -> RolloutEvaluator:
@@ -749,11 +1025,7 @@ class PuzzleService:
             {
                 "id": entry.id,
                 "label": entry.label,
-                "action": {
-                    "action_type": str(entry.action.action_type),
-                    "cards": list(entry.action.cards or []),
-                    "target": entry.action.target,
-                },
+                "action": asdict(entry.action),
             }
             for entry in legal
         ]
@@ -784,7 +1056,7 @@ class PuzzleService:
                 "min_spread": min_spread,
                 "max_per_game": max_per_game,
                 "max_total": max_total,
-                "evaluator_params": params.to_dict(),
+                "evaluator_params": {**params.to_dict(), "opponent_kind_effective": "heuristic"},
             },
         )
 

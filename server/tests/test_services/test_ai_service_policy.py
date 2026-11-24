@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncGenerator
 from typing import Any
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -14,6 +15,7 @@ from app.core.ai.stream_chunk import StreamChunk
 from app.core.engine.doudizhu.engine import DoudizhuEngine
 from app.core.training.data_quality import evaluate_train_usable
 from app.services.ai_service import AIService
+from app.services.decision_snapshot import game_phase_from_observation
 from app.utils.exceptions import AIProviderError
 
 PLAYER_CONFIG = {
@@ -92,6 +94,35 @@ async def test_a_chosen_id_becomes_an_applicable_action(engine: DoudizhuEngine) 
     assert result.prompt_preview
     # The action must be applicable, not merely well-formed.
     engine.apply_action(state, result.action)
+
+
+async def test_endgame_trace_records_the_rendered_playing_version(
+    engine: DoudizhuEngine, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    state, player_id, legal = _table(engine)
+    state = engine.apply_action(state, next(action for action in legal if action.target == "3"))
+    player_id = engine.get_current_player(state)
+    while game_phase_from_observation(engine.observe(state, player_id)) != "endgame":
+        state = engine.apply_action(state, engine.get_legal_actions(state, player_id)[0])
+        assert not engine.is_terminal(state)
+        player_id = engine.get_current_player(state)
+
+    legal = engine.get_legal_actions(state, player_id)
+    target = engine.legal_actions(state, player_id)[0]
+    service = _service(json.dumps({"action_id": target.id}))
+    key = engine.capability.prompt_keys["playing"]
+    prompts = {key: {"version": "follow-test", "content": "FOLLOW {format_instructions}"}}
+    monkeypatch.setattr(service, "_protocol_prompt_freeze", AsyncMock(return_value=("v3", prompts)))
+    result = await service.get_decision(
+        state=state,
+        engine=engine,
+        player_id=player_id,
+        player_config=PLAYER_CONFIG,
+        legal_actions=legal,
+    )
+
+    assert result.messages[0]["content"].startswith("FOLLOW ")
+    assert result.prompt_version == "follow-test"
 
 
 async def test_streamed_chunks_keep_their_channel(engine: DoudizhuEngine) -> None:

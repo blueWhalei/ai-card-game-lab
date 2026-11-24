@@ -7,6 +7,8 @@ layer (deciding what to report) need the same answer.
 
 from __future__ import annotations
 
+import httpx
+
 from app.utils.exceptions import (
     AIProviderError,
     AIProviderUnavailableError,
@@ -27,6 +29,15 @@ UNAVAILABLE_ERROR_MARKERS = (
     "gateway error",
     "503",
 )
+
+
+def provider_http_error(provider: str, response: httpx.Response) -> AppError:
+    detail = f"HTTP {response.status_code}: {response.text[:500]}"
+    if response.status_code == 429:
+        return AIRateLimitExceededError(provider, detail)
+    if response.status_code in (502, 503, 504):
+        return AIProviderUnavailableError(provider, detail)
+    return AIProviderError(provider, detail, retryable=not 400 <= response.status_code < 500)
 
 
 def is_non_retryable_provider_error(error: Exception) -> bool:

@@ -3,11 +3,15 @@
 from __future__ import annotations
 
 import json
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 from httpx import AsyncClient
 
+from app.config import Settings
+from app.database import connect_sqlite
+from app.repositories.game_repo import GameRepository
 from app.services.decision_service import DecisionService
 
 _PROMPT = [{"role": "user", "content": "pick an action"}]
@@ -124,3 +128,56 @@ async def test_from_decisions_eval_ratio_splits_by_game(
     train_lines = train_path.read_text(encoding="utf-8").splitlines()
     eval_lines = eval_path.read_text(encoding="utf-8").splitlines()
     assert len(train_lines) + len(eval_lines) == 4
+
+
+async def test_dataset_split_keeps_repeated_deals_in_one_group(
+    client: AsyncClient, test_settings: Settings
+) -> None:
+    decisions = DecisionService(test_settings.sqlite_path, test_settings.data_dir)
+    source = {"a1": 1, "b1": 1, "a2": 2, "b2": 2}
+    async with connect_sqlite(test_settings.sqlite_path) as db:
+        for gid, seed in source.items():
+            await GameRepository(db).create(
+                game_id=gid,
+                game_type="doudizhu",
+                player_ids=["p1", "p2", "p3"],
+                data_file="unused.jsonl",
+                created_at=datetime.now(tz=UTC).isoformat(),
+                metadata={"deal_seed": seed},
+            )
+    for gid in source:
+        await decisions.create_decision_point(
+            game_id=gid,
+            round_number=0,
+            player_id="p1",
+            hand_cards=["C3"],
+            opponent_hands={"p2": 1, "p3": 1},
+            last_action=None,
+            game_phase="playing",
+            legal_actions=_LEGAL,
+            chosen_action=_CHOSEN,
+            action_id="SINGLE|C3|",
+            prompt_messages=[{"role": "user", "content": gid}],
+        )
+    response = await client.post(
+        "/api/v1/datasets/from-decisions",
+        json={
+            "name": "grouped",
+            "game_type": "doudizhu",
+            "eval_ratio": 0.5,
+        },
+    )
+    assert response.status_code == 201, response.text
+    result = response.json()["data"]
+    meta = result["filters"]
+    assert meta["group_count"] == 2 and meta["eval_group_count"] == 1
+    assert set(meta["eval_game_ids"]) in ({"a1", "b1"}, {"a2", "b2"})
+    root = Path(test_settings.data_dir)
+
+    def seeds(path: Path) -> set[int]:
+        return {
+            source[json.loads(line)["messages"][0]["content"]]
+            for line in path.read_text(encoding="utf-8").splitlines()
+        }
+
+    assert seeds(root / result["file_path"]).isdisjoint(seeds(root / meta["eval_file_path"]))

@@ -16,7 +16,7 @@ from app.main import create_app
 def _allow_fixture_providers() -> Iterator[None]:
     """Fixture configs use ollama; unit tests must not require a live daemon."""
     with (
-        patch("app.services.game_service.is_provider_configured", return_value=True),
+        patch("app.utils.providers.fetch_model_catalog", return_value={"llama3.2", "llama"}),
         patch("app.utils.providers.is_provider_configured", return_value=True),
     ):
         yield

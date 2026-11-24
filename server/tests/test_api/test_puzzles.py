@@ -51,7 +51,7 @@ async def test_extract_empty_list_and_run(client: AsyncClient, tmp_path) -> None
     assert run.status_code == 200
     summary = run.json()["data"]["summary"]
     assert summary["n"] == 0
-    assert summary["accuracy"] == 0.0
+    assert summary["accuracy"] is None
 
 
 async def test_pack_not_found(client: AsyncClient) -> None:
@@ -86,5 +86,5 @@ async def test_probe_empty_pack(client: AsyncClient, tmp_path) -> None:
     assert probe.status_code == 200
     summary = probe.json()["data"]["summary"]
     assert summary["n"] == 0
-    assert summary["consistency"] == 0.0
+    assert summary["consistency"] is None
     assert summary["n_trials"] == 2

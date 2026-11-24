@@ -179,12 +179,16 @@ async def test_list_recent_returns_traces_without_game_filter(db_path: str) -> N
     assert rows[0]["game_id"] == "game-1"
 
 
-async def test_version_stats_empty_version_does_not_divide_none(db_path: str) -> None:
+async def test_empty_metrics_preserve_missing_values(db_path: str) -> None:
     async with aiosqlite.connect(db_path) as db:
         db.row_factory = aiosqlite.Row
-        repo = TraceRepository(db)
-        stats = await repo.get_version_stats("missing")
-    assert stats["total_traces"] == 0
-    assert stats["parser_success_count"] == 0
-    assert stats["avg_response_time_ms"] == 0.0
-    assert stats["success_rate"] == 0.0
+        stats = await TraceRepository(db).get_metrics()
+    assert stats == {
+        "total_traces": 0,
+        "response_time_count": 0,
+        "avg_response_time_ms": None,
+        "min_response_time_ms": None,
+        "max_response_time_ms": None,
+        "parser_success_count": 0,
+        "parser_evaluated_count": 0,
+    }

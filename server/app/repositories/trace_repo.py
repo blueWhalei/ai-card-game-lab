@@ -89,11 +89,27 @@ class TraceRepository:
         rows = await cursor.fetchall()
         return [_row_to_trace(row) for row in rows]
 
-    async def get_by_id(self, trace_id: str) -> dict[str, Any] | None:
-        """Get a single trace by ID."""
+    async def get_by_id(
+        self,
+        trace_id: str,
+        *,
+        game_id: str | None = None,
+        experiment_id: str | None = None,
+        player_id: str | None = None,
+        model: str | None = None,
+        parser_ok: bool | None = None,
+    ) -> dict[str, Any] | None:
+        """Get one invocation within optional AND-combined browsing filters."""
+        from_sql, where_sql, values = _trace_filter_sql(
+            game_id=game_id,
+            experiment_id=experiment_id,
+            player_id=player_id,
+            model=model,
+            parser_ok=parser_ok,
+        )
+        clause = " AND" if where_sql else "WHERE"
         cursor = await self._db.execute(
-            "SELECT * FROM traces WHERE id = ?",
-            (trace_id,),
+            f"SELECT t.* {from_sql} {where_sql} {clause} t.id = ?", [*values, trace_id]
         )
         row = await cursor.fetchone()
         return _row_to_trace(row) if row else None
@@ -101,7 +117,7 @@ class TraceRepository:
     async def get_spans(self, trace_id: str) -> list[dict[str, Any]]:
         """Get all spans for a trace."""
         cursor = await self._db.execute(
-            "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time",
+            "SELECT * FROM spans WHERE trace_id = ? ORDER BY start_time, id",
             (trace_id,),
         )
         rows = await cursor.fetchall()
@@ -147,6 +163,8 @@ class TraceRepository:
         player_id: str | None = None,
         model: str | None = None,
         parser_ok: bool | None = None,
+        start_time: str | None = None,
+        end_time: str | None = None,
         limit: int = 100,
         offset: int = 0,
     ) -> tuple[list[dict[str, Any]], int]:
@@ -157,6 +175,8 @@ class TraceRepository:
             player_id=player_id,
             model=model,
             parser_ok=parser_ok,
+            start_time=start_time,
+            end_time=end_time,
             table_alias="t",
         )
         count_cursor = await self._db.execute(
@@ -170,7 +190,7 @@ class TraceRepository:
             f"""
             SELECT t.* {from_sql}
             {where_sql}
-            ORDER BY t.created_at DESC
+            ORDER BY julianday(t.created_at) DESC, t.id DESC
             LIMIT ? OFFSET ?
             """,
             [*params, limit, offset],
@@ -200,75 +220,29 @@ class TraceRepository:
             table_alias="t",
         )
 
-        count_cursor = await self._db.execute(
-            f"SELECT COUNT(*) as total {from_sql} {where_sql}",
-            params,
-        )
-        count_row = await count_cursor.fetchone()
-
-        metrics_cursor = await self._db.execute(
-            f"""
-            SELECT
-                AVG(json_extract(t.metrics, '$.response_time_ms')) as avg_response_time,
-                MIN(json_extract(t.metrics, '$.response_time_ms')) as min_response_time,
-                MAX(json_extract(t.metrics, '$.response_time_ms')) as max_response_time,
-                SUM(CASE WHEN json_extract(t.metrics, '$.parser_ok') = 1
-                    THEN 1 ELSE 0 END) as parser_success
-            {from_sql}
-            {where_sql}
-            """,
-            params,
-        )
-        metrics_row = await metrics_cursor.fetchone()
-
-        return {
-            "total_traces": count_row["total"] if count_row else 0,
-            "avg_response_time_ms": round(
-                metrics_row["avg_response_time"]
-                if metrics_row and metrics_row["avg_response_time"]
-                else 0,
-                2,
-            ),
-            "min_response_time_ms": round(
-                metrics_row["min_response_time"]
-                if metrics_row and metrics_row["min_response_time"]
-                else 0,
-                2,
-            ),
-            "max_response_time_ms": round(
-                metrics_row["max_response_time"]
-                if metrics_row and metrics_row["max_response_time"]
-                else 0,
-                2,
-            ),
-            "parser_success_count": metrics_row["parser_success"] if metrics_row else 0,
-        }
-
-    async def get_version_stats(self, version: str) -> dict[str, Any]:
-        """Get aggregated stats for a single prompt version."""
         cursor = await self._db.execute(
-            """
-            SELECT
-                COUNT(*) as total,
-                AVG(json_extract(metrics, '$.response_time_ms')) as avg_response_time,
-                SUM(CASE WHEN json_extract(metrics, '$.parser_ok') = 1
-                    THEN 1 ELSE 0 END) as parser_success
-            FROM traces WHERE prompt_version = ?
-            """,
-            (version,),
+            f"""WITH filtered AS (
+                SELECT
+                  CASE WHEN json_type(t.metrics, '$.response_time_ms') IN ('integer', 'real')
+                    AND json_extract(t.metrics, '$.response_time_ms') >= 0
+                    AND json_extract(t.metrics, '$.response_time_ms') < 1e999
+                    THEN json_extract(t.metrics, '$.response_time_ms') END AS latency,
+                  CASE json_type(t.metrics, '$.parser_ok')
+                    WHEN 'true' THEN 1 WHEN 'false' THEN 0 END AS parsed
+                {from_sql} {where_sql}
+            ) SELECT COUNT(*) AS total_traces, COUNT(latency) AS response_time_count,
+                AVG(latency) AS avg_response_time_ms, MIN(latency) AS min_response_time_ms,
+                MAX(latency) AS max_response_time_ms, COUNT(parsed) AS parser_evaluated_count,
+                COALESCE(SUM(parsed), 0) AS parser_success_count FROM filtered""",
+            params,
         )
         row = await cursor.fetchone()
-        total = int(row["total"]) if row and row["total"] is not None else 0
-        raw_success = row["parser_success"] if row else None
-        parser_success = int(raw_success) if raw_success is not None else 0
-        avg_raw = row["avg_response_time"] if row else None
-        return {
-            "version": version,
-            "total_traces": total,
-            "avg_response_time_ms": round(float(avg_raw) if avg_raw is not None else 0, 2),
-            "parser_success_count": parser_success,
-            "success_rate": round(parser_success / max(total, 1) * 100, 2),
-        }
+        assert row is not None
+        result = dict(row)
+        for key in ("avg_response_time_ms", "min_response_time_ms", "max_response_time_ms"):
+            if result[key] is not None:
+                result[key] = round(result[key], 2)
+        return result
 
 
 def _trace_filter_sql(
@@ -306,17 +280,14 @@ def _trace_filter_sql(
         conditions.append(f"{a}.model = ?")
         params.append(model)
     if parser_ok is True:
-        conditions.append(f"json_extract({a}.metrics, '$.parser_ok') = 1")
+        conditions.append(f"json_type({a}.metrics, '$.parser_ok') = 'true'")
     elif parser_ok is False:
-        conditions.append(
-            f"(json_extract({a}.metrics, '$.parser_ok') IS NULL "
-            f"OR json_extract({a}.metrics, '$.parser_ok') = 0)"
-        )
+        conditions.append(f"json_type({a}.metrics, '$.parser_ok') = 'false'")
     if start_time:
-        conditions.append(f"{a}.created_at >= ?")
+        conditions.append(f"julianday({a}.created_at) >= julianday(?)")
         params.append(start_time)
     if end_time:
-        conditions.append(f"{a}.created_at <= ?")
+        conditions.append(f"julianday({a}.created_at) <= julianday(?)")
         params.append(end_time)
 
     where_sql = f"WHERE {' AND '.join(conditions)}" if conditions else ""

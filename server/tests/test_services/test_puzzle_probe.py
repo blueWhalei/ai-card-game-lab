@@ -108,3 +108,20 @@ async def test_probe_reproducible_with_same_seed(
     b = await probe_service.probe(manifest.pack_id, baseline_kind="first", seed=42, n_trials=5)
     assert a["summary"] == b["summary"]
     assert a["puzzles"][0]["trials"] == b["puzzles"][0]["trials"]
+
+
+@pytest.mark.asyncio
+async def test_random_policy_without_perturbation_has_perfect_control_agreement(
+    probe_service: PuzzleService, tmp_path: Path
+) -> None:
+    manifest = _order_sensitive_pack(tmp_path / "puzzles")
+    report = await probe_service.probe(
+        manifest.pack_id, baseline_kind="random", seed=8, n_trials=30, kinds=[]
+    )
+    summary = report["summary"]
+    assert summary["consistency"] == 1.0
+    assert summary["repeat_consistency"] < 1.0
+    assert summary["comparisons_n"] == 30
+    assert summary["base_evaluated_n"] == summary["pert_evaluated_n"] == 30
+    assert summary["base_accuracy"] == summary["pert_accuracy"]
+    assert report["metric_version"] == "puzzle-scoring-v2"

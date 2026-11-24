@@ -1,89 +1,40 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { computed, ref, watch } from 'vue'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
-import { experimentApi, type CollectMode, type Experiment } from '@/api/experimentApi'
+import { experimentApi, type Experiment } from '@/api/experimentApi'
 import { experimentConfigApi, type ExperimentConfig } from '@/api/experimentConfigApi'
-import {
-  defaultEngineId,
-  engineById,
-  isValidPlayerSelection,
-  maxSelectable,
-  playerCountLabel,
-  supportsBenchmark,
-  type EngineInfo,
-} from '@/utils/engineSlots'
-import { firstIncompleteStep, firstRunSteps } from '@/utils/firstRun'
-import { systemApi, type PreflightResult } from '@/api/systemApi'
+import { studyApi, type Study } from '@/api/studyApi'
+import { systemApi, type EngineInfo } from '@/api/systemApi'
+import CreateExperimentDialog from '@/components/experiment/CreateExperimentDialog.vue'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
 import { pickJsonFile } from '@/utils/jsonFile'
 import EmptyState from '@/components/common/EmptyState.vue'
-import FirstRunStepper from '@/components/common/FirstRunStepper.vue'
 import ExperimentListRow from '@/components/experiment/ExperimentListRow.vue'
 import UiButton from '@/components/ui/Button.vue'
-import UiCheckbox from '@/components/ui/Checkbox.vue'
-import UiDialog from '@/components/ui/Dialog.vue'
 import UiDropdownMenu, { type DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
-import UiInput from '@/components/ui/Input.vue'
-import UiInputNumber from '@/components/ui/InputNumber.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
-import UiTextarea from '@/components/ui/Textarea.vue'
 
 const { t } = useI18n()
 const router = useRouter()
+const route = useRoute()
+const study = ref<Study | null>(null)
+const studyId = computed(() =>
+  typeof route.query.study === 'string' ? route.query.study : undefined,
+)
+const loadFailed = ref(false)
 const loading = ref(true)
 const seedingDemo = ref(false)
-const creating = ref(false)
 const importing = ref(false)
 const createOpen = ref(false)
-const createMoreOpen = ref(false)
 const experiments = ref<Experiment[]>([])
 const configs = ref<ExperimentConfig[]>([])
 const engines = ref<EngineInfo[]>([])
-const preflight = ref<PreflightResult | null>(null)
-const formGameType = ref('')
-
-const formName = ref('')
-const formNotes = ref('')
-const formHypothesis = ref('')
-const formTags = ref('')
-const formCollectMode = ref<CollectMode>('free')
-const formPromptVersion = ref('v3')
-const formTarget = ref(10)
-const selectedConfigIds = ref<string[]>([])
-
-const currentEngine = computed(() => engineById(engines.value, formGameType.value))
-const slotsLabel = computed(() => playerCountLabel(currentEngine.value))
-const maxPlayers = computed(() => maxSelectable(currentEngine.value))
-const canUseBenchmark = computed(() => supportsBenchmark(currentEngine.value))
-
-const requiredPlayers = computed(() => currentEngine.value?.min_players ?? 3)
-const hasConfiguredProvider = computed(
-  () =>
-    (preflight.value?.providers ?? []).some((p) => p.configured) ||
-    preflight.value?.can_collect === true,
-)
-const setupSteps = computed(() =>
-  firstRunSteps({
-    hasConfiguredProvider: hasConfiguredProvider.value,
-    playerCount: configs.value.length,
-    requiredPlayers: requiredPlayers.value,
-    experimentCount: experiments.value.length,
-  }),
-)
-const setupIncomplete = computed(() => firstIncompleteStep(setupSteps.value) != null)
-
-const canSubmit = computed(() => {
-  const target = Number(formTarget.value)
-  return (
-    formName.value.trim().length > 0 &&
-    isValidPlayerSelection(selectedConfigIds.value.length, currentEngine.value) &&
-    Number.isFinite(target) &&
-    target >= 1 &&
-    target <= 50
-  )
+const initialLineup = computed(() => {
+  if (route.query.preset === 'prompt-baseline') return 'prompt-baseline'
+  return experiments.value.length === 0 || configs.value.length === 0 ? 'offline' : 'custom'
 })
 
 const moreMenuItems = computed((): DropdownMenuItemDef[] => [
@@ -99,92 +50,38 @@ function playerNames(exp: Experiment): string[] {
   return exp.player_ids.map((id) => configName(id))
 }
 
+let loadVersion = 0
 async function load(): Promise<void> {
+  const version = ++loadVersion
   loading.value = true
+  loadFailed.value = false
   try {
-    const [expRes, cfgRes, engineRes, preflightRes] = await Promise.all([
+    const [expRes, cfgRes, engineRes, studyRes] = await Promise.all([
       experimentApi.list(),
       experimentConfigApi.list(),
-      systemApi.listEngines().catch(() => null),
-      systemApi.preflight({ scope: 'all' }).catch(() => null),
+      systemApi.listEngines(),
+      studyId.value ? studyApi.get(studyId.value) : Promise.resolve(null),
     ])
-    experiments.value = expRes.data ?? []
+    if (version !== loadVersion) return
+    study.value = studyRes?.data ?? null
+    experiments.value = studyRes ? studyRes.data.runs : expRes.data
     configs.value = cfgRes.data ?? []
-    engines.value = engineRes?.data ?? []
-    preflight.value = preflightRes?.data ?? null
-    if (!engines.value.some((e) => e.id === formGameType.value)) {
-      formGameType.value = defaultEngineId(engines.value)
-    }
+    engines.value = engineRes.data
   } catch (e: unknown) {
+    if (version !== loadVersion) return
+    loadFailed.value = true
     showApiError(e, t('experiment.loadFailed'))
   } finally {
-    loading.value = false
+    if (version === loadVersion) loading.value = false
   }
 }
 
-function setCollectMode(mode: CollectMode): void {
-  formCollectMode.value = mode
-  if (mode === 'benchmark') {
-    const n = currentEngine.value?.benchmark_seed_count ?? 50
-    formTarget.value = Math.min(50, Math.max(1, n))
-  }
+function openCreate() {
+  if (!loading.value && !loadFailed.value) createOpen.value = true
 }
 
-function openCreate(): void {
-  formName.value = ''
-  formNotes.value = ''
-  formHypothesis.value = ''
-  formTags.value = ''
-  formCollectMode.value = 'free'
-  formPromptVersion.value = 'v3'
-  formTarget.value = 10
-  formGameType.value = defaultEngineId(engines.value)
-  selectedConfigIds.value = configs.value.slice(0, maxPlayers.value).map((c) => c.id)
-  createMoreOpen.value = false
-  createOpen.value = true
-}
-
-function toggleConfig(id: string, checked: boolean): void {
-  if (checked) {
-    if (selectedConfigIds.value.includes(id)) return
-    if (selectedConfigIds.value.length >= maxPlayers.value) {
-      toast.warning(t('experiment.needExactPlayers', { n: slotsLabel.value }))
-      return
-    }
-    selectedConfigIds.value = [...selectedConfigIds.value, id]
-    return
-  }
-  selectedConfigIds.value = selectedConfigIds.value.filter((x) => x !== id)
-}
-
-async function submitCreate(): Promise<void> {
-  if (!canSubmit.value) return
-  creating.value = true
-  try {
-    const tags = formTags.value
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean)
-      .slice(0, 20)
-    const res = await experimentApi.create({
-      name: formName.value.trim(),
-      notes: formNotes.value.trim(),
-      hypothesis: formHypothesis.value.trim(),
-      tags,
-      game_type: formGameType.value,
-      player_ids: selectedConfigIds.value,
-      target_games: Number(formTarget.value) || 10,
-      collect_mode: canUseBenchmark.value ? formCollectMode.value : 'free',
-      prompt_version: formPromptVersion.value.trim() || 'v3',
-    })
-    createOpen.value = false
-    toast.success(t('experiment.created'))
-    await router.push(`/experiments/${res.data.id}`)
-  } catch (e: unknown) {
-    showApiError(e, t('experiment.createFailed'))
-  } finally {
-    creating.value = false
-  }
+function updateConfig(config: ExperimentConfig) {
+  configs.value = [...configs.value.filter((c) => c.id !== config.id), config]
 }
 
 async function loadDemo(): Promise<void> {
@@ -258,13 +155,32 @@ function onMoreSelect(id: string): void {
   if (id === 'import') void importPack()
 }
 
-onMounted(() => {
-  void load()
-})
+watch(
+  () => [route.query.study, route.query.create, route.query.preset],
+  async () => {
+    createOpen.value = false
+    study.value = null
+    experiments.value = []
+    const version = loadVersion + 1
+    await load()
+    if (version === loadVersion && route.query.create === '1') openCreate()
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
   <div class="page-container research-page space-y-ink-6">
+    <RouterLink
+      v-if="study"
+      :to="`/research/${study.id}`"
+      class="block text-body text-ink-primary hover:underline"
+      >← {{ t('study.inStudy', { name: study.title }) }}</RouterLink
+    >
+    <div v-if="loadFailed" role="alert" class="space-y-3">
+      <p>{{ t('study.loadFailed') }}</p>
+      <UiButton variant="secondary" @click="load">{{ t('common.retry') }}</UiButton>
+    </div>
     <div class="flex flex-wrap items-center justify-between gap-ink-4">
       <p class="text-body text-ink-text-muted">
         {{ t('experiment.libraryCount', { n: experiments.length }) }}
@@ -283,32 +199,21 @@ onMounted(() => {
             <Icon icon="lucide:ellipsis" class="h-4 w-4" />
           </UiButton>
         </UiDropdownMenu>
-        <UiButton @click="openCreate">
+        <UiButton :disabled="loading || loadFailed" @click="openCreate">
           <Icon icon="lucide:plus" class="mr-1.5 h-4 w-4" />
           {{ t('experiment.create') }}
         </UiButton>
       </div>
     </div>
 
-    <FirstRunStepper
-      v-if="!loading && setupIncomplete"
-      :steps="setupSteps"
-      :required-players="requiredPlayers"
-      :demo-loading="seedingDemo"
-      @settings="router.push('/settings')"
-      @players="router.push('/experiment-configs')"
-      @create="openCreate"
-      @demo="loadDemo"
-    />
-
     <div v-if="loading" class="py-2">
       <UiSkeletonList :rows="6" />
     </div>
 
     <EmptyState
-      v-else-if="experiments.length === 0 && !setupIncomplete"
+      v-else-if="!loadFailed && experiments.length === 0"
       :title="t('experiment.emptyTitle')"
-      :description="t('experiment.emptyHintExamples')"
+      :description="t('experiment.emptyHint')"
     >
       <template #action>
         <div class="flex flex-wrap justify-center gap-ink-2">
@@ -342,151 +247,20 @@ onMounted(() => {
       />
     </div>
 
-    <UiDialog v-model:open="createOpen" size="lg" :title="t('experiment.createTitle')">
-      <div class="grid gap-ink-4 sm:grid-cols-2">
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
-            t('common.name')
-          }}</label>
-          <UiInput
-            v-model="formName"
-            :placeholder="t('experiment.namePlaceholder')"
-            class="w-full"
-          />
-        </div>
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">
-            {{ t('experiment.targetGames') }}
-          </label>
-          <UiInputNumber v-model="formTarget" :min="1" :max="50" />
-        </div>
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">{{
-            t('experiment.collectMode')
-          }}</label>
-          <div class="flex flex-wrap gap-ink-2">
-            <UiButton
-              size="sm"
-              :variant="formCollectMode === 'free' ? 'primary' : 'secondary'"
-              type="button"
-              @click="setCollectMode('free')"
-            >
-              {{ t('experiment.collectModeFree') }}
-            </UiButton>
-            <UiButton
-              size="sm"
-              :variant="formCollectMode === 'benchmark' ? 'primary' : 'secondary'"
-              type="button"
-              :disabled="!canUseBenchmark"
-              @click="setCollectMode('benchmark')"
-            >
-              {{ t('experiment.collectModeBenchmark') }}
-            </UiButton>
-          </div>
-          <p
-            v-if="formCollectMode === 'benchmark'"
-            class="mt-1.5 text-caption text-ink-text-secondary"
-          >
-            {{ t('experiment.collectModeBenchmarkHint') }}
-          </p>
-        </div>
-        <div>
-          <label class="mb-1.5 block text-body font-medium text-ink-text">
-            {{ t('experiment.promptVersion') }}
-          </label>
-          <UiInput
-            v-model="formPromptVersion"
-            :placeholder="t('experiment.promptVersionPlaceholder')"
-          />
-          <p class="mt-1.5 text-caption text-ink-text-secondary">
-            {{ t('experiment.promptVersionHint') }}
-          </p>
-        </div>
-        <div class="sm:col-span-2">
-          <div class="mb-1.5 flex items-center justify-between">
-            <label class="text-body font-medium text-ink-text">
-              {{ t('experiment.pickPlayers', { n: slotsLabel }) }}
-            </label>
-            <span class="text-caption tabular-nums text-ink-text-muted">
-              {{ selectedConfigIds.length }}/{{ maxPlayers }}
-            </span>
-          </div>
-          <div
-            v-if="configs.length === 0"
-            class="rounded-ink border border-dashed border-ink-border p-ink-3 text-body text-ink-text-muted"
-          >
-            {{ t('experiment.noConfigs') }}
-          </div>
-          <div v-else class="grid max-h-56 gap-ink-2 overflow-y-auto sm:grid-cols-2">
-            <div
-              v-for="cfg in configs"
-              :key="cfg.id"
-              class="flex items-start gap-ink-2 rounded-ink border border-ink-border px-ink-3 py-ink-2 hover:bg-ink-surface-muted"
-            >
-              <UiCheckbox
-                :model-value="selectedConfigIds.includes(cfg.id)"
-                class="mt-0.5"
-                :label="cfg.name"
-                @update:model-value="(v) => toggleConfig(cfg.id, Boolean(v))"
-              />
-              <span class="min-w-0 flex-1 pt-0.5 text-caption text-ink-text-muted">
-                {{ cfg.model_config.provider }} / {{ cfg.model_config.model_name }}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div class="sm:col-span-2">
-          <button
-            type="button"
-            class="text-caption text-ink-text-secondary hover:text-ink-text"
-            @click="createMoreOpen = !createMoreOpen"
-          >
-            {{ createMoreOpen ? t('common.collapse') : t('experiment.createMoreFields') }}
-          </button>
-          <div v-if="createMoreOpen" class="mt-ink-3 grid gap-ink-4 sm:grid-cols-2">
-            <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
-                t('experiment.hypothesis')
-              }}</label>
-              <UiTextarea
-                v-model="formHypothesis"
-                :rows="3"
-                :placeholder="t('experiment.hypothesisPlaceholder')"
-                class="w-full"
-              />
-            </div>
-            <div>
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
-                t('common.notes')
-              }}</label>
-              <UiTextarea
-                v-model="formNotes"
-                :rows="3"
-                :placeholder="t('experiment.notesPlaceholder')"
-                class="w-full"
-              />
-            </div>
-            <div class="sm:col-span-2">
-              <label class="mb-1.5 block text-body font-medium text-ink-text">{{
-                t('experiment.tags')
-              }}</label>
-              <UiInput
-                v-model="formTags"
-                :placeholder="t('experiment.tagsPlaceholder')"
-                class="w-full"
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-      <template #footer>
-        <UiButton variant="secondary" @click="createOpen = false">{{
-          t('common.cancel')
-        }}</UiButton>
-        <UiButton :disabled="!canSubmit" :loading="creating" @click="submitCreate">
-          {{ t('experiment.createAndOpen') }}
-        </UiButton>
-      </template>
-    </UiDialog>
+    <CreateExperimentDialog
+      v-if="createOpen"
+      :study="study"
+      :configs="configs"
+      :engines="engines"
+      :initial-lineup="initialLineup"
+      @close="createOpen = false"
+      @created="
+        (id) => {
+          createOpen = false
+          goDetail(id)
+        }
+      "
+      @player-saved="updateConfig"
+    />
   </div>
 </template>

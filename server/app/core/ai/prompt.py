@@ -19,6 +19,7 @@ from app.core.ai.prompts.registry import (
     PromptTemplateRegistry,
 )
 from app.core.engine.prompt_defaults import SYSTEM_TEMPLATE
+from app.utils.resources import resource_root
 
 if TYPE_CHECKING:
     import aiosqlite
@@ -62,9 +63,8 @@ def _load_rules(rules_ref: str | None) -> str:
     """Load game rules from capability.rules_ref only (no per-game hardcoding)."""
     if not rules_ref:
         return _MISSING_RULES
-    repo_root = Path(__file__).parents[4]
     ref_path = Path(rules_ref)
-    path = ref_path if ref_path.is_absolute() else repo_root / rules_ref
+    path = ref_path if ref_path.is_absolute() else resource_root() / rules_ref
     if path.exists():
         return path.read_text(encoding="utf-8")
     return _MISSING_RULES
@@ -109,7 +109,7 @@ class PromptBuilder:
         return self._default_version
 
     @staticmethod
-    def _template_key_for(engine: GameEngine, phase: str) -> str:
+    def template_key_for(engine: GameEngine, phase: str) -> str:
         keys = engine.capability.prompt_keys
         if phase in keys:
             return keys[phase]
@@ -148,7 +148,7 @@ class PromptBuilder:
         if frozen_content is not None:
             template_content = frozen_content
         else:
-            template_key = self._template_key_for(engine, phase)
+            template_key = self.template_key_for(engine, phase)
             try:
                 template_content = await self._registry.get_template(
                     template_key=template_key,

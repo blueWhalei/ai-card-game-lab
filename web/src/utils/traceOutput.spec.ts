@@ -4,7 +4,6 @@ import {
   formatPlayAction,
   parseLegalActions,
   parseTraceDecision,
-  parseWinProbability,
   samePlayAction,
 } from './traceOutput'
 
@@ -52,13 +51,9 @@ describe('play action helpers', () => {
     ).toBe(true)
   })
 
-  it('parses legal actions and win probability from snapshots', () => {
+  it('parses legal actions from snapshots', () => {
     expect(
       parseLegalActions([{ action_type: 'BOMB', cards: ['S4', 'H4', 'D4', 'C4'] }]),
     ).toEqual([{ action_type: 'BOMB', cards: ['S4', 'H4', 'D4', 'C4'] }])
-    expect(parseWinProbability({ probability: 0.62, confidence: '中', reasoning: 'x' })).toEqual(
-      { probability: 0.62, confidence: '中', reasoning: 'x' },
-    )
-    expect(parseWinProbability(null)).toBeNull()
   })
 })

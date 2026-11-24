@@ -63,6 +63,19 @@ class GameRepository:
             raise KeyError(game_id)
         return dict(row)
 
+    async def get_many(self, game_ids: list[str]) -> list[dict[str, Any]]:
+        """Load source metadata without exceeding SQLite's parameter limit."""
+        rows: list[dict[str, Any]] = []
+        ids = sorted(set(game_ids))
+        for start in range(0, len(ids), 500):
+            batch = ids[start : start + 500]
+            placeholders = ",".join("?" for _ in batch)
+            async with self._db.execute(
+                f"SELECT * FROM games WHERE id IN ({placeholders})", batch
+            ) as cursor:
+                rows.extend(dict(row) for row in await cursor.fetchall())
+        return rows
+
     async def list_games(
         self,
         *,
@@ -130,35 +143,13 @@ class GameRepository:
         finished_at: str,
         metadata_patch: dict[str, Any] | None = None,
     ) -> None:
-        """Update a game with its final result.
-
-        When *metadata_patch* is provided, merge into existing ``metadata`` JSON
-        so fields like ``deal_seed`` / ``paired`` are preserved.
-        """
-        if metadata_patch:
-            cursor = await self._db.execute(
-                "SELECT metadata FROM games WHERE id = ?",
-                (game_id,),
-            )
-            row = await cursor.fetchone()
-            existing: dict[str, Any] = {}
-            if row is not None and row["metadata"]:
-                raw = row["metadata"]
-                if isinstance(raw, str):
-                    try:
-                        parsed = json.loads(raw)
-                        if isinstance(parsed, dict):
-                            existing = parsed
-                    except json.JSONDecodeError:
-                        existing = {}
-                elif isinstance(raw, dict):
-                    existing = raw
-            merged = {**existing, **metadata_patch}
+        """Commit the terminal facts and all seat labels together."""
+        try:
             await self._db.execute(
                 """
-                UPDATE games
-                SET status = 'finished', winner_id = ?, winner_role = ?,
-                    total_rounds = ?, finished_at = ?, metadata = ?
+                UPDATE games SET status = 'finished', winner_id = ?, winner_role = ?,
+                    total_rounds = ?, finished_at = ?,
+                    metadata = json_patch(COALESCE(metadata, '{}'), ?)
                 WHERE id = ?
                 """,
                 (
@@ -166,21 +157,23 @@ class GameRepository:
                     winner_role,
                     total_rounds,
                     finished_at,
-                    json.dumps(merged, ensure_ascii=False),
+                    json.dumps(metadata_patch or {}),
                     game_id,
                 ),
             )
-        else:
             await self._db.execute(
                 """
-                UPDATE games
-                SET status = 'finished', winner_id = ?, winner_role = ?,
-                    total_rounds = ?, finished_at = ?
-                WHERE id = ?
+                UPDATE decision_points AS dp SET outcome = (
+                    SELECT CASE won WHEN 1 THEN 'win' ELSE 'lose' END
+                    FROM game_seat_results WHERE game_id = dp.game_id AND player_id = dp.player_id
+                ) WHERE dp.game_id = ?
                 """,
-                (winner_id, winner_role, total_rounds, finished_at, game_id),
+                (game_id,),
             )
-        await self._db.commit()
+            await self._db.commit()
+        except BaseException:
+            await self._db.rollback()
+            raise
 
     async def list_by_experiment(self, experiment_id: str) -> list[dict[str, Any]]:
         """Return all games for an experiment (unordered)."""

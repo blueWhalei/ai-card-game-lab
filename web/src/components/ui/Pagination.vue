@@ -12,6 +12,7 @@ const props = withDefaults(
     page: number
     pageSize: number
     total: number
+    fixedPageSize?: boolean
     class?: string
   }>(),
   {},
@@ -45,10 +46,13 @@ function onPageSize(v: string): void {
 <template>
   <div
     :class="
-      cn('flex flex-wrap items-center justify-end gap-2 text-sm text-ink-text-secondary', props.class)
+      cn(
+        'flex flex-wrap items-center justify-end gap-2 text-sm text-ink-text-secondary',
+        props.class,
+      )
     "
   >
-    <label class="flex items-center gap-1.5">
+    <label v-if="!fixedPageSize" class="flex items-center gap-1.5">
       <span>{{ t('common.pageSize') }}</span>
       <Select
         :model-value="String(pageSize)"
@@ -64,12 +68,7 @@ function onPageSize(v: string): void {
       {{ t('common.prevPage') }}
     </Button>
     <span class="min-w-16 text-center text-ink-text">{{ page }} / {{ totalPages }}</span>
-    <Button
-      variant="secondary"
-      size="sm"
-      :disabled="page >= totalPages"
-      @click="go(page + 1)"
-    >
+    <Button variant="secondary" size="sm" :disabled="page >= totalPages" @click="go(page + 1)">
       {{ t('common.nextPage') }}
     </Button>
   </div>

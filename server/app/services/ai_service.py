@@ -69,7 +69,7 @@ EMPTY_USAGE: dict[str, int | None] = {
 }
 
 # Engine tool names mapped onto the keys the WS / trace payloads already use.
-_TOOL_RESULT_KEYS = {"analyze_hand": "hand_analysis", "win_probability": "win_probability"}
+_TOOL_RESULT_KEYS = {"analyze_hand": "hand_analysis"}
 
 
 @dataclass(frozen=True)
@@ -319,9 +319,9 @@ class AIService:
             )
 
         prompt_preview = self._build_prompt_preview(trace.messages)
-        recorded_version = prompt_source.prompt_version_label or self._prompt_builder.version_for(
-            model_cfg.get("model_name")
-        )
+        recorded_version = prompt_source.version_for_phase(
+            observation.phase
+        ) or self._prompt_builder.version_for(model_cfg.get("model_name"))
         return AIDecisionResult(
             action=action,
             thinking=chosen.thinking,

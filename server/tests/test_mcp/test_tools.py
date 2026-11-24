@@ -59,6 +59,9 @@ def _fake_game_service() -> MagicMock:
     }
     cfg_svc = MagicMock()
     cfg_svc.get_config.side_effect = lambda pid: configs.get(pid)
+    cfg_svc.resolve_configs.side_effect = lambda ids: [
+        dict(configs[pid], policy_kind="llm") for pid in ids
+    ]
     registry = GameEngineRegistry()
     registry.register(DoudizhuEngine())
     gs = MagicMock()

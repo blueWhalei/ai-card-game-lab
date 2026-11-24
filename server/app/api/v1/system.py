@@ -39,9 +39,10 @@ async def list_engines(
 
 @router.get("/providers")
 async def list_providers(
+    include_status: bool = True,
     service: SystemService = Depends(get_system_service),
 ) -> ApiResponse[list[dict[str, Any]]]:
-    return ApiResponse(data=service.list_providers())
+    return ApiResponse(data=service.list_providers(include_status=include_status))
 
 
 @router.get("/config")

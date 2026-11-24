@@ -1,22 +1,41 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { Icon } from '@iconify/vue'
 import { cn } from '@/lib/cn'
 import HeaderToggles from '@/components/common/HeaderToggles.vue'
 import { useSidebarCollapse } from '@/composables/useSidebarCollapse'
+import { draftDirty, useDraftStore } from '@/stores/useDraftStore'
+import DraftStatus from '@/components/common/DraftStatus.vue'
 
 type NavItem = { path: string; label: string; icon: string }
 
 const { t } = useI18n()
 const route = useRoute()
 const router = useRouter()
+const drafts = useDraftStore()
+const failedDrafts = computed(() =>
+  Object.values(drafts.sessions).filter((s) => s.error && draftDirty(s)),
+)
+const removeDraftGuard = router.beforeEach(() => drafts.flushAll())
+function protectDrafts(event: BeforeUnloadEvent): void {
+  if (Object.values(drafts.sessions).some(draftDirty)) {
+    event.preventDefault()
+    event.returnValue = ''
+  }
+}
+window.addEventListener('beforeunload', protectDrafts)
+onBeforeUnmount(() => {
+  removeDraftGuard()
+  window.removeEventListener('beforeunload', protectDrafts)
+})
 const mobileOpen = ref(false)
 const { isCollapsed, toggleCollapsed } = useSidebarCollapse()
 
 const items = computed((): NavItem[] => [
-  { path: '/', label: t('nav.experiments'), icon: 'lucide:beaker' },
+  { path: '/', label: t('study.home'), icon: 'lucide:notebook-pen' },
+  { path: '/experiments', label: t('study.library'), icon: 'lucide:beaker' },
   { path: '/experiment-configs', label: t('nav.playerConfigs'), icon: 'lucide:flask-conical' },
   { path: '/game', label: t('nav.games'), icon: 'lucide:swords' },
   { path: '/pipeline', label: t('nav.analyze'), icon: 'lucide:layers' },
@@ -26,8 +45,8 @@ const items = computed((): NavItem[] => [
 const activePath = computed(() => {
   const p = route.path
   if (p === '/' || p === '') return '/'
-  if (p.startsWith('/experiments/compare')) return '/'
-  if (p.startsWith('/experiments/')) return '/'
+  if (p.startsWith('/research/') || p.startsWith('/research-reports/')) return '/'
+  if (p.startsWith('/experiments/')) return '/experiments'
   if (p.startsWith('/pipeline')) return '/pipeline'
   const match = items.value
     .filter((i) => i.path !== '/')
@@ -35,16 +54,14 @@ const activePath = computed(() => {
   return match?.path ?? p
 })
 
-/** Detail workspace owns its own title (experiment name); hide layout chrome. */
-const isExperimentDetail = computed(
-  () =>
-    route.path.startsWith('/experiments/') && !route.path.startsWith('/experiments/compare'),
-)
+/** Run and comparison workspaces own their titles and desktop controls. */
+const isExperimentDetail = computed(() => route.path.startsWith('/experiments/'))
 
 const pageTitle = computed(() => {
+  if (route.path.startsWith('/research-reports/')) return t('report.title')
+  if (route.path === '/' || route.path.startsWith('/research/')) return ''
   if (route.path === '/guide') return t('guide.title')
   if (route.path === '/prompt') return t('nav.prompts')
-  if (route.path.startsWith('/experiments/compare')) return t('nav.experimentCompare')
   if (route.path.startsWith('/pipeline')) return t('nav.analyze')
   if (isExperimentDetail.value) return ''
   return items.value.find((i) => i.path === activePath.value)?.label ?? t('nav.experiments')
@@ -184,25 +201,37 @@ function go(path: string): void {
           <Icon :icon="mobileOpen ? 'lucide:x' : 'lucide:menu'" class="h-5 w-5" />
         </button>
         <span class="min-w-0 flex-1 truncate text-base font-semibold">
-          {{ pageTitle || t('nav.experimentDetail') }}
+          {{
+            pageTitle ||
+            t(
+              route.path === '/' || route.path.startsWith('/research/')
+                ? 'study.home'
+                : route.path === '/experiments/compare'
+                  ? 'nav.experimentCompare'
+                  : 'nav.experimentDetail',
+            )
+          }}
         </span>
         <HeaderToggles />
       </header>
 
       <!-- Mobile drawer -->
-      <div
-        v-if="mobileOpen"
-        class="fixed inset-0 z-50 md:hidden"
-      >
+      <div v-if="mobileOpen" class="fixed inset-0 z-50 md:hidden">
         <button
           type="button"
           class="absolute inset-0 bg-black/40"
           :aria-label="t('common.closeMenu')"
           @click="mobileOpen = false"
         />
-        <aside class="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-ink-paper-elevated p-3 shadow-[var(--ink-shadow-md)]">
+        <aside
+          class="absolute inset-y-0 left-0 w-72 overflow-y-auto bg-ink-paper-elevated p-3 shadow-[var(--ink-shadow-md)]"
+        >
           <div class="mb-4 flex items-center gap-2.5 px-2">
-            <img src="/logo.png" :alt="t('app.name')" class="h-8 w-8 shrink-0 rounded-ink object-contain" />
+            <img
+              src="/logo.png"
+              :alt="t('app.name')"
+              class="h-8 w-8 shrink-0 rounded-ink object-contain"
+            />
             <p class="text-base font-semibold">{{ t('app.name') }}</p>
           </div>
           <div class="space-y-1">
@@ -246,6 +275,19 @@ function go(path: string): void {
       </header>
 
       <main class="flex-1">
+        <details
+          v-if="failedDrafts.length"
+          class="border-b border-ink-border bg-ink-surface px-6 py-3 text-caption text-ink-danger"
+        >
+          <summary class="cursor-pointer">
+            {{ t('draftStorage.unresolved', { n: failedDrafts.length }) }}
+          </summary>
+          <DraftStatus
+            v-for="session in failedDrafts"
+            :key="`${session.kind}:${session.id}`"
+            :session="session"
+          />
+        </details>
         <RouterView />
       </main>
     </div>

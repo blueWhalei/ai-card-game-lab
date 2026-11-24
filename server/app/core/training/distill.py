@@ -3,7 +3,11 @@
 from __future__ import annotations
 
 import json
+from collections import defaultdict
 from typing import Any, Literal
+
+from app.core.research.decision_alignment import align_decisions, decision_context
+from app.core.stats.comparison import seed_value
 
 DistillSkip = Literal[
     "missing_prompt",
@@ -12,6 +16,7 @@ DistillSkip = Literal[
     "missing_seed",
     "seat_mismatch",
     "unpaired",
+    "invalid_context",
 ]
 
 
@@ -45,6 +50,7 @@ def build_distill_pair(
     teacher: dict[str, Any],
     student: dict[str, Any],
     *,
+    seats: list[list[str]],
     include_thinking: bool = False,
 ) -> tuple[dict[str, Any] | None, DistillSkip | None]:
     """Return one distill record or a skip reason."""
@@ -56,6 +62,11 @@ def build_distill_pair(
     student_id = str(student.get("action_id") or "")
     if not teacher_id or not student_id:
         return None, "missing_action"
+    try:
+        if decision_context(teacher, seats[0]) != decision_context(student, seats[1]):
+            return None, "invalid_context"
+    except (KeyError, TypeError, ValueError, IndexError):
+        return None, "invalid_context"
     if teacher_id == student_id:
         return None, "tie"
 
@@ -70,6 +81,7 @@ def build_distill_pair(
         "chosen": chosen,
         "rejected": rejected,
         "metadata": {
+            "preference_source": "teacher_choice",
             "teacher_decision_id": teacher.get("id"),
             "student_decision_id": student.get("id"),
             "teacher_game_id": teacher.get("game_id"),
@@ -83,100 +95,115 @@ def build_distill_pair(
     }, None
 
 
-def index_decisions_by_match_key(
-    items: list[dict[str, Any]],
-    games_by_id: dict[str, dict[str, Any]],
-) -> tuple[dict[tuple[int, int, int], dict[str, Any]], dict[str, int]]:
-    """Map ``(deal_seed, round, seat_index)`` → enriched decision.
-
-    Returns ``(index, skip_counts)``.
-    """
-    index: dict[tuple[int, int, int], dict[str, Any]] = {}
-    skips = {
-        "missing_seed": 0,
-        "seat_mismatch": 0,
-        "missing_action": 0,
-    }
-    for item in items:
-        game = games_by_id.get(str(item.get("game_id") or ""))
-        if not isinstance(game, dict):
-            skips["missing_seed"] += 1
-            continue
-        meta = game.get("metadata") if isinstance(game.get("metadata"), dict) else {}
-        raw_seed = meta.get("deal_seed") if isinstance(meta, dict) else None
-        if raw_seed is None:
-            skips["missing_seed"] += 1
-            continue
-        try:
-            deal_seed = int(raw_seed)
-        except (TypeError, ValueError):
-            skips["missing_seed"] += 1
-            continue
-        player_ids = game.get("player_ids")
-        if not isinstance(player_ids, list):
-            skips["seat_mismatch"] += 1
-            continue
-        seat = seat_index_of([str(p) for p in player_ids], str(item.get("player_id") or ""))
-        if seat is None:
-            skips["seat_mismatch"] += 1
-            continue
-        if not str(item.get("action_id") or ""):
-            skips["missing_action"] += 1
-            continue
-        round_number = int(item.get("round_number") or 0)
-        enriched = dict(item)
-        enriched["_deal_seed"] = deal_seed
-        enriched["_seat_index"] = seat
-        enriched["_seat_count"] = len(player_ids)
-        index[(deal_seed, round_number, seat)] = enriched
-    return index, skips
-
-
-def pair_distill_indexes(
-    teacher_index: dict[tuple[int, int, int], dict[str, Any]],
-    student_index: dict[tuple[int, int, int], dict[str, Any]],
+def pair_distill_decisions(
+    teacher_items: list[dict[str, Any]],
+    student_items: list[dict[str, Any]],
+    teacher_games: dict[str, dict[str, Any]],
+    student_games: dict[str, dict[str, Any]],
     *,
     include_thinking: bool = False,
 ) -> tuple[list[dict[str, Any]], dict[str, int]]:
-    """Join teacher/student indexes; skip seat-count mismatches and ties."""
-    records: list[dict[str, Any]] = []
-    meta = {
-        "skipped_tie": 0,
-        "skipped_missing_prompt": 0,
-        "skipped_missing_action": 0,
-        "skipped_seat_mismatch": 0,
-        "skipped_unpaired": 0,
-        "matched_keys": 0,
-    }
-    for key, student in student_index.items():
-        teacher = teacher_index.get(key)
-        if teacher is None:
-            meta["skipped_unpaired"] += 1
+    """Export only the first divergence after a continuous verified history.
+
+    Exclusion counts describe student decision records. Duplicate deal seeds
+    are ambiguous even when only one of their games has usable decisions.
+    """
+    meta = dict.fromkeys(
+        ["matched_keys"]
+        + [
+            f"skipped_{reason}"
+            for reason in (
+                "tie",
+                "missing_prompt",
+                "missing_action",
+                "seat_mismatch",
+                "unpaired",
+                "missing_seed",
+                "duplicate_seed",
+                "incomplete_game",
+                "invalid_context",
+                "different_path",
+            )
+        ],
+        0,
+    )
+    grouped: list[dict[str, list[dict[str, Any]]]] = []
+    for items in (teacher_items, student_items):
+        by_game: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for item in items:
+            by_game[str(item["game_id"])].append(item)
+        grouped.append(by_game)
+    indexes: list[dict[int, list[dict[str, Any]]]] = []
+    for games in (teacher_games, student_games):
+        by_seed: dict[int, list[dict[str, Any]]] = defaultdict(list)
+        for game in games.values():
+            seed = seed_value((game.get("metadata") or {}).get("deal_seed"))
+            if seed is not None:
+                by_seed[seed].append(game)
+        indexes.append(by_seed)
+    records = []
+    for gid, students in grouped[1].items():
+        game = student_games.get(gid)
+        seed = seed_value((game.get("metadata") or {}).get("deal_seed")) if game else None
+        if seed is None:
+            meta["skipped_missing_seed"] += len(students)
             continue
-        meta["matched_keys"] += 1
-        if int(teacher.get("_seat_count") or 0) != int(student.get("_seat_count") or 0):
-            meta["skipped_seat_mismatch"] += 1
+        left, right = indexes[0].get(seed, []), indexes[1].get(seed, [])
+        if len(left) > 1 or len(right) > 1:
+            meta["skipped_duplicate_seed"] += len(students)
             continue
-        record, skip = build_distill_pair(teacher, student, include_thinking=include_thinking)
-        if record is not None:
-            records.append(record)
+        if not left:
+            meta["skipped_unpaired"] += len(students)
             continue
-        if skip == "tie":
-            meta["skipped_tie"] += 1
-        elif skip == "missing_prompt":
-            meta["skipped_missing_prompt"] += 1
-        elif skip == "missing_action":
-            meta["skipped_missing_action"] += 1
-        else:
-            meta["skipped_unpaired"] += 1
+        games = [left[0], right[0]]
+        seats = [g.get("player_ids") or [] for g in games]
+        if (
+            not games[0].get("game_type")
+            or games[0]["game_type"] != games[1].get("game_type")
+            or any(not isinstance(s, list) or len(s) < 2 or len(set(s)) != len(s) for s in seats)
+            or len(seats[0]) != len(seats[1])
+        ):
+            meta["skipped_seat_mismatch"] += len(students)
+            continue
+        totals = [g.get("total_rounds") for g in games]
+        if any(g.get("status") != "finished" for g in games) or any(
+            type(n) is not int or not 0 < n <= 2000 for n in totals
+        ):
+            meta["skipped_incomplete_game"] += len(students)
+            continue
+        teachers = grouped[0].get(str(games[0]["id"]), [])
+        sequences = [teachers, students]
+        if any(
+            type(point.get("round_number")) is not int or not 0 <= point["round_number"] < total
+            for sequence, total in zip(sequences, totals, strict=True)
+            for point in sequence
+        ):
+            meta["skipped_invalid_context"] += len(students)
+            continue
+        alignment = align_decisions(teachers, students, seats, totals)
+        teacher_by_id = {point["id"]: point for point in teachers}
+        for student in students:
+            frame = alignment["frames"][student["round_number"]]
+            status = frame["status"]
+            if frame["left"] and frame["right"]:
+                meta["matched_keys"] += 1
+            if status == "same":
+                meta["skipped_tie"] += 1
+            elif status == "divergence":
+                teacher = teacher_by_id[frame["left"]["id"]]
+                enriched = {
+                    **student,
+                    "_deal_seed": seed,
+                    "_seat_index": seats[1].index(student["player_id"]),
+                }
+                record, skip = build_distill_pair(
+                    teacher, enriched, seats=seats, include_thinking=include_thinking
+                )
+                if record is not None:
+                    records.append(record)
+                else:
+                    meta[f"skipped_{skip}"] += 1
+            else:
+                reason = "different_path" if status == "different_path" else "invalid_context"
+                meta[f"skipped_{reason}"] += 1
     return records, meta
-
-
-__all__ = [
-    "DistillSkip",
-    "build_distill_pair",
-    "index_decisions_by_match_key",
-    "normalize_game_row",
-    "pair_distill_indexes",
-    "seat_index_of",
-]

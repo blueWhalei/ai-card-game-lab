@@ -79,6 +79,9 @@ def _fake_game_service() -> MagicMock:
         },
     }
     cfg_svc.get_config.side_effect = lambda pid: configs.get(pid)
+    cfg_svc.resolve_configs.side_effect = lambda ids: [
+        dict(configs[pid], policy_kind="llm") for pid in ids
+    ]
     registry = GameEngineRegistry()
     registry.register(DoudizhuEngine())
     gs = MagicMock()
@@ -109,13 +112,32 @@ async def test_create_freezes_player_protocol(db_path: str) -> None:
     assert protocol["solver"]["players"][0]["model_config"]["temperature"] == 0.7
     assert protocol["engine"]["game_type"] == "doudizhu"
     assert protocol["engine"]["engine_version"] == "1"
-    # 2 since decision points carry ev_loss / evaluator_params.
-    assert protocol["engine"]["decision_schema_version"] == 2
+    assert protocol["engine"]["decision_schema_version"] == 3
     assert protocol["engine"]["phases"] == ["bidding", "playing"]
     assert protocol["engine"]["prompt_keys"]["playing"] == "doudizhu_playing"
     assert "landlord" in protocol["engine"]["roles"]
     assert "role:landlord" in protocol["scorer"]["eval_metric_ids"]
     assert protocol["engine"]["supports_deal_seed"] is True
+
+
+async def test_collect_rejects_a_different_frozen_decision_schema(db_path: str) -> None:
+    from app.services.experiment_errors import ExperimentValidationError
+
+    gs = _fake_game_service()
+    service = ExperimentService(sqlite_path=db_path, game_service=gs)
+    run = await service.create_experiment(
+        name="frozen",
+        notes="",
+        game_type="doudizhu",
+        player_ids=["cfg_a", "cfg_b", "cfg_c"],
+        target_games=1,
+    )
+    run["protocol"]["engine"]["decision_schema_version"] -= 1
+    async with aiosqlite.connect(db_path) as db:
+        await ExperimentRepository(db).update_protocol(run["id"], run["protocol"])
+        with pytest.raises(ExperimentValidationError, match="决策协议"):
+            await service.collect(run["id"], count=1, db=db)
+    gs.create_game.assert_not_called()
 
 
 async def test_collect_assigns_seeds_and_frozen_players(db_path: str) -> None:
@@ -253,6 +275,9 @@ async def test_compare_paired_wins(db_path: str) -> None:
             (players_a, now, players_a, now, players_b, now, players_b, now),
         )
         await db.execute(
+            """UPDATE games SET metadata = json_set(metadata, '$.landlord_id', json_extract(player_ids, '$[0]'))"""
+        )
+        await db.execute(
             "UPDATE games SET winner_role = CASE WHEN winner_id = 'cfg_b' THEN 'peasant' ELSE 'landlord' END"
         )
         await db.commit()
@@ -266,6 +291,8 @@ async def test_compare_paired_wins(db_path: str) -> None:
     b_stats = {s["player_id"]: s for s in by_id["exp-b"]["player_stats"]}
     assert a_stats["cfg_a"]["paired_wins"] == 1
     assert a_stats["cfg_b"]["paired_wins"] == 1
+    assert a_stats["cfg_c"]["paired_wins"] == 1
+    assert a_stats["cfg_c"]["win_rate"] == 0.5
     assert b_stats["cfg_lora"]["paired_wins"] == 1
     assert b_stats["cfg_b"]["paired_wins"] == 1
     assert by_id["exp-a"]["paired_seat_wins"][0] == 1

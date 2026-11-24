@@ -84,7 +84,6 @@ def test_compact_tool_calls_drops_analysis_keeps_keys() -> None:
                 "bomb_count": 1,
                 "text": "一手炸弹",
             },
-            "win_probability": {"probability": 0.4, "confidence": "low"},
         }
     )
     assert summary == [
@@ -93,7 +92,6 @@ def test_compact_tool_calls_drops_analysis_keeps_keys() -> None:
             "keys": ["strength_score", "bomb_count"],
             "has_text": True,
         },
-        {"name": "win_probability", "keys": ["probability", "confidence"]},
     ]
 
 

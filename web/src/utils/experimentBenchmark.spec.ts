@@ -22,6 +22,7 @@ function makeBenchmark(overrides: Partial<ExperimentBenchmark> = {}): Experiment
 
 function makeExperiment(overrides: Partial<Experiment> = {}): Experiment {
   return {
+    study_id: null,
     id: 'exp-1',
     name: 'run',
     notes: '',

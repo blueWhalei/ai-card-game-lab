@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import json
 from typing import Any
 
@@ -44,3 +45,25 @@ class ComparisonRepository:
         ) as cursor:
             rows = await cursor.fetchall()
         return [{"id": r[0], "title": r[1], "created_at": r[2]} for r in rows]
+
+    async def for_source(
+        self, game_id: str, created_at: str, limit: int, offset: int
+    ) -> builtins.list[dict[str, Any]]:
+        """Find saved cohort memberships, never infer scope from run ownership alone."""
+        async with self.db.execute(
+            """SELECT id, title, created_at, result FROM comparison_snapshots
+            WHERE json_extract(result, '$.metric_version') = 'paired-cohort-v5'
+              AND julianday(json_extract(result, '$.computed_at')) >= julianday(?)
+              AND EXISTS (
+                SELECT 1 FROM json_each(result, '$.coverage.members') member,
+                  json_each(member.value, '$.game_ids') game
+                WHERE game.value = ?
+              )
+            ORDER BY created_at DESC, id DESC LIMIT ? OFFSET ?""",
+            (created_at, game_id, limit, offset),
+        ) as cursor:
+            rows = await cursor.fetchall()
+        return [
+            {"id": r[0], "title": r[1], "created_at": r[2], "result": json.loads(r[3])}
+            for r in rows
+        ]

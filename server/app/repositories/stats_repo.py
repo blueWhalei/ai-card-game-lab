@@ -119,48 +119,26 @@ class StatsRepository:
         )
         return {row[0]: row[1] for row in await cursor.fetchall()}
 
-    async def model_game_counts(self) -> dict[str, int]:
-        if self._experiment_id:
-            frm, params = self._rounds_scope("r.model_name IS NOT NULL")
-            sql = (
-                f"SELECT r.model_name, COUNT(DISTINCT r.game_id) as total_games {frm} "
-                "GROUP BY r.model_name"
-            )
-        else:
-            sql = (
-                "SELECT r.model_name, COUNT(DISTINCT r.game_id) as total_games "
-                "FROM rounds r WHERE r.model_name IS NOT NULL GROUP BY r.model_name"
-            )
-            params = []
-        cursor = await self._db.execute(sql, params)
-        return {row[0]: row[1] for row in await cursor.fetchall()}
-
-    async def game_winner_rows(self) -> list[tuple[str, str, str]]:
-        """Return (game_id, winner_id, player_ids) for games with a winner."""
-        where, params = self._games_clause("winner_id IS NOT NULL")
+    async def model_seat_rates(self) -> list[dict[str, Any]]:
+        """Attribute a seat once, only when its rounds identify one model."""
+        scope = "WHERE s.experiment_id = ?" if self._experiment_id else ""
         cursor = await self._db.execute(
-            f"SELECT id, winner_id, player_ids FROM games{where}",
-            params,
+            f"""
+            WITH attributed AS (
+                SELECT s.game_id, s.player_id, s.won, MIN(r.model_name) AS model
+                FROM game_seat_results s JOIN rounds r
+                  ON r.game_id = s.game_id AND r.player_id = s.player_id
+                {scope}
+                GROUP BY s.game_id, s.player_id
+                HAVING COUNT(DISTINCT r.model_name) = 1 AND COUNT(r.model_name) = COUNT(*)
+            )
+            SELECT model, COUNT(*) AS seat_games, SUM(won) AS wins,
+                   ROUND(AVG(won), 4) AS win_rate
+            FROM attributed GROUP BY model ORDER BY win_rate DESC, model
+            """,
+            (self._experiment_id,) if self._experiment_id else (),
         )
-        return [(row[0], row[1], row[2]) for row in await cursor.fetchall()]
-
-    async def model_player_mapping(self) -> dict[str, dict[str, str]]:
-        """Return {game_id: {player_id: model_name}} mapping."""
-        gid = "r.game_id" if self._experiment_id else "game_id"
-        mname = "r.model_name" if self._experiment_id else "model_name"
-        pid = "r.player_id" if self._experiment_id else "player_id"
-        frm, params = self._rounds_scope(f"{mname} IS NOT NULL")
-        cursor = await self._db.execute(
-            f"SELECT DISTINCT {gid}, {mname}, {pid} {frm}",
-            params,
-        )
-        result: dict[str, dict[str, str]] = {}
-        for row in await cursor.fetchall():
-            game_id, model_name, player_id = row[0], row[1], row[2]
-            if game_id not in result:
-                result[game_id] = {}
-            result[game_id][player_id] = model_name
-        return result
+        return [dict(row) for row in await cursor.fetchall()]
 
     async def response_time_percentiles(self) -> tuple[float, float]:
         """Return (p50_ms, p95_ms) from ordered response times."""

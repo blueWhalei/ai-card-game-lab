@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { toast } from '@/components/ui/toast'
 import { showApiError } from '@/utils/error'
-import { formatDateTime, formatPercentage } from '@/utils/format'
+import { formatDateTime } from '@/utils/format'
+import { formatRolloutScope } from '@/utils/gameHighlights'
 import {
   puzzleApi,
+  decisionPuzzleExtract,
   type PuzzleBaselineKind,
   type PuzzlePackSummary,
   type PuzzlePreview,
@@ -21,6 +23,8 @@ import UiInput from '@/components/ui/Input.vue'
 import UiSelect from '@/components/ui/Select.vue'
 import UiSkeletonList from '@/components/ui/SkeletonList.vue'
 import UiSpinner from '@/components/ui/Spinner.vue'
+import PuzzleResults from './PuzzleResults.vue'
+import BatchPuzzleSelection from './BatchPuzzleSelection.vue'
 
 const props = defineProps<{
   experimentId?: string
@@ -44,9 +48,22 @@ const previewLimit = ref(5)
 
 const extractIdInput = ref('')
 const baselineKind = ref<PuzzleBaselineKind>('heuristic')
+const perturbKind = ref('both')
+const perturbOptions = computed(() => [
+  { value: 'both', label: t('puzzle.perturbBoth') },
+  { value: 'shuffle_legal_actions', label: t('puzzle.perturbActions') },
+  { value: 'shuffle_hand_cards', label: t('puzzle.perturbHand') },
+])
 const runReport = ref<PuzzleRunReport | null>(null)
 const probeReport = ref<PuzzleProbeReport | null>(null)
-const showRunRows = ref(false)
+const selectionError = ref('')
+const target = computed(() => decisionPuzzleExtract(manifest.value))
+let selectionRequest = 0
+let listRequest = 0
+onBeforeUnmount(() => {
+  selectionRequest++
+  listRequest++
+})
 
 const baselineOptions = computed(() => [
   { label: t('puzzle.baselineHeuristic'), value: 'heuristic' },
@@ -54,9 +71,7 @@ const baselineOptions = computed(() => [
   { label: t('puzzle.baselineFirst'), value: 'first' },
 ])
 
-const effectiveExtractId = computed(
-  () => props.experimentId?.trim() || extractIdInput.value.trim(),
-)
+const effectiveExtractId = computed(() => props.experimentId?.trim() || extractIdInput.value.trim())
 
 const packRecords = computed<CompactRecord[]>(() =>
   packs.value.map((pack) => ({
@@ -74,12 +89,14 @@ const routePackId = computed(() => {
 })
 
 async function fetchPacks(): Promise<void> {
+  const token = ++listRequest
   loading.value = true
   try {
     const res = await puzzleApi.listPacks()
+    if (token !== listRequest) return
     packs.value = res.data
     const prefer = routePackId.value || selectedId.value
-    if (prefer && packs.value.some((p) => p.pack_id === prefer)) {
+    if (prefer) {
       await selectPack(prefer)
     } else if (!selectedId.value && packs.value[0]) {
       await selectPack(packs.value[0].pack_id)
@@ -91,49 +108,64 @@ async function fetchPacks(): Promise<void> {
       probeReport.value = null
     }
   } catch (e: unknown) {
-    showApiError(e, t('puzzle.loadFailed'))
+    if (token === listRequest) showApiError(e, t('puzzle.loadFailed'))
   } finally {
-    loading.value = false
+    if (token === listRequest) loading.value = false
   }
 }
 
 async function selectPack(packId: string): Promise<void> {
+  const changed = selectedId.value !== packId
+  const token = ++selectionRequest
   selectedId.value = packId
+  selectionError.value = ''
+  manifest.value = null
+  preview.value = []
+  running.value = false
+  probing.value = false
   runReport.value = null
   probeReport.value = null
-  showRunRows.value = false
   previewLimit.value = 5
   if (route.query.pack_id !== packId) {
     void router.replace({
       path: route.path,
-      query: { ...route.query, pack_id: packId },
+      query: {
+        ...route.query,
+        pack_id: packId,
+        result_id: changed ? undefined : route.query.result_id,
+        result_page: changed ? undefined : route.query.result_page,
+      },
     })
   }
   detailLoading.value = true
   try {
     const res = await puzzleApi.getPack(packId, previewLimit.value)
+    if (token !== selectionRequest) return
     manifest.value = res.data.manifest
     preview.value = res.data.preview
-  } catch (e: unknown) {
-    showApiError(e, t('puzzle.loadFailed'))
+  } catch {
+    if (token !== selectionRequest) return
+    selectionError.value = t('puzzle.packMissing')
     manifest.value = null
     preview.value = []
   } finally {
-    detailLoading.value = false
+    if (token === selectionRequest) detailLoading.value = false
   }
 }
 
 async function loadMorePreview(): Promise<void> {
   if (!selectedId.value) return
+  const token = selectionRequest
   previewLimit.value = Math.min(50, previewLimit.value + 15)
   detailLoading.value = true
   try {
     const res = await puzzleApi.getPack(selectedId.value, previewLimit.value)
+    if (token !== selectionRequest) return
     preview.value = res.data.preview
   } catch (e: unknown) {
-    showApiError(e, t('puzzle.loadFailed'))
+    if (token === selectionRequest) showApiError(e, t('puzzle.loadFailed'))
   } finally {
-    detailLoading.value = false
+    if (token === selectionRequest) detailLoading.value = false
   }
 }
 
@@ -162,7 +194,9 @@ async function extractPack(): Promise<void> {
 }
 
 async function runBaseline(): Promise<void> {
-  if (!selectedId.value) return
+  if (!selectedId.value || !manifest.value || running.value || probing.value) return
+  const token = selectionRequest
+  const historyPath = route.fullPath
   running.value = true
   probeReport.value = null
   try {
@@ -170,30 +204,39 @@ async function runBaseline(): Promise<void> {
       baseline_kind: baselineKind.value,
       seed: 0,
     })
+    if (token !== selectionRequest || historyPath !== route.fullPath) return
     runReport.value = res.data
     toast.success(t('puzzle.runDone'))
   } catch (e: unknown) {
-    showApiError(e, t('error.operationFailed'))
+    if (token === selectionRequest) showApiError(e, t('error.operationFailed'))
   } finally {
-    running.value = false
+    if (token === selectionRequest) running.value = false
   }
 }
 
 async function runProbe(): Promise<void> {
-  if (!selectedId.value) return
+  if (!selectedId.value || !manifest.value || running.value || probing.value) return
+  const token = selectionRequest
+  const historyPath = route.fullPath
+  runReport.value = null
   probing.value = true
   try {
     const res = await puzzleApi.probe(selectedId.value, {
       baseline_kind: baselineKind.value,
       seed: 0,
       n_trials: 3,
+      kinds:
+        perturbKind.value === 'both'
+          ? ['shuffle_legal_actions', 'shuffle_hand_cards']
+          : [perturbKind.value as 'shuffle_legal_actions' | 'shuffle_hand_cards'],
     })
+    if (token !== selectionRequest || historyPath !== route.fullPath) return
     probeReport.value = res.data
     toast.success(t('puzzle.probeDone'))
   } catch (e: unknown) {
-    showApiError(e, t('error.operationFailed'))
+    if (token === selectionRequest) showApiError(e, t('error.operationFailed'))
   } finally {
-    probing.value = false
+    if (token === selectionRequest) probing.value = false
   }
 }
 
@@ -206,6 +249,10 @@ onMounted(() => {
     extractIdInput.value = props.experimentId
   }
   void fetchPacks()
+})
+
+watch(routePackId, (id) => {
+  if (id && id !== selectedId.value) void selectPack(id)
 })
 
 watch(
@@ -225,7 +272,11 @@ watch(
         <label class="mb-1.5 block text-caption font-medium text-ink-text">
           {{ t('puzzle.experimentIdPh') }}
         </label>
-        <UiInput v-model="extractIdInput" :placeholder="t('puzzle.experimentIdPh')" class="w-full" />
+        <UiInput
+          v-model="extractIdInput"
+          :placeholder="t('puzzle.experimentIdPh')"
+          class="w-full"
+        />
       </div>
       <UiButton :loading="extracting" @click="extractPack">{{ t('puzzle.extract') }}</UiButton>
       <UiButton variant="secondary" :loading="loading" @click="fetchPacks">
@@ -252,6 +303,7 @@ watch(
       </section>
 
       <section class="min-w-0 space-y-ink-4">
+        <p v-if="selectionError" role="alert" class="text-body">{{ selectionError }}</p>
         <div
           v-if="!selectedId"
           class="rounded-ink-md border border-ink-border px-ink-4 py-ink-6 text-body text-ink-text-muted"
@@ -280,61 +332,78 @@ watch(
                 · {{ t('puzzle.puzzleCount', { n: manifest.puzzle_count }) }}
               </p>
 
+              <BatchPuzzleSelection :manifest="manifest" />
+              <section v-if="target" class="space-y-ink-2 text-body">
+                <h3 class="font-semibold">{{ t('puzzle.testQuestion') }}</h3>
+                <p class="whitespace-pre-wrap">{{ target.question }}</p>
+                <RouterLink
+                  class="text-ink-primary hover:underline"
+                  :to="{
+                    path: '/pipeline/decisions',
+                    query: {
+                      experiment_id: target.source.experiment_id,
+                      game_id: target.source.game_id,
+                      decision_id: target.source.decision_point_id,
+                      puzzle_pack: manifest.pack_id,
+                      ...(typeof route.query.report_id === 'string'
+                        ? {
+                            report_id: route.query.report_id,
+                            puzzle_evidence: route.query.puzzle_evidence,
+                          }
+                        : {}),
+                      ...(typeof route.query.result_id === 'string'
+                        ? {
+                            puzzle_result: route.query.result_id,
+                            puzzle_page: route.query.result_page,
+                          }
+                        : {}),
+                    },
+                  }"
+                  >{{ t('puzzle.sourceDecision') }}</RouterLink
+                >
+                <p class="text-caption text-ink-text-secondary">
+                  {{ target.source.experiment_name }} ·
+                  {{ t('puzzle.sourceTurn', { n: target.source.round_num - 1 }) }} ·
+                  {{ t('puzzle.sourceRead', { at: formatDateTime(target.source.read_at) }) }}
+                </p>
+                <p class="text-caption text-ink-text-secondary">{{ t('puzzle.targetScope') }}</p>
+                <details class="text-caption text-ink-text-secondary">
+                  <summary class="cursor-pointer">{{ t('puzzle.storedEvaluation') }}</summary>
+                  <p class="mt-ink-2">
+                    {{
+                      t('puzzle.evaluatedActions', {
+                        n: target.source.candidates_evaluated,
+                        total: target.source.legal_action_count,
+                      })
+                    }}
+                    · {{ formatRolloutScope(target.source.evaluator_params, t) }}
+                  </p>
+                  <p class="mt-ink-2">{{ t('puzzle.frozenSource') }}</p>
+                </details>
+              </section>
+
               <div class="flex flex-wrap items-end gap-ink-3">
                 <div class="min-w-[10rem]">
                   <label class="mb-1.5 block text-caption font-medium text-ink-text">
                     {{ t('puzzle.baseline') }}
                   </label>
-                  <UiSelect
-                    v-model="baselineKind"
-                    :options="baselineOptions"
-                    class="w-full"
-                  />
+                  <UiSelect v-model="baselineKind" :options="baselineOptions" class="w-full" />
                 </div>
-                <UiButton :loading="running" @click="runBaseline">{{ t('puzzle.run') }}</UiButton>
-                <UiButton variant="secondary" :loading="probing" @click="runProbe">
+                <UiButton :loading="running" :disabled="probing" @click="runBaseline">{{
+                  t('puzzle.run')
+                }}</UiButton>
+                <label class="min-w-[10rem] space-y-ink-2 text-caption font-medium">
+                  <span>{{ t('puzzle.perturbation') }}</span>
+                  <UiSelect v-model="perturbKind" :options="perturbOptions" />
+                </label>
+                <UiButton
+                  variant="secondary"
+                  :loading="probing"
+                  :disabled="running"
+                  @click="runProbe"
+                >
                   {{ t('puzzle.probe') }}
                 </UiButton>
-              </div>
-
-              <p v-if="runReport" class="text-body text-ink-text">
-                {{
-                  t('puzzle.runSummary', {
-                    acc: formatPercentage(runReport.summary.accuracy),
-                    loss: runReport.summary.mean_ev_loss.toFixed(3),
-                    n: runReport.summary.n,
-                  })
-                }}
-              </p>
-              <p v-if="probeReport" class="text-body text-ink-text">
-                {{
-                  t('puzzle.probeSummary', {
-                    cons: formatPercentage(probeReport.summary.consistency),
-                    base: formatPercentage(probeReport.summary.base_accuracy),
-                    pert: formatPercentage(probeReport.summary.pert_accuracy),
-                  })
-                }}
-              </p>
-
-              <div v-if="runReport" class="space-y-ink-2">
-                <button
-                  type="button"
-                  class="text-caption text-ink-primary hover:underline"
-                  @click="showRunRows = !showRunRows"
-                >
-                  {{ showRunRows ? t('puzzle.hideRows') : t('puzzle.showRows') }}
-                </button>
-                <ul
-                  v-if="showRunRows"
-                  class="max-h-48 space-y-ink-1 overflow-y-auto text-caption text-ink-text-secondary"
-                >
-                  <li v-for="row in runReport.puzzles" :key="row.puzzle_id" class="tabular-nums">
-                    {{ row.puzzle_id }} ·
-                    {{ row.hit ? t('puzzle.hit') : t('puzzle.miss') }} ·
-                    {{ row.chosen_action_id }} → {{ row.best_action_id }} ·
-                    ev_loss {{ row.ev_loss.toFixed(3) }}
-                  </li>
-                </ul>
               </div>
             </template>
           </div>
@@ -373,7 +442,7 @@ watch(
                 <p class="mt-ink-1 text-ink-text-secondary">
                   {{ t('puzzle.bestAction') }}
                   <span class="font-mono">{{ row.best_action_id }}</span>
-                  · spread {{ row.spread.toFixed(3) }}
+                  · {{ t('puzzle.spread') }} {{ row.spread.toFixed(3) }}
                 </p>
               </li>
             </ul>
@@ -381,5 +450,11 @@ watch(
         </template>
       </section>
     </div>
+    <PuzzleResults
+      v-if="selectedId"
+      :key="selectedId"
+      :pack-id="selectedId"
+      :latest="probeReport || runReport"
+    />
   </div>
 </template>

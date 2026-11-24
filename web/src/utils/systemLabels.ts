@@ -19,6 +19,10 @@ export function providerDescription(id: string, fallback?: string): string {
 
 export function preflightCheckMessage(check: PreflightCheck): string {
   const params = check.params ?? {}
+  if (check.ok) {
+    const successKey = `preflight.passed.${check.id}`
+    return hasKey(successKey) ? tt(successKey, params) : check.message
+  }
   if (check.id === 'providers_seats' && params.incomplete === true) {
     return tt('preflight.providers_seatsIncomplete')
   }

@@ -15,7 +15,6 @@ from app.core.stats.scenarios import classify_game_phase
 # Trace payload keys → engine tool names for the stored summary.
 _TRACE_KEY_TO_TOOL: dict[str, str] = {
     "hand_analysis": "analyze_hand",
-    "win_probability": "win_probability",
 }
 
 

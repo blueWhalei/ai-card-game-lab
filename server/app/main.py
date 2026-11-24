@@ -1,5 +1,6 @@
 """FastAPI application factory."""
 
+import asyncio
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from importlib.metadata import version as pkg_version
@@ -15,6 +16,7 @@ from app.core.ai.prompts.registry import get_registry
 from app.database import init_db, open_db_connection
 from app.dependencies import get_experiment_config_service
 from app.mcp.http_app import McpHttpMount, build_mcp_http_mount
+from app.services.billing_scheduler import BillingScheduler
 from app.services.startup_recovery import recover_orphaned_runtime
 from app.utils.exceptions import AppError
 from app.utils.logger import setup_logging
@@ -63,12 +65,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await get_experiment_config_service().initialize()
 
         mount: McpHttpMount | None = getattr(app.state, "mcp_http_mount", None)
-        if mount is not None:
-            async with mount.server.session_manager.run():
-                logger.info("mcp_http_ready", path="/mcp")
+        scheduler = BillingScheduler(cfg)
+        worker = asyncio.create_task(scheduler.run()) if cfg.billing_scheduler_enabled else None
+        try:
+            if mount is not None:
+                async with mount.server.session_manager.run():
+                    logger.info("mcp_http_ready", path="/mcp")
+                    yield
+            else:
                 yield
-        else:
-            yield
+        finally:
+            if worker is not None:
+                worker.cancel()
+                await asyncio.gather(worker, return_exceptions=True)
 
         logger.info("application_shutdown")
 

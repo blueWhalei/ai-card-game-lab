@@ -43,9 +43,11 @@ class EnginePromptSource:
         self._frozen_prompts = frozen_prompts or {}
         self._frozen_prompt_version = frozen_prompt_version or ""
 
-    @property
-    def prompt_version_label(self) -> str:
+    def version_for_phase(self, phase: str) -> str:
         """Version string to record on traces for this decision."""
+        entry = self._frozen_entry(phase)
+        if entry.get("version"):
+            return str(entry["version"])
         if self._frozen_prompt_version:
             return self._frozen_prompt_version
         return ""
@@ -57,8 +59,8 @@ class EnginePromptSource:
         model_name: str | None,
         format_instructions: str,
     ) -> str:
-        frozen = self._frozen_content_for(phase)
-        if frozen is not None:
+        frozen = self._frozen_entry(phase).get("content")
+        if frozen:
             return await self._prompt_builder.system_message(
                 engine=self._engine,
                 phase=phase,
@@ -75,16 +77,9 @@ class EnginePromptSource:
             return await self._render(phase, model_name, format_instructions, db)
         return await self._render(phase, model_name, format_instructions, None)
 
-    def _frozen_content_for(self, phase: str) -> str | None:
-        if not self._frozen_prompts:
-            return None
-        keys = self._engine.capability.prompt_keys
-        template_key = keys.get(phase) or keys.get("playing") or f"{self._engine.game_type}_{phase}"
-        entry = self._frozen_prompts.get(template_key)
-        if not isinstance(entry, dict):
-            return None
-        content = entry.get("content")
-        return str(content) if content else None
+    def _frozen_entry(self, phase: str) -> dict[str, Any]:
+        key = self._prompt_builder.template_key_for(self._engine, phase)
+        return self._frozen_prompts.get(key, {})
 
     async def _render(
         self,

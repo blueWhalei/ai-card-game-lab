@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useRoute, useRouter } from 'vue-router'
+import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { Icon } from '@iconify/vue'
 import { toast } from '@/components/ui/toast'
 import { confirmDialog } from '@/components/ui/confirm'
@@ -29,6 +29,9 @@ import TrainingModelsPanel, {
 import TrainingTasksPanel from '@/components/training/TrainingTasksPanel.vue'
 import PreflightBanner from '@/components/common/PreflightBanner.vue'
 import { preflightCheckMessage } from '@/utils/systemLabels'
+import { operationReturn } from '@/utils/studyOperations'
+import { recordedProgress } from '@/utils/trainingRecords'
+import { formatDateTime } from '@/utils/format'
 
 const { t } = useI18n()
 const store = useTrainingStore()
@@ -45,6 +48,7 @@ const modelBusy = ref<ModelBusyState | null>(null)
 const registerAfterPush = ref(false)
 let pendingToastId: number | null = null
 let pollTimer: ReturnType<typeof setInterval> | null = null
+let disposed = false
 
 function beginModelAction(id: string, action: ModelBusyAction, pendingMessage: string): void {
   modelBusy.value = { id, action }
@@ -64,6 +68,20 @@ const experimentIdFilter = computed(() => {
   const v = route.query.experiment_id
   return typeof v === 'string' && v ? v : undefined
 })
+const taskQueryValid = computed(() =>
+  ['experiment_id', 'study_id', 'task_id'].every(
+    (key) =>
+      route.query[key] === undefined ||
+      (typeof route.query[key] === 'string' && !!route.query[key]),
+  ),
+)
+const studyIdFilter = computed(() =>
+  typeof route.query.study_id === 'string' ? route.query.study_id : undefined,
+)
+const taskIdFilter = computed(() =>
+  typeof route.query.task_id === 'string' ? route.query.task_id : undefined,
+)
+const taskReturn = computed(() => operationReturn(route.query, studyIdFilter.value))
 
 const returnToControl = computed(
   () => route.query.return_control === '1' && Boolean(experimentIdFilter.value),
@@ -109,9 +127,16 @@ function applyTabFromRoute(): void {
 }
 
 async function refreshTasks(): Promise<void> {
-  await store.fetchTasks(
-    experimentIdFilter.value ? { experiment_id: experimentIdFilter.value } : undefined,
-  )
+  if (disposed) return
+  if (!taskQueryValid.value) {
+    store.clearTasks()
+    return
+  }
+  await store.fetchTasks({
+    ...(experimentIdFilter.value ? { experiment_id: experimentIdFilter.value } : {}),
+    ...(studyIdFilter.value ? { study_id: studyIdFilter.value } : {}),
+    ...(taskIdFilter.value ? { task_id: taskIdFilter.value } : {}),
+  })
 }
 
 function setTab(tab: 'tasks' | 'models'): void {
@@ -259,7 +284,9 @@ async function handleCreate() {
       base_model: createForm.value.base_model,
       training_type: createForm.value.training_type,
       config: trainingConfig,
+      experiment_id: experimentIdFilter.value,
     })
+    await refreshTasks()
     toast.success(t('training.taskCreated'))
     showCreateDialog.value = false
   } catch (e: unknown) {
@@ -442,8 +469,9 @@ async function handleRegisterAsPlayer(
   }
 }
 
-function formatProgress(p: number): string {
-  return `${Math.round(p * 100)}%`
+function formatProgress(p: unknown): string {
+  const value = recordedProgress(p)
+  return value === null ? t('operations.missing') : `${value}%`
 }
 
 function startPolling() {
@@ -481,10 +509,10 @@ onMounted(async () => {
     trainingEnvLoaded.value = true
   }
   applyTabFromRoute()
+  if (disposed) return
   if (activeTab.value === 'models') {
     void store.fetchModels()
   }
-  await refreshTasks()
   store.fetchModels()
   startPolling()
 })
@@ -496,11 +524,17 @@ watch(
   },
 )
 
-watch(experimentIdFilter, () => {
-  void refreshTasks()
-})
+watch(
+  () => [route.query.experiment_id, route.query.study_id, route.query.task_id],
+  () => {
+    void refreshTasks()
+  },
+  { immediate: true },
+)
 
 onUnmounted(() => {
+  disposed = true
+  store.clearTasks()
   if (pollTimer) {
     clearInterval(pollTimer)
     pollTimer = null
@@ -510,6 +544,16 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container research-page">
+    <RouterLink
+      v-if="taskReturn"
+      :to="taskReturn"
+      class="mb-ink-4 inline-block text-ink-primary underline"
+      >{{ t('operations.back') }}</RouterLink
+    >
+    <p v-if="taskIdFilter" class="mb-ink-3 break-all text-body">
+      {{ t('operations.selectedTraining', { id: taskIdFilter }) }}
+    </p>
+    <p class="mb-ink-4 text-caption text-ink-text-secondary">{{ t('operations.trainingLimit') }}</p>
     <div
       v-if="trainingEnvLoaded && trainBlocked"
       class="mb-6 rounded-ink-md border border-ink-border bg-ink-surface p-6 md:p-8"
@@ -580,8 +624,40 @@ onUnmounted(() => {
 
     <TrainingLivePanel :tasks="store.tasks" :cancelling="cancelling" @cancel="handleCancelTask" />
 
+    <div
+      v-if="activeTab === 'tasks' && (!taskQueryValid || store.tasksFailed)"
+      role="alert"
+      class="space-y-ink-3"
+    >
+      <p>
+        {{ t(taskQueryValid ? 'operations.trainingFailed' : 'operations.invalidTrainingQuery') }}
+      </p>
+      <UiButton v-if="taskQueryValid" @click="refreshTasks">{{ t('common.retry') }}</UiButton>
+    </div>
+    <p
+      v-else-if="
+        activeTab === 'tasks' &&
+        taskIdFilter &&
+        store.tasksReadAt &&
+        !store.isLoading &&
+        !store.tasks.length
+      "
+      role="status"
+    >
+      {{ t('operations.trainingUnavailable') }}
+    </p>
+    <p v-if="activeTab === 'tasks' && store.tasksReadAt" class="mb-ink-3 text-caption">
+      {{
+        t('operations.trainingReadAt', { n: store.total, time: formatDateTime(store.tasksReadAt) })
+      }}
+    </p>
     <TrainingTasksPanel
-      v-if="activeTab === 'tasks'"
+      v-if="
+        activeTab === 'tasks' &&
+        taskQueryValid &&
+        !store.tasksFailed &&
+        (!taskIdFilter || store.tasks.length > 0 || store.isLoading)
+      "
       :columns="taskColumns"
       :rows="taskRows"
       :can-create="trainingEnvLoaded && !trainBlocked"

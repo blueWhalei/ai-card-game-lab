@@ -29,7 +29,7 @@ DEMO_EXPERIMENT_ID = "exp_demo_main"
 DEMO_CONTROL_ID = "exp_demo_control"
 DEMO_PLAYERS = ("cfg_temp_09", "cfg_temp_06", "cfg_temp_12")
 DEMO_LANDLORD = DEMO_PLAYERS[0]
-DEMO_FARMER = DEMO_PLAYERS[1]
+DEMO_PEASANT = DEMO_PLAYERS[1]
 DEMO_DEAL_SEEDS = (1001, 1002)
 DEMO_TARGET_GAMES = len(DEMO_DEAL_SEEDS)
 
@@ -66,7 +66,7 @@ def _hands_after(played: dict[str, list[str]]) -> dict[str, list[str]]:
 
 _ROUNDS: list[dict[str, Any]] = [
     {
-        "round_num": 1,
+        "round_num": 0,
         "player_id": DEMO_PLAYERS[0],
         "action_type": "SINGLE",
         "cards": ["H3"],
@@ -74,7 +74,7 @@ _ROUNDS: list[dict[str, Any]] = [
         "played": {DEMO_PLAYERS[0]: ["H3"]},
     },
     {
-        "round_num": 2,
+        "round_num": 1,
         "player_id": DEMO_PLAYERS[1],
         "action_type": "PASS",
         "cards": [],
@@ -82,7 +82,7 @@ _ROUNDS: list[dict[str, Any]] = [
         "played": {DEMO_PLAYERS[0]: ["H3"]},
     },
     {
-        "round_num": 3,
+        "round_num": 2,
         "player_id": DEMO_PLAYERS[2],
         "action_type": "SINGLE",
         "cards": ["D4"],
@@ -90,7 +90,7 @@ _ROUNDS: list[dict[str, Any]] = [
         "played": {DEMO_PLAYERS[0]: ["H3"], DEMO_PLAYERS[2]: ["D4"]},
     },
     {
-        "round_num": 4,
+        "round_num": 3,
         "player_id": DEMO_PLAYERS[0],
         "action_type": "SINGLE",
         "cards": ["HA"],
@@ -101,7 +101,7 @@ _ROUNDS: list[dict[str, Any]] = [
         },
     },
     {
-        "round_num": 5,
+        "round_num": 4,
         "player_id": DEMO_PLAYERS[1],
         "action_type": "PASS",
         "cards": [],
@@ -292,8 +292,8 @@ class DemoSeedService:
                 experiment_id=DEMO_CONTROL_ID,
                 deal_seed=seed,
                 paired=True,
-                winner_id=DEMO_FARMER,
-                winner_role="farmer",
+                winner_id=DEMO_PEASANT,
+                winner_role="peasant",
                 id_prefix=f"ctl{index}",
                 metadata_extra={"demo": True, "source": "seed-demo"},
             )
@@ -446,6 +446,5 @@ class DemoSeedService:
             total_rounds=len(_ROUNDS),
             finished_at=_FINISHED_AT,
         )
-        await decision_repo.update_outcome_by_winner(game_id, winner_id)
         now = datetime.now(tz=UTC).isoformat()
         logger.info("demo_game_persisted", game_id=game_id, finished_at=now)

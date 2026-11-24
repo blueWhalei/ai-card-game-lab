@@ -12,6 +12,7 @@ import zhCN from '@/i18n/locales/zh-CN'
 import { useExperimentDetail } from './useExperimentDetail'
 
 const experiment: Experiment = {
+  study_id: null,
   id: 'source',
   name: 'Baseline',
   notes: '',
@@ -85,6 +86,15 @@ async function setup(query = '') {
 }
 
 describe('research workflow without training', () => {
+  it('requires explicit confirmation when starting from a stage action', async () => {
+    const { state, wrapper } = await setup()
+    state.onStageAction('collect')
+    expect(state.collectOpen.value).toBe(true)
+    expect(experimentApi.collect).not.toHaveBeenCalled()
+    await state.submitCollect()
+    expect(experimentApi.collect).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
   it('consumes collect links, opens confirmation, and only runs after submission', async () => {
     const { state, router, wrapper } = await setup('?collect=1&from=source')
     expect(state.collectOpen.value).toBe(true)

@@ -1,93 +1,78 @@
-"""Unit tests for distill preference pairing."""
+"""Preferences require a verified shared history, not just equal round numbers."""
 
-from __future__ import annotations
+from copy import deepcopy
+from typing import Any
 
-from app.core.training.distill import (
-    build_distill_pair,
-    index_decisions_by_match_key,
-    pair_distill_indexes,
+import pytest
+
+from app.core.training.distill import build_distill_pair, pair_distill_decisions
+from tests.test_core.test_decision_alignment import decision
+
+
+def sample(side: str, turn: int, choice: int = 1) -> dict[str, Any]:
+    return {
+        **decision(side, turn, choice),
+        "prompt_messages": [{"role": "user", "content": "Choose a legal action"}],
+    }
+
+
+def games(side: str) -> dict[str, dict[str, Any]]:
+    return {
+        side: {
+            "id": side,
+            "game_type": "doudizhu",
+            "status": "finished",
+            "total_rounds": 3,
+            "player_ids": [f"{side}{i}" for i in range(3)],
+            "metadata": {"deal_seed": 7},
+        }
+    }
+
+
+def test_export_only_first_divergence_and_not_later_matching_context() -> None:
+    teachers = [sample("a", n) for n in range(3)]
+    students = [sample("b", n, 3 if n > 0 else 1) for n in range(3)]
+    pairs, meta = pair_distill_decisions(teachers, students, games("a"), games("b"))
+    assert len(pairs) == 1
+    assert pairs[0]["metadata"]["round_number"] == 1
+    assert pairs[0]["metadata"]["preference_source"] == "teacher_choice"
+    assert meta["skipped_tie"] == 1 and meta["skipped_different_path"] == 1
+
+
+@pytest.mark.parametrize(
+    "damage", ["missing", "duplicate", "fallback", "hand", "illegal", "missing_prompt"]
 )
+def test_damaged_history_or_choice_cannot_create_a_preference(damage: str) -> None:
+    teachers = [sample("a", n) for n in range(3)]
+    students = [sample("b", n, 3 if n == 2 else 1) for n in range(3)]
+    if damage == "missing":
+        teachers.pop(0)
+    elif damage == "duplicate":
+        teachers.append(deepcopy(teachers[0]))
+    elif damage == "fallback":
+        teachers[0]["parse_fallback"] = True
+    elif damage == "hand":
+        teachers[0]["hand_cards"] = ["S9"]
+    elif damage == "illegal":
+        teachers[2]["action_id"] = "UNAVAILABLE"
+    else:
+        students[2]["prompt_messages"] = []
+    pairs, meta = pair_distill_decisions(teachers, students, games("a"), games("b"))
+    assert pairs == []
+    assert meta["skipped_invalid_context"] or meta["skipped_missing_prompt"]
 
 
-def test_build_distill_pair_happy() -> None:
-    teacher = {"id": "t1", "action_id": "A", "game_id": "g1"}
-    student = {
-        "id": "s1",
-        "action_id": "B",
-        "game_id": "g2",
-        "prompt_messages": [{"role": "user", "content": "hi"}],
-        "round_number": 1,
-        "_deal_seed": 7,
-        "_seat_index": 0,
-    }
-    record, skip = build_distill_pair(teacher, student)
-    assert skip is None
-    assert record is not None
-    assert '"action_id": "A"' in record["chosen"]
-    assert '"action_id": "B"' in record["rejected"]
+def test_duplicate_deal_is_excluded_even_when_duplicate_has_no_decisions() -> None:
+    source = games("a")
+    source["retry"] = {**source["a"], "id": "retry", "status": "failed"}
+    pairs, meta = pair_distill_decisions([sample("a", 0)], [sample("b", 0, 3)], source, games("b"))
+    assert pairs == [] and meta["skipped_duplicate_seed"] == 1
 
 
-def test_build_distill_pair_tie() -> None:
-    teacher = {"action_id": "A"}
-    student = {
-        "action_id": "A",
-        "prompt_messages": [{"role": "user", "content": "x"}],
-    }
-    record, skip = build_distill_pair(teacher, student)
-    assert record is None
-    assert skip == "tie"
-
-
-def test_pair_indexes_match_and_skip_tie() -> None:
-    games = {
-        "gt": {
-            "id": "gt",
-            "player_ids": ["p0", "p1", "p2"],
-            "metadata": {"deal_seed": 42},
-        },
-        "gs": {
-            "id": "gs",
-            "player_ids": ["q0", "q1", "q2"],
-            "metadata": {"deal_seed": 42},
-        },
-    }
-    teacher_items = [
-        {
-            "id": "td",
-            "game_id": "gt",
-            "player_id": "p0",
-            "round_number": 3,
-            "action_id": "PASS",
-            "prompt_messages": [{"role": "user", "content": "t"}],
-        }
-    ]
-    student_diff = [
-        {
-            "id": "sd",
-            "game_id": "gs",
-            "player_id": "q0",
-            "round_number": 3,
-            "action_id": "PLAY",
-            "prompt_messages": [{"role": "user", "content": "s"}],
-        }
-    ]
-    student_tie = [
-        {
-            "id": "st",
-            "game_id": "gs",
-            "player_id": "q0",
-            "round_number": 3,
-            "action_id": "PASS",
-            "prompt_messages": [{"role": "user", "content": "s"}],
-        }
-    ]
-    t_idx, _ = index_decisions_by_match_key(teacher_items, games)
-    s_idx, _ = index_decisions_by_match_key(student_diff, games)
-    records, meta = pair_distill_indexes(t_idx, s_idx)
-    assert len(records) == 1
-    assert meta["matched_keys"] == 1
-
-    s_tie, _ = index_decisions_by_match_key(student_tie, games)
-    records2, meta2 = pair_distill_indexes(t_idx, s_tie)
-    assert records2 == []
-    assert meta2["skipped_tie"] == 1
+def test_local_pair_builder_rejects_illegal_teacher_and_mismatched_menu() -> None:
+    teacher, student = sample("a", 0), sample("b", 0, 3)
+    seats = [games(side)[side]["player_ids"] for side in ("a", "b")]
+    record, skip = build_distill_pair(teacher, student, seats=seats)
+    assert record is not None and skip is None
+    teacher["action_id"] = "illegal"
+    assert build_distill_pair(teacher, student, seats=seats) == (None, "invalid_context")

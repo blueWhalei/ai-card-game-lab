@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
+import httpx
+
 from app.config import Settings
 from app.utils.providers import (
     is_provider_configured,
@@ -40,36 +42,15 @@ def test_ollama_requires_reachable_daemon_with_models() -> None:
 
 
 def test_probe_ollama_ready_parses_tags() -> None:
-    class _Resp:
-        def read(self) -> bytes:
-            return b'{"models":[{"name":"qwen2.5:7b"}]}'
-
-        def __enter__(self) -> _Resp:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    with patch("urllib.request.urlopen", return_value=_Resp()):
-        assert probe_ollama_ready("http://localhost:11434") is True
-
-    class _Empty:
-        def read(self) -> bytes:
-            return b'{"models":[]}'
-
-        def __enter__(self) -> _Empty:
-            return self
-
-        def __exit__(self, *args: object) -> None:
-            return None
-
-    with patch("urllib.request.urlopen", return_value=_Empty()):
-        assert probe_ollama_ready("http://localhost:11434") is False
+    with patch("app.utils.providers.fetch_model_catalog", return_value={"qwen2.5:7b"}):
+        assert probe_ollama_ready("http://localhost:11434")
+    with patch("app.utils.providers.fetch_model_catalog", return_value=set()):
+        assert not probe_ollama_ready("http://localhost:11434")
 
 
 def test_probe_ollama_ready_unreachable() -> None:
-    with patch("urllib.request.urlopen", side_effect=OSError("down")):
-        assert probe_ollama_ready("http://localhost:11434") is False
+    with patch("app.utils.providers.fetch_model_catalog", side_effect=httpx.ConnectError("down")):
+        assert not probe_ollama_ready("http://localhost:11434")
 
 
 def test_unknown_provider_unconfigured() -> None:

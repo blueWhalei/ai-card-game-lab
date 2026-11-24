@@ -107,7 +107,9 @@ onUnmounted(() => {
 
 <template>
   <div class="page-container pb-ink-12">
-    <div class="grid gap-ink-8 lg:grid-cols-[minmax(0,1fr)_12rem] xl:grid-cols-[minmax(0,1fr)_14rem]">
+    <div
+      class="grid gap-ink-8 lg:grid-cols-[minmax(0,1fr)_12rem] xl:grid-cols-[minmax(0,1fr)_14rem]"
+    >
       <div class="min-w-0">
         <p class="mb-ink-6 max-w-3xl text-pretty text-body leading-relaxed text-ink-text-secondary">
           {{ t('guide.intro') }}
@@ -123,12 +125,15 @@ onUnmounted(() => {
           </ol>
           <div class="mt-ink-4 flex flex-wrap gap-ink-4">
             <RouterLink
-              to="/experiment-configs"
+              to="/experiments?create=1"
               class="text-body font-medium text-ink-primary hover:underline"
             >
-              {{ t('guide.hero.goPlayers') }}
+              {{ t('experiment.create') }}
             </RouterLink>
-            <RouterLink to="/" class="text-body font-medium text-ink-primary hover:underline">
+            <RouterLink
+              to="/experiments"
+              class="text-body font-medium text-ink-primary hover:underline"
+            >
               {{ t('guide.hero.goExperiments') }}
             </RouterLink>
           </div>
@@ -172,7 +177,9 @@ onUnmounted(() => {
 
       <nav class="hidden lg:block" :aria-label="t('guide.tocTitle')">
         <div class="sticky top-6 space-y-0.5">
-          <p class="mb-ink-2 px-ink-2 text-caption font-semibold tracking-wide text-ink-text-muted uppercase">
+          <p
+            class="mb-ink-2 px-ink-2 text-caption font-semibold tracking-wide text-ink-text-muted uppercase"
+          >
             {{ t('guide.tocTitle') }}
           </p>
           <button
@@ -188,7 +195,9 @@ onUnmounted(() => {
             <Icon icon="lucide:route" class="h-3.5 w-3.5 shrink-0 opacity-80" />
             <span class="truncate">{{ t('guide.sections.quickStart.title') }}</span>
           </button>
-          <p class="mt-ink-3 px-ink-2 pt-ink-2 text-caption font-semibold tracking-wide text-ink-text-muted uppercase">
+          <p
+            class="mt-ink-3 px-ink-2 pt-ink-2 text-caption font-semibold tracking-wide text-ink-text-muted uppercase"
+          >
             {{ t('guide.lookupTitle') }}
           </p>
           <button

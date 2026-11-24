@@ -54,7 +54,7 @@ class ExperimentConfigRepository:
             row = await cursor.fetchone()
         return _row_to_config(row) if row else None
 
-    async def upsert(self, config: dict[str, Any]) -> dict[str, Any]:
+    async def upsert(self, config: dict[str, Any], *, commit: bool = True) -> dict[str, Any]:
         now = _now()
         existing = await self.get(config["id"])
         created_at = existing["created_at"] if existing else now
@@ -100,7 +100,8 @@ class ExperimentConfigRepository:
                 payload["updated_at"],
             ),
         )
-        await self._db.commit()
+        if commit:
+            await self._db.commit()
         return deepcopy(payload)
 
     async def delete(self, config_id: str) -> bool:

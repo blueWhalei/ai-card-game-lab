@@ -110,7 +110,6 @@ export interface ThinkingHistoryEntry {
   rawResponseFull?: string
   legalActions?: Array<{ action_type?: string; cards?: string[] }>
   parserOk?: boolean | null
-  winProbability?: ThinkingCompletePayload['win_probability']
   handAnalysis?: ThinkingCompletePayload['hand_analysis']
 }
 
@@ -136,12 +135,6 @@ export interface ThinkingCompletePayload {
   raw_response_full?: string
   legal_actions?: Array<{ action_type?: string; cards?: string[] }>
   parser_ok?: boolean
-  win_probability?: {
-    probability?: number
-    confidence?: string
-    reasoning?: string
-    factors?: string[]
-  }
   hand_analysis?: {
     bomb_count?: number
     rocket?: boolean

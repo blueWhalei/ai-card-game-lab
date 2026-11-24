@@ -6,11 +6,9 @@ import {
   formatPlayAction,
   parseHandAnalysis,
   parseLegalActions,
-  parseWinProbability,
   samePlayAction,
   type PlayAction,
 } from '@/utils/traceOutput'
-import { formatWinRate } from '@/utils/experimentWorkbench'
 import { cn } from '@/lib/cn'
 
 const LEGAL_PREVIEW = 8
@@ -20,7 +18,6 @@ const props = withDefaults(
     legalActions?: unknown
     chosen?: PlayAction | null
     parserOk?: boolean | null
-    winProbability?: unknown
     handAnalysis?: unknown
     tone?: 'lab' | 'observer'
   }>(),
@@ -35,7 +32,6 @@ const expanded = ref(false)
 const observer = computed(() => props.tone === 'observer')
 
 const legal = computed(() => parseLegalActions(props.legalActions))
-const win = computed(() => parseWinProbability(props.winProbability))
 const hand = computed(() => parseHandAnalysis(props.handAnalysis))
 
 const orderedLegal = computed(() => {
@@ -55,19 +51,8 @@ const hiddenCount = computed(() =>
 )
 
 const hasContent = computed(
-  () =>
-    legal.value.length > 0 ||
-    props.parserOk != null ||
-    win.value != null ||
-    hand.value != null,
+  () => legal.value.length > 0 || props.parserOk != null || hand.value != null,
 )
-
-function confidenceLabel(raw: string): string {
-  if (raw === '高' || raw.toLowerCase() === 'high') return t('explain.confidenceHigh')
-  if (raw === '中' || raw.toLowerCase() === 'medium') return t('explain.confidenceMid')
-  if (raw === '低' || raw.toLowerCase() === 'low') return t('explain.confidenceLow')
-  return raw
-}
 
 const chipClass = computed(() =>
   observer.value
@@ -85,24 +70,9 @@ const chosenChipClass = computed(() =>
 <template>
   <div v-if="hasContent" class="space-y-2">
     <div class="flex flex-wrap items-center gap-2">
-      <UiBadge
-        v-if="parserOk != null"
-        :variant="parserOk ? 'success' : 'warning'"
-        size="xs"
-      >
+      <UiBadge v-if="parserOk != null" :variant="parserOk ? 'success' : 'warning'" size="xs">
         {{ parserOk ? t('filter.parseOk') : t('filter.ruleFallback') }}
       </UiBadge>
-      <span
-        v-if="win"
-        class="text-xs"
-        :class="observer ? 'text-ink-obs-muted' : 'text-ink-text-secondary'"
-        :title="win.reasoning"
-      >
-        {{ t('explain.winProb', { rate: formatWinRate(win.probability) }) }}
-        <template v-if="win.confidence">
-          · {{ t('explain.confidence', { level: confidenceLabel(win.confidence) }) }}
-        </template>
-      </span>
       <span
         v-if="hand"
         class="text-xs"
@@ -140,11 +110,7 @@ const chosenChipClass = computed(() =>
           :class="observer ? 'text-ink-obs-accent' : 'text-ink-primary'"
           @click="expanded = !expanded"
         >
-          {{
-            expanded
-              ? t('explain.collapseLegal')
-              : t('explain.moreLegal', { n: hiddenCount })
-          }}
+          {{ expanded ? t('explain.collapseLegal') : t('explain.moreLegal', { n: hiddenCount }) }}
         </button>
       </div>
     </div>

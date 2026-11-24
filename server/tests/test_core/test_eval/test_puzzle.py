@@ -65,7 +65,25 @@ def test_score_answer_hit_and_miss() -> None:
     miss = score_answer("a", values, "b")
     assert miss.hit is False and miss.ev_loss == pytest.approx(0.5)
     outside = score_answer("a", values, "z")
-    assert outside.hit is False and outside.ev_loss == pytest.approx(0.8)
+    assert outside.hit is None and outside.ev_loss is None
+
+
+def test_tied_estimates_are_all_best_and_unknown_is_not_a_loss() -> None:
+    from app.core.eval.puzzle import summarize_answers
+
+    tie = score_answer("a", {"a": 0.9, "b": 0.9}, "b")
+    unknown = score_answer("a", {"a": 0.9}, "z")
+    assert tie.hit is True and tie.ev_loss == 0
+    summary = summarize_answers([tie, unknown])
+    assert summary == {"evaluated_n": 1, "unevaluated_n": 1, "accuracy": 1.0, "mean_ev_loss": 0.0}
+    assert summarize_answers([unknown])["mean_ev_loss"] is None
+    assert summarize_answers([])["accuracy"] is None
+
+
+@pytest.mark.parametrize("values", [{}, {"a": float("nan")}, {"a": float("inf")}])
+def test_invalid_reference_estimates_are_rejected(values: dict[str, float]) -> None:
+    with pytest.raises(ValueError):
+        score_answer("a", values, "a")
 
 
 def test_select_by_spread_caps() -> None:

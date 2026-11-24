@@ -26,7 +26,11 @@ async def test_research_evidence_is_scoped_frozen_and_append_only(
             "cmp",
             "Comparison",
             "2026-02-01",
-            {"computed_at": "2026-02-01", "experiments": [{"id": "e", "game_ids": ["g"]}]},
+            {
+                "computed_at": "2026-02-01",
+                "experiments": [{"id": "e", "game_ids": ["g"]}],
+                "coverage": {"members": [{"seed": 1, "game_ids": {"e": "g"}}]},
+            },
         )
     root = "/api/v1/experiments"
     base = f"{root}/comparisons/cmp"

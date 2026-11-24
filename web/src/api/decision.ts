@@ -24,7 +24,6 @@ export interface DecisionPoint {
   }
   thinking: string | null
   outcome: string | null
-  quality_score: number
   train_usable: boolean
   train_usable_reason?: string
   /** Value given up versus the best evaluated move. null = never evaluated, not 0. */
@@ -32,12 +31,6 @@ export interface DecisionPoint {
   evaluator_params?: Record<string, number | string | boolean | Record<string, number>> | null
   policy_kind?: string
   parser_ok?: boolean | null
-  win_probability?: {
-    probability: number
-    confidence: string
-    reasoning?: string
-    factors?: string[]
-  } | null
   hand_analysis?: {
     bomb_count: number
     rocket: boolean
@@ -54,9 +47,6 @@ export type DecisionAnnotation = 'good' | 'bad' | 'doubt'
 
 export interface DecisionStats {
   total: number
-  avg_quality: number
-  min_quality: number
-  max_quality: number
   outcome_counts: Record<string, number>
   phase_counts: Record<string, number>
   train_usable_count?: number
@@ -78,7 +68,6 @@ export interface DecisionExportParams {
   game_id?: string
   experiment_id?: string
   player_id?: string
-  min_quality?: number
   outcome?: string
   game_phase?: string
   train_usable?: boolean
@@ -93,8 +82,6 @@ export const decisionApi = {
     game_id?: string
     experiment_id?: string
     player_id?: string
-    min_quality?: number
-    max_quality?: number
     game_phase?: string
     outcome?: string
     train_usable?: boolean

@@ -16,7 +16,6 @@ export type RegisterDatasetParams = {
   player_id?: string
   outcome?: string
   game_phase?: string
-  min_quality?: number
   train_usable?: boolean
   train_usable_only?: boolean
   include_thinking?: boolean

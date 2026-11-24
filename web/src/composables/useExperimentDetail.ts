@@ -34,7 +34,6 @@ import type { DropdownMenuItemDef } from '@/components/ui/DropdownMenu.vue'
 export function useExperimentDetail() {
   const { t } = useI18n()
 
-
   const route = useRoute()
   const router = useRouter()
   const loading = ref(true)
@@ -198,12 +197,7 @@ export function useExperimentDetail() {
   const registerPreview = computed(() => {
     const usable = summary.value?.train_usable_decisions ?? 0
     const notUsable = summary.value?.not_usable_decisions ?? 0
-    const gameEstimate = Math.max(
-      1,
-      Math.ceil((summary.value?.finished_games ?? 1) * registerEvalRatio.value),
-    )
-    const evalCount = Math.max(0, Math.min(usable, gameEstimate))
-    return { usable, notUsable, train: Math.max(0, usable - evalCount), eval: evalCount }
+    return { usable, notUsable }
   })
 
   const collectCta = computed(() => {
@@ -252,7 +246,7 @@ export function useExperimentDetail() {
 
   const openMenuItems = computed((): DropdownMenuItemDef[] => {
     const items: DropdownMenuItemDef[] = [
-      { id: 'archive', label: t('experiment.metaPanelTitle') },
+      { id: 'archive', label: t('experiment.research.notes') },
       {
         id: 'collect',
         label: collectCta.value,
@@ -277,7 +271,9 @@ export function useExperimentDetail() {
       { id: 'training', label: t('nav.training') },
       { id: 'traces', label: t('nav.traces') },
       { id: 'puzzles', label: t('nav.puzzles') },
-      { id: 'control', label: t('experiment.newRound') },
+      ...(!experiment.value?.protocol?.dataset.holdout_for
+        ? [{ id: 'control', label: t('experiment.newRound') }]
+        : []),
       { id: 'manifest', label: t('experiment.downloadManifest') },
       { id: 'clone', label: t('experiment.cloneExperiment') },
     )
@@ -520,7 +516,11 @@ export function useExperimentDetail() {
   }
 
   function goCompareWithSuggested(): void {
-    const ids = validation.value?.suggested_compare_ids ?? [experimentId.value]
+    const design = experiment.value?.protocol?.design
+    const ids =
+      design?.kind === 'prompt_ab'
+        ? [design.baseline_id, experimentId.value]
+        : (validation.value?.suggested_compare_ids ?? [experimentId.value])
     void router.push({
       path: '/experiments/compare',
       query: { ids: ids.join(','), from: experimentId.value },
@@ -537,7 +537,7 @@ export function useExperimentDetail() {
   function onStageAction(action: ExperimentStageAction): void {
     switch (action) {
       case 'collect':
-        void submitCollect()
+        openCollectDialog()
         break
       case 'watch':
         openLatest()
@@ -577,8 +577,7 @@ export function useExperimentDetail() {
     if (!experiment.value) return
     try {
       const res = await experimentApi.exportPack(experiment.value.id)
-      downloadJson(`${experiment.value.id}-pack.json`, res.data)
-      toast.success(t('experiment.exportedPack'))
+      await downloadJson(`${experiment.value.id}-pack.json`, res.data)
     } catch (e: unknown) {
       showApiError(e, t('experiment.exportFailed'))
     }
@@ -596,7 +595,7 @@ export function useExperimentDetail() {
     try {
       const res = await experimentApi.clone(experiment.value.id, {
         name: cloneName.value.trim(),
-        copy_deal_seeds: true,
+        copy_deal_seeds: !experiment.value.protocol?.dataset.holdout_for,
         copy_hypothesis: true,
       })
       cloneOpen.value = false
@@ -652,7 +651,7 @@ export function useExperimentDetail() {
   }
 
   function openControlDialog(): void {
-    if (!experiment.value) return
+    if (!experiment.value || experiment.value.protocol?.dataset.holdout_for) return
     const challenger = experiment.value.player_ids[0] ?? ''
     controlName.value = `${sanitizeNamePart(experiment.value.name)}${t('experiment.controlNameSuffix')}`
     controlPlayerIds.value = initialControlPlayerIds(

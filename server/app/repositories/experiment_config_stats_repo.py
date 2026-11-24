@@ -16,28 +16,14 @@ class ExperimentConfigStatsRepository:
     def __init__(self, db: aiosqlite.Connection) -> None:
         self._db = db
 
-    async def count_games_played(self, config_id: str) -> int:
-        """Count finished games for an experiment config."""
+    async def seat_record(self, config_id: str) -> tuple[int, int]:
         cursor = await self._db.execute(
-            """
-            SELECT COUNT(DISTINCT g.id) FROM games g, json_each(g.player_ids) AS je
-            WHERE json_valid(g.player_ids)
-              AND je.value = ?
-              AND g.status = 'finished'
-            """,
-            [config_id],
+            "SELECT COUNT(*), COALESCE(SUM(won), 0) FROM game_seat_results WHERE player_id = ?",
+            (config_id,),
         )
         row = await cursor.fetchone()
-        return int(row[0] if row else 0)
-
-    async def count_wins(self, config_id: str) -> int:
-        """Count games won by an experiment config."""
-        cursor = await self._db.execute(
-            "SELECT COUNT(*) FROM games WHERE winner_id = ?",
-            [config_id],
-        )
-        row = await cursor.fetchone()
-        return int(row[0] if row else 0)
+        assert row is not None  # An aggregate without GROUP BY always returns one row.
+        return int(row[0]), int(row[1])
 
     async def get_last_game(self, config_id: str) -> dict[str, Any] | None:
         """Get the most recent finished game for an experiment config."""

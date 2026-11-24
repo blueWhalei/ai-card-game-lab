@@ -83,73 +83,70 @@ class SystemService:
             "description": "Fixed deal seeds for benchmark-mode experiments",
         }
 
-    def list_providers(self) -> list[dict[str, Any]]:
+    def list_providers(self, *, include_status: bool = True) -> list[dict[str, Any]]:
         """Return available LLM providers with configuration status."""
-        return [
+        providers = [
             {
                 "id": "openai",
                 "name": "OpenAI",
                 "description": "GPT-4o, GPT-4o-mini 等",
-                "configured": is_provider_configured(self._settings, "openai"),
                 "default_model": "gpt-4o-mini",
             },
             {
                 "id": "deepseek",
                 "name": "DeepSeek",
                 "description": "deepseek-v4-flash（默认）/ deepseek-v4-pro",
-                "configured": is_provider_configured(self._settings, "deepseek"),
                 "default_model": self._settings.deepseek_model or "deepseek-v4-flash",
             },
             {
                 "id": "kimi",
                 "name": "Kimi / Moonshot",
                 "description": "Moonshot-v1 系列",
-                "configured": is_provider_configured(self._settings, "kimi"),
                 "default_model": "moonshot-v1-8k",
             },
             {
                 "id": "dashscope",
                 "name": "DashScope",
                 "description": "阿里云通义千问系列",
-                "configured": is_provider_configured(self._settings, "dashscope"),
                 "default_model": "qwen-plus",
             },
             {
                 "id": "zhipu",
                 "name": "智谱 AI",
                 "description": "GLM-4 系列",
-                "configured": is_provider_configured(self._settings, "zhipu"),
                 "default_model": "glm-4-flash",
             },
             {
                 "id": "minimax",
                 "name": "MiniMax",
                 "description": "MiniMax-Text-01 等",
-                "configured": is_provider_configured(self._settings, "minimax"),
                 "default_model": "MiniMax-Text-01",
             },
             {
                 "id": "yi",
                 "name": "零一万物",
                 "description": "Yi-Lightning 等",
-                "configured": is_provider_configured(self._settings, "yi"),
                 "default_model": "yi-lightning",
             },
             {
                 "id": "baichuan",
                 "name": "百川智能",
                 "description": "Baichuan4 系列",
-                "configured": is_provider_configured(self._settings, "baichuan"),
                 "default_model": "Baichuan4-Turbo",
             },
             {
                 "id": "ollama",
                 "name": "Ollama",
                 "description": "本地部署的开源模型",
-                "configured": is_provider_configured(self._settings, "ollama"),
                 "default_model": "llama3.2",
             },
         ]
+        if include_status:
+            return [
+                {**p, "configured": is_provider_configured(self._settings, p["id"])}
+                for p in providers
+            ]
+        return [dict(p) for p in providers]
 
     def get_config(self) -> dict[str, object]:
         """Return non-sensitive app configuration."""
@@ -159,6 +156,7 @@ class SystemService:
             "version": "0.1.0",
             "debug": self._settings.app_debug,
             "data_dir": self._settings.data_dir,
+            "config_file": str(self._settings.model_config["env_file"]),
             "sqlite_path": self._settings.sqlite_path,
             "models_dir": self._settings.models_dir,
             "max_concurrent_games": self._settings.max_concurrent_games,
@@ -199,7 +197,7 @@ class SystemService:
         protocol: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         ensure_runtime_dirs(self._settings)
-        providers = self.list_providers()
+        providers = self.list_providers() if experiment_id is None else []
         checks: list[dict[str, Any]] = []
         resolved_scope = scope if scope in {"collect", "train", "all"} else "all"
         need_collect = resolved_scope in {"collect", "all"}
@@ -211,9 +209,9 @@ class SystemService:
                 _preflight_item(
                     "providers_any",
                     ok=any_ready,
+                    severity="warn",
                     message=(
-                        "未配置可用模型供应商。请在项目根目录 .env 填写云厂商 API 密钥，"
-                        "或安装 Ollama 并拉取至少一个本地模型（如 ollama pull qwen2.5:7b）。"
+                        "可直接运行离线预设。使用模型席位时，在创建实验中检查所需配置。"
                         if not any_ready
                         else "至少有一个模型供应商可用"
                     ),
@@ -223,13 +221,13 @@ class SystemService:
         protocol_ok = True
         seats_ok = True
         if need_collect and experiment_id is not None:
-            from app.core.task_protocol import protocol_players, validate_protocol
+            from app.core.task_protocol import protocol_players, validate_runtime_protocol
 
             proto = protocol if isinstance(protocol, dict) else None
             players: list[Any] = []
             try:
                 if proto is not None:
-                    validate_protocol(proto)
+                    validate_runtime_protocol(proto, self._registry)
                     players = protocol_players(proto)
                     protocol_ok = True
                 else:
@@ -243,7 +241,7 @@ class SystemService:
                     message=(
                         "实验协议完整"
                         if protocol_ok
-                        else "实验协议缺失或不完整，请重新创建实验后再采集"
+                        else "请使用当前引擎的完整决策协议创建实验后再采集"
                     ),
                 )
             )
@@ -260,9 +258,9 @@ class SystemService:
                             "实验座位所用供应商均已配置"
                             if seats_ok
                             else (
-                                "实验座位供应商未配置："
+                                "以下席位的模型配置未就绪："
                                 + ", ".join(missing)
-                                + "。请在 .env 配置密钥，或改选手配置。"
+                                + "。请核对设置页的配置文件与本地模型标签。更换冻结模型需新建运行。"
                             )
                         ),
                         params=None if seats_ok else {"providers": ", ".join(missing)},
@@ -324,12 +322,7 @@ class SystemService:
                 )
             )
 
-        can_collect = True
-        if need_collect:
-            if experiment_id is None:
-                can_collect = any_ready
-            else:
-                can_collect = protocol_ok and seats_ok
+        can_collect = protocol_ok and seats_ok
         can_train = train_deps if need_train else True
         # For scope=collect, can_train stays True (not in scope); ok only cares about scoped blocks
         block_failed = any((not c["ok"]) and c["severity"] == "block" for c in checks)
@@ -369,7 +362,9 @@ class SystemService:
                 protocol = proto if isinstance(proto, dict) else None
             finally:
                 await conn.close()
-        return self._preflight_sync(scope=scope, experiment_id=experiment_id, protocol=protocol)
+        return await asyncio.to_thread(
+            self._preflight_sync, scope=scope, experiment_id=experiment_id, protocol=protocol
+        )
 
     def get_runtime_stats(self) -> dict[str, object]:
         from app.core.training.runtime_stats import get_runtime_stats as _snap

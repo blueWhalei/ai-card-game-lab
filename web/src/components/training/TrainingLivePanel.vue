@@ -8,6 +8,7 @@ import { TRAINING_STATUS_MAP } from '@/utils/constants'
 import UiButton from '@/components/ui/Button.vue'
 import UiBadge from '@/components/ui/Badge.vue'
 import UiProgress from '@/components/ui/Progress.vue'
+import { recordedProgress } from '@/utils/trainingRecords'
 
 const props = defineProps<{
   tasks: TrainingTask[]
@@ -44,8 +45,7 @@ const memoryTotalMb = computed(() => Math.round(stats.value?.memory_total_mb ?? 
 
 const progressPercent = computed(() => {
   const p = activeTask.value?.progress
-  if (typeof p !== 'number') return 0
-  return Math.min(100, Math.max(0, Math.round(p * 100)))
+  return recordedProgress(p)
 })
 
 const taskStatus = computed(() => activeTask.value?.status ?? '')
@@ -129,9 +129,11 @@ function handleCancel() {
     <div class="mb-3">
       <div class="mb-1 flex items-center justify-between text-xs text-ink-text-muted">
         <span>{{ t('training.liveProgress') }}</span>
-        <span>{{ progressPercent }}%</span>
+        <span>{{
+          progressPercent === null ? t('operations.missing') : `${progressPercent}%`
+        }}</span>
       </div>
-      <UiProgress :value="progressPercent" />
+      <UiProgress v-if="progressPercent !== null" :value="progressPercent" />
     </div>
 
     <details class="border-t border-ink-border pt-3">

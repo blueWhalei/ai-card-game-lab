@@ -9,10 +9,12 @@ import { systemApi } from '@/api/systemApi'
 import UiButton from '@/components/ui/Button.vue'
 import UiInput from '@/components/ui/Input.vue'
 import ComparisonAudit from '@/components/experiment/ComparisonAudit.vue'
+import ComparisonOverview from '@/components/experiment/ComparisonOverview.vue'
 import zhCN from '@/i18n/locales/zh-CN'
 import ExperimentCompareView from './ExperimentCompareView.vue'
 
 const result = {
+  metric_version: 'paired-cohort-v5',
   experiments: ['a', 'b'].map((id) => ({
     id,
     name: id,
@@ -32,9 +34,74 @@ const result = {
     unknown: [],
     reasons: ['unknown_protocol'],
   },
-  coverage: { effective_n: 0, planned_shared: 0, effective_seeds: [], experiments: [] },
+  coverage: {
+    deal_purpose: 'development' as const,
+    excluded_n: 0,
+    excluded_pairs: [],
+    effective_n: 0,
+    planned_shared: 0,
+    effective_seeds: [],
+    experiments: [],
+  },
 }
 afterEach(() => vi.restoreAllMocks())
+
+it('opens the selected scenario from saved whole-run diagnostics without recomputing statistics', async () => {
+  const savedResult = {
+    ...result,
+    experiments: result.experiments.map((row) => ({
+      ...row,
+      scenario_scores: {
+        bomb: {
+          n: 3,
+          train_usable_n: 1,
+          train_usable_rate: 1 / 3,
+          parser_n: 2,
+          parser_ok: 1,
+          parser_success_rate: 0.5,
+        },
+      },
+    })),
+  }
+  vi.spyOn(experimentApi, 'list').mockResolvedValue({
+    data: savedResult.experiments.map((row) => ({ ...row, summary: {} })),
+  } as never)
+  vi.spyOn(experimentConfigApi, 'list').mockResolvedValue({ data: [] } as never)
+  vi.spyOn(systemApi, 'listEngines').mockResolvedValue({ data: [] } as never)
+  vi.spyOn(experimentApi, 'listComparisons').mockResolvedValue({ data: [] } as never)
+  vi.spyOn(experimentApi, 'getComparison').mockResolvedValue({
+    data: { id: 'cmp', title: 'saved', created_at: '2026-11-07', result: savedResult },
+  } as never)
+  const compare = vi.spyOn(experimentApi, 'compare')
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/experiments/compare', component: { template: '<div />' } }],
+  })
+  await router.push('/experiments/compare?snapshot=cmp&seed=99&turn=9')
+  const wrapper = shallowMount(ExperimentCompareView, {
+    global: {
+      renderStubDefaultSlot: true,
+      plugins: [
+        router,
+        createI18n({ legacy: false, locale: 'zh-CN', messages: { 'zh-CN': zhCN } }),
+      ],
+    },
+  })
+  await flushPromises()
+  expect(wrapper.text()).toContain('两者分母不同')
+  expect(wrapper.text()).toContain('1/3 条')
+  expect(wrapper.text()).toContain('1/2 条有追踪记录')
+  await wrapper
+    .findAll('th')
+    .find((cell) => cell.text().includes('炸弹'))!
+    .get('button')
+    .trigger('click')
+  await flushPromises()
+  expect(router.currentRoute.value.query).toMatchObject({ snapshot: 'cmp', scenario: 'bomb' })
+  expect(router.currentRoute.value.query.seed).toBeUndefined()
+  expect(compare).not.toHaveBeenCalled()
+  wrapper.unmount()
+})
 
 it('requires recomparison after a declaration and restores a saved snapshot without recomputing it', async () => {
   vi.spyOn(experimentApi, 'list').mockResolvedValue({
@@ -46,17 +113,15 @@ it('requires recomparison after a declaration and restores a saved snapshot with
   vi.spyOn(experimentConfigApi, 'list').mockResolvedValue({ data: [] } as never)
   vi.spyOn(systemApi, 'listEngines').mockResolvedValue({ data: [] } as never)
   vi.spyOn(experimentApi, 'listComparisons').mockResolvedValue({ data: [] } as never)
-  const compare = vi
-    .spyOn(experimentApi, 'compare')
-    .mockImplementation(
-      async (_ids, changes) =>
-        ({
-          data: {
-            ...result,
-            protocol_review: { ...result.protocol_review, allowed_changes: changes ?? [] },
-          },
-        }) as never,
-    )
+  const compare = vi.spyOn(experimentApi, 'compare').mockImplementation(
+    async (_ids, changes) =>
+      ({
+        data: {
+          ...result,
+          protocol_review: { ...result.protocol_review, allowed_changes: changes ?? [] },
+        },
+      }) as never,
+  )
   const saved = { id: 'cmp-1', title: 'saved', created_at: '2026-09-11', result }
   const save = vi.spyOn(experimentApi, 'saveComparison').mockResolvedValue({ data: saved } as never)
   vi.spyOn(experimentApi, 'getComparison').mockResolvedValue({ data: saved } as never)
@@ -85,6 +150,7 @@ it('requires recomparison after a declaration and restores a saved snapshot with
     wrapper.findAllComponents(UiButton).find((b) => b.text() === '重新计算并保存快照')!
   expect(saveButton().props('disabled')).toBe(true)
   expect(wrapper.text()).toContain('选择或变量声明已改变')
+  expect(wrapper.findComponent(ComparisonOverview).exists()).toBe(false)
   await wrapper
     .findAllComponents(UiButton)
     .find((b) => b.text() === '对比所选')!
@@ -95,6 +161,7 @@ it('requires recomparison after a declaration and restores a saved snapshot with
     ['solver.players.0.model_config.temperature'],
   )
   expect(saveButton().props('disabled')).toBe(false)
+  expect(wrapper.findComponent(ComparisonOverview).exists()).toBe(true)
   await saveButton().trigger('click')
   await flushPromises()
   expect(save).toHaveBeenCalledTimes(1)

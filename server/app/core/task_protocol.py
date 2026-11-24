@@ -8,7 +8,10 @@ that is not a complete v2 document (no silent migration from v1).
 from __future__ import annotations
 
 import secrets
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from app.core.engine.registry import GameEngineRegistry
 
 PROTOCOL_SCHEMA_VERSION = 2
 
@@ -53,8 +56,7 @@ def build_protocol(
     }
     if prompts:
         solver["prompts"] = prompts
-    if thinking_budget:
-        solver["thinking_budget"] = dict(thinking_budget)
+    solver["thinking_budget"] = dict(thinking_budget or {})
     scope = (memory or "none").strip() or "none"
     if scope not in ("none", "per_experiment"):
         scope = "none"
@@ -103,6 +105,18 @@ def validate_protocol(protocol: Any) -> dict[str, Any]:
     if not isinstance(players, list) or not players:
         raise ValueError("实验协议未冻结选手配置，无法开局。请新建实验。")
     return protocol
+
+
+def validate_runtime_protocol(protocol: Any, registry: GameEngineRegistry) -> dict[str, Any]:
+    frozen = validate_protocol(protocol)
+    engine = frozen["engine"]
+    game_type = engine.get("game_type")
+    if not isinstance(game_type, str) or game_type not in registry.list_game_types():
+        raise ValueError("冻结协议中的引擎不可用，请用当前引擎创建运行。")
+    current = registry.get_capability(game_type)
+    if engine.get("decision_schema_version") != current.decision_schema_version:
+        raise ValueError("冻结的决策协议与当前引擎不同，请新建运行再采集。")
+    return frozen
 
 
 def protocol_players(protocol: dict[str, Any]) -> list[dict[str, Any]]:

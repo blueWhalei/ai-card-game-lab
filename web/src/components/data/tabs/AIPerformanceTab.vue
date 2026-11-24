@@ -50,7 +50,7 @@ const responseNames = computed(() => Object.keys(responseByModel.value))
 const columns = computed(
   (): TableColumn<ModelWinRate & Record<string, unknown>>[] => [
     { key: 'model', label: t('data.colModel') },
-    { key: 'games', label: t('data.colGames') },
+    { key: 'seat_games', label: t('data.seatGames') },
     { key: 'wins', label: t('data.colWins') },
     {
       key: 'win_rate',

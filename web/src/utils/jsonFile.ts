@@ -1,11 +1,17 @@
-export function downloadJson(filename: string, data: unknown): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const anchor = document.createElement('a')
-  anchor.href = url
-  anchor.download = filename
-  anchor.click()
-  URL.revokeObjectURL(url)
+import { downloadText } from '@/utils/exportFile'
+import { toast } from '@/components/ui/toast'
+import { tt } from '@/i18n'
+
+/** JSON serialization delegates saving and feedback to the shared export transport. */
+export async function downloadJson(filename: string, data: unknown): Promise<boolean> {
+  try {
+    const content = JSON.stringify(data, null, 2)
+    if (content === undefined) throw new Error('Missing JSON content')
+    return await downloadText(filename, content, 'json')
+  } catch {
+    toast.error(tt('common.exportSaveFailed'))
+    return false
+  }
 }
 
 /**

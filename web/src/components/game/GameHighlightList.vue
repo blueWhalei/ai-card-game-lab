@@ -48,7 +48,7 @@ function evExplain(item: GameHighlight): string | null {
 
 function goDecision(item: GameHighlight): void {
   void router.push({
-    path: '/decisions',
+    path: '/pipeline/decisions',
     query: { game_id: props.gameId, decision_id: item.decision_id },
   })
 }
@@ -68,7 +68,9 @@ function goDecision(item: GameHighlight): void {
       >
         <div class="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-xs">
           <span
-            :class="tone === 'observer' ? 'font-mono text-ink-obs-muted' : 'font-mono text-ink-text-muted'"
+            :class="
+              tone === 'observer' ? 'font-mono text-ink-obs-muted' : 'font-mono text-ink-text-muted'
+            "
           >
             R{{ item.round_number }}
           </span>
@@ -77,13 +79,6 @@ function goDecision(item: GameHighlight): void {
           </span>
           <span :class="tone === 'observer' ? 'text-ink-obs-muted' : 'text-ink-text-muted'">
             {{ reasonLabel(item.reason) }}
-          </span>
-          <span
-            v-if="item.reason === 'blunder' && item.ev_loss != null"
-            class="tabular-nums"
-            :class="tone === 'observer' ? 'text-ink-obs-muted' : 'text-ink-text-muted'"
-          >
-            {{ t('decision.evLossLabel', { n: item.ev_loss.toFixed(2) }) }}
           </span>
         </div>
         <div
@@ -100,12 +95,7 @@ function goDecision(item: GameHighlight): void {
           {{ evExplain(item) }}
         </p>
         <div class="mt-1.5 flex flex-wrap gap-1">
-          <UiButton
-            v-if="showJump"
-            size="sm"
-            variant="ghost"
-            @click="emit('jump', item)"
-          >
+          <UiButton v-if="showJump" size="sm" variant="ghost" @click="emit('jump', item)">
             {{ t('game.jumpToMove') }}
           </UiButton>
           <UiButton size="sm" variant="ghost" @click="goDecision(item)">

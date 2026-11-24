@@ -6,14 +6,17 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, Query, Response
 
-from app.dependencies import get_experiment_config_service
+from app.config import Settings
+from app.dependencies import get_experiment_config_service, get_settings
 from app.schemas.common import ApiResponse
 from app.schemas.experiment_config import (
     CreateExperimentConfigRequest,
+    SeatCheckRequest,
     UpdateExperimentConfigRequest,
 )
 from app.services.experiment_config_service import ExperimentConfigService
 from app.utils.exceptions import AppError
+from app.utils.providers import seat_model_checks
 
 router = APIRouter()
 
@@ -72,6 +75,19 @@ async def create_experiment_config(
     except ValueError as e:
         raise ExperimentConfigConflictError(body.id) from e
     return ApiResponse(data=config)
+
+
+@router.post("/readiness")
+async def check_seats(
+    body: SeatCheckRequest,
+    service: ExperimentConfigService = Depends(get_experiment_config_service),
+    settings: Settings = Depends(get_settings),
+) -> ApiResponse[dict[str, Any]]:
+    players = service.resolve_configs(body.player_ids)
+    checks = await seat_model_checks(settings, players, check_connection=body.check_connection)
+    return ApiResponse(
+        data={"checks": checks, "config_file": str(settings.model_config["env_file"])}
+    )
 
 
 @router.get("/export")

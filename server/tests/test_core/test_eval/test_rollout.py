@@ -161,6 +161,22 @@ def test_a_winning_move_is_worth_the_full_payoff() -> None:
     assert values[pair.id] == pytest.approx(1.0)
 
 
+def test_terminal_reward_on_the_last_allowed_continuation_step(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    engine = DoudizhuEngine()
+    state = _winning_state()
+    state.hands["p2"] = ["S9"]
+    monkeypatch.setattr(engine, "sample_hidden_state", lambda observation, rng: state)
+    single = next(
+        a for a in engine.legal_actions(state, "p1") if a.action.action_type == ActionType.SINGLE
+    )
+    evaluator = RolloutEvaluator(engine, HeuristicPolicy(), replace(_FAST, max_steps=1))
+    # In this world p1 leads a six and p2 wins on the single allowed continuation.
+    result = evaluator.ev_loss(engine.observe(state, "p1"), [single], single.id)
+    assert result.chosen_value == result.best_value == result.loss == 0
+
+
 def test_bombing_beats_passing_when_an_opponent_is_one_move_from_winning() -> None:
     engine = DoudizhuEngine()
     single_seven = classify(["S7"])

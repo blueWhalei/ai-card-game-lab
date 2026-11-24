@@ -51,7 +51,7 @@ class DataService:
             wins_by_role = await stats.wins_by_role()
 
             # --- AI 表现对比（各模型胜率）---
-            model_win_rates = await self._compute_model_win_rates(stats)
+            model_win_rates = await stats.model_seat_rates()
 
             # --- 响应时间分析 ---
             p50_ms, p95_ms = await stats.response_time_percentiles()
@@ -80,33 +80,6 @@ class DataService:
             "response_time_by_model": response_time_by_model,
         }
 
-    async def _compute_model_win_rates(self, stats: StatsRepository) -> list[dict[str, Any]]:
-        """Compute per-model win rates from game and round data."""
-        model_game_counts = await stats.model_game_counts()
-        winner_rows = await stats.game_winner_rows()
-        game_model_players = await stats.model_player_mapping()
-
-        model_wins: dict[str, int] = {}
-        for gid, wid, _player_ids in winner_rows:
-            pmap = game_model_players.get(gid, {})
-            mname = pmap.get(wid)
-            if mname:
-                model_wins[mname] = model_wins.get(mname, 0) + 1
-
-        result: list[dict[str, Any]] = []
-        for mname, gcount in model_game_counts.items():
-            wins = model_wins.get(mname, 0)
-            result.append(
-                {
-                    "model": mname,
-                    "games": gcount,
-                    "wins": wins,
-                    "win_rate": round(wins / gcount, 4) if gcount > 0 else 0,
-                }
-            )
-        result.sort(key=lambda x: x["win_rate"], reverse=True)
-        return result
-
     async def list_datasets(self) -> list[dict[str, Any]]:
         """Return all datasets."""
         async with connect_sqlite(self._sqlite_path) as db:
@@ -127,7 +100,6 @@ class DataService:
             game_id=request.game_id,
             experiment_id=request.experiment_id,
             player_id=request.player_id,
-            min_quality=request.min_quality,
             outcome=request.outcome,
             game_phase=request.game_phase,
             train_usable=request.train_usable,
@@ -152,12 +124,16 @@ class DataService:
             "game_id": request.game_id,
             "experiment_id": request.experiment_id,
             "player_id": request.player_id,
-            "min_quality": request.min_quality,
             "outcome": request.outcome,
             "game_phase": request.game_phase,
             "eval_ratio": request.eval_ratio,
             "eval_sample_count": split_meta.get("eval_sample_count", 0),
             "eval_game_ids": split_meta.get("eval_game_ids") or [],
+            **{
+                key: split_meta[key]
+                for key in ("split_method", "group_count", "eval_group_count", "eval_groups")
+                if key in split_meta
+            },
         }
         eval_file = split_meta.get("eval_file_path")
         if eval_file:

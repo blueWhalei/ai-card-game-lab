@@ -8,8 +8,7 @@ from app.core.task_protocol import build_protocol, protocol_memory
 
 def test_build_rule_memory_notes_win() -> None:
     notes = build_rule_memory_notes(
-        player_id="p1",
-        winner_id="p1",
+        outcome="win",
         decisions=[
             {"ev_loss": 0.1, "parse_fallback": False},
             {"ev_loss": 0.3, "parse_fallback": True},

@@ -75,12 +75,6 @@ export function samePlayAction(
   return cardsA === cardsB
 }
 
-export type WinProbabilityExplain = {
-  probability: number
-  confidence: string
-  reasoning: string
-}
-
 export type HandAnalysisExplain = {
   bomb_count: number
   rocket: boolean
@@ -98,18 +92,6 @@ export function parseLegalActions(value: unknown): PlayAction[] {
     out.push({ action_type: actionType, cards: asStringList(rec.cards) })
   }
   return out
-}
-
-export function parseWinProbability(value: unknown): WinProbabilityExplain | null {
-  const rec = asRecord(value)
-  if (!rec) return null
-  const probability = rec.probability
-  if (typeof probability !== 'number' || Number.isNaN(probability)) return null
-  return {
-    probability,
-    confidence: typeof rec.confidence === 'string' ? rec.confidence : '',
-    reasoning: typeof rec.reasoning === 'string' ? rec.reasoning : '',
-  }
 }
 
 export function parseHandAnalysis(value: unknown): HandAnalysisExplain | null {

@@ -113,9 +113,11 @@ async def test_cancel_training_task(client: AsyncClient, monkeypatch) -> None:
 
         # Let the bg task actually start sleeping.
         await asyncio.sleep(0)
+        background = service._running_tasks[task_id]
         cancel_res = await client.post(f"/api/v1/training/tasks/{task_id}/cancel")
         assert cancel_res.status_code == 200
         assert cancel_res.json()["data"]["status"] == "cancelled"
+        assert background.done(), "Cancellation must finish database cleanup before responding"
     finally:
         service._run_pipeline = original_pipeline  # type: ignore[method-assign]
 

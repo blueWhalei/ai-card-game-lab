@@ -4,12 +4,25 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class DecisionPuzzleRequest(BaseModel):
+    decision_id: str = Field(min_length=1)
+    question: str = Field(min_length=1, max_length=2000)
+    expected_source_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @field_validator("question")
+    @classmethod
+    def question_not_blank(cls, value: str) -> str:
+        if not value.strip():
+            raise ValueError("A test question is required")
+        return value.strip()
 
 
 class PuzzleExtractRequest(BaseModel):
     experiment_id: str
-    min_spread: float = 0.15
+    min_spread: float = Field(default=0.15, ge=0, allow_inf_nan=False)
     max_per_game: int = Field(default=3, ge=1)
     max_total: int = Field(default=200, ge=0)
 

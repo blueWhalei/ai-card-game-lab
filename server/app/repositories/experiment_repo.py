@@ -7,12 +7,10 @@ from typing import Any
 
 import aiosqlite
 
-from app.core.engine.doudizhu.seat_role_stats import (
-    DOUDIZHU_DECISIVE_ROLES,
-    seat_as_landlord_counts,
-)
 from app.core.stats.scenarios import SCENARIO_SQL, fill_scenario_scores
 from app.core.task_protocol import protocol_source_experiment_id
+from app.repositories.study_repo import StudyRepository
+from app.utils.id_generator import generate_id
 
 
 class ExperimentRepository:
@@ -36,6 +34,8 @@ class ExperimentRepository:
         hypothesis: str = "",
         conclusion: str = "",
         tags: list[str] | None = None,
+        study_id: str | None = None,
+        commit: bool = True,
     ) -> dict[str, Any]:
         tag_list = tags or []
         await self._db.execute(
@@ -60,8 +60,29 @@ class ExperimentRepository:
                 updated_at,
             ),
         )
-        await self._db.commit()
+        studies = StudyRepository(self._db)
+        if study_id is None:
+            study_id = generate_id("study")
+            await studies.create(study_id, name, hypothesis, created_at)
+        await studies.attach(study_id, experiment_id, updated_at)
+        if commit:
+            await self._db.commit()
         return await self.get_by_id(experiment_id)
+
+    async def holdout_runs(self, variant_id: str) -> list[dict[str, Any]]:
+        rows = await self._db.execute_fetchall(
+            """SELECT id, json_extract(protocol, '$.dataset.source_experiment_id') AS baseline_id
+               FROM experiments WHERE json_extract(protocol, '$.dataset.holdout_for') = ?""",
+            (variant_id,),
+        )
+        return [dict(row) for row in rows]
+
+    async def reserved_deal_seeds(self) -> set[int]:
+        rows = await self._db.execute_fetchall(
+            """SELECT seed.value FROM experiments e, json_each(e.protocol, '$.dataset.deal_seeds') seed
+               UNION SELECT json_extract(metadata, '$.deal_seed') FROM games"""
+        )
+        return {int(row[0]) for row in rows if isinstance(row[0], int)}
 
     async def update_protocol(
         self,
@@ -86,7 +107,8 @@ class ExperimentRepository:
 
     async def get_by_id(self, experiment_id: str) -> dict[str, Any]:
         cursor = await self._db.execute(
-            "SELECT * FROM experiments WHERE id = ?",
+            "SELECT e.*, r.study_id FROM experiments e LEFT JOIN study_runs r "
+            "ON r.experiment_id=e.id WHERE e.id = ?",
             (experiment_id,),
         )
         row = await cursor.fetchone()
@@ -94,8 +116,13 @@ class ExperimentRepository:
             raise KeyError(experiment_id)
         return _row_to_dict(row)
 
-    async def list_all(self) -> list[dict[str, Any]]:
-        cursor = await self._db.execute("SELECT * FROM experiments ORDER BY created_at DESC")
+    async def list_all(self, study_id: str | None = None) -> list[dict[str, Any]]:
+        sql = "SELECT e.*, r.study_id FROM experiments e LEFT JOIN study_runs r ON r.experiment_id=e.id"
+        params: tuple[str, ...] = ()
+        if study_id is not None:
+            sql += " WHERE r.study_id=?"
+            params = (study_id,)
+        cursor = await self._db.execute(sql + " ORDER BY e.created_at DESC", params)
         rows = await cursor.fetchall()
         return [_row_to_dict(row) for row in rows]
 
@@ -235,6 +262,16 @@ class ExperimentRepository:
             "not_usable": int(row["not_usable"] or 0),
             "total": int(row["total"] or 0),
         }
+
+    async def seat_winners(self, experiment_id: str) -> dict[str, set[str]]:
+        rows = await self._db.execute_fetchall(
+            "SELECT game_id, player_id FROM game_seat_results WHERE experiment_id = ? AND won = 1",
+            (experiment_id,),
+        )
+        winners: dict[str, set[str]] = {}
+        for row in rows:
+            winners.setdefault(row["game_id"], set()).add(row["player_id"])
+        return winners
 
     async def list_games(self, experiment_id: str) -> list[dict[str, Any]]:
         cursor = await self._db.execute(
@@ -382,7 +419,7 @@ class ExperimentRepository:
 
         games_cursor = await self._db.execute(
             """
-            SELECT id, status, winner_id, winner_role, metadata
+            SELECT status, winner_role
             FROM games
             WHERE experiment_id = ?
             """,
@@ -390,7 +427,7 @@ class ExperimentRepository:
         )
         game_rows = await games_cursor.fetchall()
 
-        wins_by_role: dict[str, int] = {role: 0 for role in sorted(DOUDIZHU_DECISIVE_ROLES)}
+        wins_by_role: dict[str, int] = {"landlord": 0, "peasant": 0}
         decisive_games = 0
         finished_games = 0
         status_counts: dict[str, int] = {
@@ -400,7 +437,6 @@ class ExperimentRepository:
             "interrupted": 0,
             "no_bid": 0,
         }
-        seat_rows: list[dict[str, Any]] = []
 
         for g in game_rows:
             status = str(g["status"] or "")
@@ -414,20 +450,18 @@ class ExperimentRepository:
             elif status in status_counts:
                 status_counts[status] = status_counts.get(status, 0) + 1
 
-            if role in DOUDIZHU_DECISIVE_ROLES:
+            if status == "finished" and role in wins_by_role:
                 decisive_games += 1
                 wins_by_role[role] = wins_by_role.get(role, 0) + 1
 
-            seat_rows.append(
-                {
-                    "status": status,
-                    "winner_role": role or None,
-                    "winner_id": g["winner_id"],
-                    "metadata": g["metadata"],
-                }
-            )
-
-        landlord_games, landlord_wins = seat_as_landlord_counts(seat_rows)
+        seat_counts = await self._db.execute_fetchall(
+            """
+            SELECT player_id, COUNT(*) AS n, SUM(won) AS wins,
+                   SUM(is_landlord) AS landlord_n, SUM(is_landlord * won) AS landlord_wins
+            FROM game_seat_results WHERE experiment_id = ? GROUP BY player_id
+            """,
+            (experiment_id,),
+        )
         tokens_total = int(tokens_raw) if tokens_raw is not None else 0
         tokens_per_game = round(tokens_total / finished_games, 2) if finished_games > 0 else 0.0
         # Rates (train / parser / landlord WR) come from Scorer overlay in the service.
@@ -454,8 +488,7 @@ class ExperimentRepository:
             "wins_by_role": wins_by_role,
             "decisive_games": decisive_games,
             "status_counts": status_counts,
-            "landlord_games_by_player": landlord_games,
-            "landlord_wins_by_player": landlord_wins,
+            "seat_counts": {row["player_id"]: dict(row) for row in seat_counts},
             "finished_games": finished_games,
         }
 

@@ -3,6 +3,14 @@ import { localeRef } from '@/i18n'
 import { preflightCheckMessage, providerName } from './systemLabels'
 
 describe('preflightCheckMessage', () => {
+  it('never presents a passed check as a failure', () => {
+    const check = { id: 'protocol', severity: 'block' as const, ok: true, message: 'complete' }
+    localeRef().value = 'zh-CN'
+    expect(preflightCheckMessage(check)).toBe('运行协议完整')
+    localeRef().value = 'en'
+    expect(preflightCheckMessage(check)).toBe('Run protocol is complete')
+    localeRef().value = 'zh-CN'
+  })
   it('localizes seat-provider failures with interpolated ids', () => {
     const check = {
       id: 'providers_seats',
@@ -13,10 +21,10 @@ describe('preflightCheckMessage', () => {
     }
     localeRef().value = 'zh-CN'
     expect(preflightCheckMessage(check)).toContain('ollama')
-    expect(preflightCheckMessage(check)).toContain('改选手配置')
+    expect(preflightCheckMessage(check)).toContain('新建')
     localeRef().value = 'en'
     expect(preflightCheckMessage(check)).toContain('ollama')
-    expect(preflightCheckMessage(check)).toMatch(/player configs|\.env/i)
+    expect(preflightCheckMessage(check)).toMatch(/settings|new run/i)
     localeRef().value = 'zh-CN'
   })
 

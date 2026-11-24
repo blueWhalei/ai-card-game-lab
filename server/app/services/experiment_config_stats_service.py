@@ -28,7 +28,7 @@ class ExperimentConfigStatsService:
                 )
                 stats.append(stat)
 
-        stats.sort(key=lambda x: x["games_played"], reverse=True)
+        stats.sort(key=lambda x: x["decided_games"], reverse=True)
         return stats
 
     async def _build_config_stats(
@@ -39,16 +39,15 @@ class ExperimentConfigStatsService:
         include_last_game_id: bool = False,
     ) -> dict[str, Any]:
         """Build stats dict for a single experiment config."""
-        games_played = await repo.count_games_played(config_id)
-        wins = await repo.count_wins(config_id)
+        decided_games, wins = await repo.seat_record(config_id)
         last_game = await repo.get_last_game(config_id)
 
         result: dict[str, Any] = {
             "config_id": config_id,
-            "games_played": games_played,
+            "decided_games": decided_games,
             "wins": wins,
-            "losses": games_played - wins,
-            "win_rate": wins / games_played if games_played > 0 else 0.0,
+            "losses": decided_games - wins,
+            "win_rate": wins / decided_games if decided_games else None,
             "last_game_at": last_game["created_at"] if last_game else None,
         }
 

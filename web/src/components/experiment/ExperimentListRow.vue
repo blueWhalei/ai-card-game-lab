@@ -11,8 +11,8 @@ import {
   formatExperimentProgress,
   resolveStageId,
   verdictHeadlineOf,
-  gamesNeededForPower,
 } from '@/utils/experimentStage'
+import { metricLabel } from '@/utils/researchOutcome'
 import { experimentOutcomeText } from '@/utils/experimentOutcomes'
 import NameChips from '@/components/common/NameChips.vue'
 import UiBadge from '@/components/ui/Badge.vue'
@@ -41,8 +41,11 @@ const claim = computed(() => {
   if (stage.value === 'empty') return t('stage.empty.claim')
   if (stage.value === 'collecting') return t('stage.collecting.claim')
   if (stage.value === 'verdict' && exp.delta) {
-    const headline = verdictHeadlineOf(exp.delta, gamesNeededForPower(exp))
-    return t(`stage.${headline.key}`, headline.params ?? {})
+    const headline = verdictHeadlineOf(exp.delta)
+    return t(`stage.${headline.key}`, {
+      ...headline.params,
+      metric: metricLabel(t, exp.delta.primary_metric, exp.protocol?.solver.players),
+    })
   }
   return t('stage.harvest.readyClaim')
 })
@@ -90,7 +93,13 @@ function onPrimary(): void {
           {{ experimentStatusLabel(summary.status) }}
         </UiBadge>
         <UiBadge v-if="isBenchmarkExperiment(experiment)" variant="muted" size="xs">
-          {{ t('experiment.modeBenchmark') }}
+          {{
+            t(
+              experiment.protocol?.dataset.holdout_for
+                ? 'focus.purpose.holdout'
+                : 'focus.purpose.development',
+            )
+          }}
         </UiBadge>
       </div>
       <p class="mt-ink-1 max-w-2xl text-body text-ink-text-secondary">{{ claim }}</p>

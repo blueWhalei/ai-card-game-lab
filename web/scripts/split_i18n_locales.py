@@ -10,9 +10,10 @@ from pathlib import Path
 
 GROUPS: dict[str, tuple[str, ...]] = {
     "common": ("app", "locale", "theme", "nav", "common", "error", "action", "card"),
-    "guide": ("guide", "firstRun", "metricHint"),
+    "guide": ("guide", "metricHint"),
     "experiment": (
         "experiment",
+        "runSetup",
         "control",
         "compare",
         "stage",

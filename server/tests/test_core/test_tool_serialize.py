@@ -6,7 +6,6 @@ from app.core.ai.tools.serialize import (
     actions_as_dicts,
     explain_from_tools,
 )
-from app.core.ai.tools.win_probability import WinProbabilityResult
 from app.core.engine.base import GameAction
 from app.core.engine.doudizhu.hand_analyzer import HandAnalysis
 
@@ -14,12 +13,6 @@ from app.core.engine.doudizhu.hand_analyzer import HandAnalysis
 def test_explain_from_tools_compacts_dataclasses() -> None:
     payload = explain_from_tools(
         {
-            "win_probability": WinProbabilityResult(
-                probability=0.62,
-                confidence="中",
-                factors=["有炸弹"],
-                reasoning="局势均衡",
-            ),
             "hand_analysis": HandAnalysis(
                 total_cards=12,
                 bomb_count=1,
@@ -32,8 +25,6 @@ def test_explain_from_tools_compacts_dataclasses() -> None:
             "tool_analysis": "ignored",
         }
     )
-    assert payload["win_probability"]["probability"] == 0.62
-    assert payload["win_probability"]["confidence"] == "中"
     assert payload["hand_analysis"] == {
         "bomb_count": 1,
         "rocket": False,

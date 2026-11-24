@@ -47,18 +47,12 @@ function formatAvgMs(ms: number, traceCount: number): string {
             <td class="px-3 py-2 font-medium text-ink-text" :title="configLabel(stat.player_id)">
               {{ configLabel(stat.player_id) }}
             </td>
-            <td class="px-3 py-2 tabular-nums">{{ stat.wins }}</td>
+            <td class="px-3 py-2 tabular-nums">{{ stat.wins }} / {{ stat.decided_games }}</td>
             <td class="px-3 py-2 tabular-nums">
-              {{
-                summary.games_with_winner > 0
-                  ? formatWinRate(stat.win_rate)
-                  : t('common.noOutcomes')
-              }}
+              {{ stat.win_rate != null ? formatWinRate(stat.win_rate) : t('common.noOutcomes') }}
             </td>
             <td class="px-3 py-2 tabular-nums">
-              {{
-                summary.games_with_winner > 0 ? formatWinRateCi(stat.win_rate_ci) : t('common.dash')
-              }}
+              {{ stat.win_rate_ci ? formatWinRateCi(stat.win_rate_ci) : t('common.dash') }}
             </td>
             <td class="px-3 py-2 tabular-nums">
               <template v-if="(stat.games_as_landlord ?? 0) > 0">

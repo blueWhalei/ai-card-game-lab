@@ -26,61 +26,39 @@ export interface Span {
 }
 
 export interface TraceMetrics {
-  response_time_ms: number
-  parser_ok: boolean
+  response_time_ms?: unknown
+  parser_ok?: unknown
 }
 
 export interface AggregatedMetrics {
   total_traces: number
-  avg_response_time_ms: number
-  min_response_time_ms: number
-  max_response_time_ms: number
-  parser_success_count: number | null
-}
-
-export interface VersionStats {
-  version: string
-  total_traces: number
-  avg_response_time_ms: number
+  response_time_count: number
+  avg_response_time_ms: number | null
+  min_response_time_ms: number | null
+  max_response_time_ms: number | null
   parser_success_count: number
-  success_rate: number
+  parser_evaluated_count: number
 }
 
-export interface CompareResult {
-  version1: VersionStats
-  version2: VersionStats
-  response_time_diff: number
-  success_rate_diff: number
+export interface TraceFilters {
+  game_id?: string
+  experiment_id?: string
+  player_id?: string
+  model?: string
+  parser_ok?: boolean
+  start_time?: string
+  end_time?: string
 }
 
 export const tracesApi = {
-  list: (params?: {
-    game_id?: string
-    experiment_id?: string
-    player_id?: string
-    model?: string
-    parser_ok?: boolean
-    page?: number
-    page_size?: number
-  }) =>
+  list: (params?: TraceFilters & { page?: number; page_size?: number }) =>
     apiClient.get<never, ApiResponse<PaginatedData<Trace>>>('/api/v1/traces', { params }),
 
-  get: (traceId: string) =>
-    apiClient.get<never, ApiResponse<Trace>>(`/api/v1/traces/${traceId}`),
-
-  metrics: (params?: {
-    game_id?: string
-    experiment_id?: string
-    player_id?: string
-    model?: string
-    parser_ok?: boolean
-    start_time?: string
-    end_time?: string
-  }) =>
-    apiClient.get<never, ApiResponse<AggregatedMetrics>>('/api/v1/traces/metrics', { params }),
-
-  compare: (version1: string, version2: string) =>
-    apiClient.get<never, ApiResponse<CompareResult>>('/api/v1/traces/compare', {
-      params: { version1, version2 },
+  get: (traceId: string, params?: TraceFilters) =>
+    apiClient.get<never, ApiResponse<Trace>>(`/api/v1/traces/${encodeURIComponent(traceId)}`, {
+      params,
     }),
+
+  metrics: (params?: TraceFilters) =>
+    apiClient.get<never, ApiResponse<AggregatedMetrics>>('/api/v1/traces/metrics', { params }),
 }

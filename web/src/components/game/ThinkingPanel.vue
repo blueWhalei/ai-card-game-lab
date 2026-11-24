@@ -25,11 +25,6 @@ interface ThinkingEntry {
   answer?: string
   legalActions?: Array<{ action_type?: string; cards?: string[] }>
   parserOk?: boolean | null
-  winProbability?: {
-    probability?: number
-    confidence?: string
-    reasoning?: string
-  }
   handAnalysis?: {
     bomb_count?: number
     rocket?: boolean
@@ -49,7 +44,6 @@ const props = defineProps<{
   currentRawResponseFull?: string
   currentLegalActions?: Array<{ action_type?: string; cards?: string[] }>
   currentParserOk?: boolean | null
-  currentWinProbability?: ThinkingEntry['winProbability']
   currentHandAnalysis?: ThinkingEntry['handAnalysis']
   history: ThinkingEntry[]
   isStreaming?: boolean
@@ -175,7 +169,6 @@ onUnmounted(() => {
         :legal-actions="currentLegalActions"
         :chosen="{ action_type: currentActionType, cards: currentCards }"
         :parser-ok="currentParserOk"
-        :win-probability="currentWinProbability"
         :hand-analysis="currentHandAnalysis"
       />
 
@@ -221,7 +214,6 @@ onUnmounted(() => {
         tone="observer"
         :legal-actions="currentLegalActions"
         :parser-ok="currentParserOk"
-        :win-probability="currentWinProbability"
         :hand-analysis="currentHandAnalysis"
       />
     </div>
@@ -307,7 +299,6 @@ onUnmounted(() => {
             :legal-actions="entry.legalActions"
             :chosen="{ action_type: entry.actionType, cards: entry.cards }"
             :parser-ok="entry.parserOk"
-            :win-probability="entry.winProbability"
             :hand-analysis="entry.handAnalysis"
           />
 

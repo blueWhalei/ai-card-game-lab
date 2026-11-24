@@ -15,20 +15,21 @@ const { t } = useI18n()
 const coverage = computed(() => props.experiment.benchmark)
 const summary = computed(() => props.experiment.summary)
 const incomplete = computed(() => !coverage.value?.complete)
-const rateWeak = computed(
-  () => incomplete.value || Boolean(summary.value.credibility?.low_power),
-)
+const rateWeak = computed(() => incomplete.value || Boolean(summary.value.credibility?.low_power))
 
 const usableRate = computed(() => {
   const rate = summary.value.train_usable_rate
-  if (rate == null) return t('common.dash')
+  if (!summary.value.decision_total || rate == null) return t('common.dash')
   return formatWinRate(rate)
 })
 
 const seats = computed(() =>
   (summary.value.player_stats ?? [])
     .filter((stat) => (stat.games_as_landlord ?? 0) > 0)
-    .map((stat) => `${props.configLabel(stat.player_id)} ${formatWinRate(stat.landlord_win_rate ?? 0)}`),
+    .map(
+      (stat) =>
+        `${props.configLabel(stat.player_id)} ${formatWinRate(stat.landlord_win_rate ?? 0)}`,
+    ),
 )
 </script>
 
@@ -66,29 +67,52 @@ const seats = computed(() =>
       </span>
     </p>
 
-    <p class="mt-ink-3 flex flex-wrap items-baseline gap-x-ink-3 gap-y-ink-1 text-body text-ink-text-secondary">
-      <span class="inline-flex items-baseline gap-ink-1">
-        {{ t('stage.benchmark.parser', { rate: formatWinRate(summary.parser_success_rate ?? 0) }) }}
-        <MetricHint :plain="t('metricHint.parser.plain')" :formula="t('metricHint.parser.formula')" />
-      </span>
-      <span class="inline-flex items-baseline gap-ink-1">
-        {{
-          t('stage.benchmark.usable', {
-            n: summary.train_usable_decisions,
-            rate: usableRate,
-          })
-        }}
-        <MetricHint :plain="t('metricHint.usable.plain')" :formula="t('metricHint.usable.formula')" />
-      </span>
-      <span class="inline-flex items-baseline gap-ink-1 tabular-nums">
-        {{ t('stage.benchmark.p50', { ms: Math.round(summary.p50_response_ms ?? 0) }) }}
-        <MetricHint :plain="t('metricHint.latency.plain')" :formula="t('metricHint.latency.formula')" />
-      </span>
-      <span class="inline-flex items-baseline gap-ink-1 tabular-nums">
-        {{ t('stage.benchmark.tokens', { n: Math.round(summary.tokens_per_game ?? 0) }) }}
-        <MetricHint :plain="t('metricHint.tokens.plain')" :formula="t('metricHint.tokens.formula')" />
-      </span>
-    </p>
+    <details class="mt-ink-3">
+      <summary class="cursor-pointer text-caption">{{ t('focus.runDiagnostics') }}</summary>
+      <p
+        class="mt-ink-3 flex flex-wrap items-baseline gap-x-ink-3 gap-y-ink-1 text-body text-ink-text-secondary"
+      >
+        <span class="inline-flex items-baseline gap-ink-1">
+          {{
+            t('stage.benchmark.parser', {
+              rate: summary.parser_n
+                ? formatWinRate(summary.parser_success_rate ?? 0)
+                : t('common.dash'),
+            })
+          }}
+          <MetricHint
+            :plain="t('metricHint.parser.plain')"
+            :formula="t('metricHint.parser.formula')"
+          />
+        </span>
+        <span class="inline-flex items-baseline gap-ink-1">
+          {{
+            t('stage.benchmark.usable', {
+              n: summary.train_usable_decisions,
+              rate: usableRate,
+            })
+          }}
+          <MetricHint
+            :plain="t('metricHint.usable.plain')"
+            :formula="t('metricHint.usable.formula')"
+          />
+        </span>
+        <span class="inline-flex items-baseline gap-ink-1 tabular-nums">
+          {{ t('stage.benchmark.p50', { ms: Math.round(summary.p50_response_ms ?? 0) }) }}
+          <MetricHint
+            :plain="t('metricHint.latency.plain')"
+            :formula="t('metricHint.latency.formula')"
+          />
+        </span>
+        <span class="inline-flex items-baseline gap-ink-1 tabular-nums">
+          {{ t('stage.benchmark.tokens', { n: Math.round(summary.tokens_per_game ?? 0) }) }}
+          <MetricHint
+            :plain="t('metricHint.tokens.plain')"
+            :formula="t('metricHint.tokens.formula')"
+          />
+        </span>
+      </p>
+    </details>
 
     <p
       v-if="coverage.seed_failed > 0 || coverage.seed_running > 0"
@@ -108,7 +132,10 @@ const seats = computed(() =>
       {{ seats.join(' · ') }}
     </p>
 
-    <p v-if="incomplete && coverage.seed_remaining > 0" class="mt-ink-3 text-body text-ink-text-secondary">
+    <p
+      v-if="incomplete && coverage.seed_remaining > 0"
+      class="mt-ink-3 text-body text-ink-text-secondary"
+    >
       {{ t('stage.benchmark.incomplete', { n: coverage.seed_remaining }) }}
     </p>
   </section>

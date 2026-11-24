@@ -36,7 +36,7 @@ function onBack(): void {
 
 function goDecisions(): void {
   emit('update:modelValue', false)
-  void router.push({ path: '/decisions', query: { game_id: props.gameId } })
+  void router.push({ path: '/pipeline/decisions', query: { game_id: props.gameId } })
 }
 
 function onJump(item: GameHighlight): void {
@@ -58,9 +58,9 @@ function onJump(item: GameHighlight): void {
       <UiBadge :variant="winner.role === 'landlord' ? 'danger' : 'success'">
         {{ winner.role === 'landlord' ? t('game.landlord') : t('game.peasant') }}
       </UiBadge>
-      <p class="mt-4 text-sm text-ink-text-muted">{{
-        t('game.totalRounds', { n: winner.totalRounds })
-      }}</p>
+      <p class="mt-4 text-sm text-ink-text-muted">
+        {{ t('game.totalRounds', { n: winner.totalRounds }) }}
+      </p>
       <p class="mt-2 text-sm text-ink-text-secondary">
         {{ t('game.resultNextStep') }}
       </p>

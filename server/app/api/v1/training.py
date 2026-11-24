@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
+from datetime import UTC, datetime
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 
@@ -24,6 +25,11 @@ from app.utils.exceptions import (
 router = APIRouter()
 
 
+class TrainingTaskPage(PaginatedData[dict[str, Any]]):
+    read_at: str
+    filters: dict[str, str | None]
+
+
 class ModelExportError(AppError):
     def __init__(self, detail: str) -> None:
         super().__init__(message=detail, code="MODEL_EXPORT_ERROR", status_code=400)
@@ -32,19 +38,38 @@ class ModelExportError(AppError):
 @router.get("/training/tasks")
 async def list_training_tasks(
     status: str | None = Query(None),
-    experiment_id: str | None = Query(None, description="Filter by experiment ID"),
-    page: int = Query(1, ge=1),
+    experiment_id: str | None = Query(None, min_length=1, description="Filter by experiment ID"),
+    study_id: str | None = Query(None, min_length=1),
+    task_id: str | None = Query(None, min_length=1),
+    state: Literal["all", "active", "attention"] = "all",
+    page: int = Query(1, ge=1, le=1000000),
     page_size: int = Query(10, ge=1, le=100),
     service: TrainingService = Depends(get_training_service),
-) -> ApiResponse[PaginatedData[dict[str, Any]]]:
+) -> ApiResponse[TrainingTaskPage]:
     items, total = await service.list_tasks(
         status=status,
         experiment_id=experiment_id,
         page=page,
         page_size=page_size,
+        study_id=study_id,
+        task_id=task_id,
+        state=state,
     )
     return ApiResponse(
-        data=PaginatedData(items=items, total=total, page=page, page_size=page_size),
+        data=TrainingTaskPage(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            read_at=datetime.now(UTC).isoformat(),
+            filters={
+                "study_id": study_id,
+                "experiment_id": experiment_id,
+                "task_id": task_id,
+                "state": state,
+                "status": status,
+            },
+        ),
     )
 
 

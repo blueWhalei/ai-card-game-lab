@@ -295,7 +295,7 @@ async def test_compare_eval_fields_and_paired_landlord_win_rate(db_path: str) ->
     assert ps["source_id"] == "exp-base"
     assert ps["control_id"] == "exp-ctrl"
     assert ps["shared_seeds"] == 2
-    assert ps["landlord_win_rate_diff"] == 0.5
+    assert ps["win_rate_diff"] == 0.5
     assert "bidding" in base["scenario_scores"]
     assert "bomb" in ctrl["scenario_scores"]
 

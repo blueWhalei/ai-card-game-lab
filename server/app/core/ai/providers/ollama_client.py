@@ -10,8 +10,9 @@ import httpx
 import structlog
 
 from app.core.ai.base import ChatResponse, LLMClient
+from app.core.ai.errors import provider_http_error
 from app.core.ai.stream_chunk import StreamChunk
-from app.utils.exceptions import AIProviderError
+from app.utils.exceptions import AIProviderError, AppError
 
 logger = structlog.get_logger()
 
@@ -56,7 +57,7 @@ class OllamaClient(LLMClient):
             pool=10.0,
         )
 
-    def _map_http_error(self, exc: Exception) -> AIProviderError:
+    def _map_http_error(self, exc: Exception) -> AppError:
         if isinstance(exc, httpx.TimeoutException):
             return AIProviderError("ollama", f"Ollama 请求超时（{self._base_url}）")
         if isinstance(exc, httpx.ConnectError):
@@ -65,10 +66,7 @@ class OllamaClient(LLMClient):
                 f"无法连接 Ollama（{self._base_url}）。请确认 Ollama 已启动，且本机可访问该地址。",
             )
         if isinstance(exc, httpx.HTTPStatusError):
-            return AIProviderError(
-                "ollama",
-                f"HTTP {exc.response.status_code}: {exc.response.text[:500]}",
-            )
+            return provider_http_error("ollama", exc.response)
         return AIProviderError("ollama", str(exc))
 
     async def chat(self, messages: list[dict[str, Any]], **kwargs: Any) -> ChatResponse:
@@ -137,6 +135,8 @@ class OllamaClient(LLMClient):
         try:
             async with httpx.AsyncClient(timeout=self._http_timeout()) as client:
                 async with client.stream("POST", url, json=payload) as response:
+                    if response.is_error:
+                        await response.aread()
                     response.raise_for_status()
                     async for line in response.aiter_lines():
                         if not line.strip():

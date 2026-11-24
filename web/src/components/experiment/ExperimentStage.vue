@@ -4,7 +4,6 @@ import { useI18n } from 'vue-i18n'
 import { isBenchmarkExperiment, type Experiment } from '@/api/experimentApi'
 import { remainingBenchmarkSeeds } from '@/utils/experimentBenchmark'
 import {
-  gamesNeededForPower,
   remainingGames,
   resolveStageId,
   verdictKeyOf,
@@ -13,7 +12,6 @@ import {
 import StageAction from '@/components/experiment/StageAction.vue'
 import StageVerdict from '@/components/experiment/StageVerdict.vue'
 import UiButton from '@/components/ui/Button.vue'
-import UiInputNumber from '@/components/ui/InputNumber.vue'
 
 const props = withDefaults(
   defineProps<{
@@ -21,14 +19,10 @@ const props = withDefaults(
     /** A blocking preflight check replaces the phase's own action. */
     blockedMessage?: string
     busy?: boolean
-    collectCount?: number
-    remainingCollect?: number
     cancellingCollect?: boolean
   }>(),
   {
     busy: false,
-    collectCount: 1,
-    remainingCollect: 0,
     cancellingCollect: false,
   },
 )
@@ -37,8 +31,6 @@ const emit = defineEmits<{
   action: [action: ExperimentStageAction]
   compare: []
   openExperiment: [id: string]
-  conclusionSaved: []
-  'update:collectCount': [value: number]
 }>()
 
 const { t } = useI18n()
@@ -51,10 +43,7 @@ const remaining = computed(() =>
     ? remainingBenchmarkSeeds(props.experiment)
     : remainingGames(props.experiment),
 )
-const usable = computed(() => summary.value.train_usable_decisions)
-const notUsable = computed(() => summary.value.not_usable_decisions ?? 0)
 const blocked = computed(() => Boolean(props.blockedMessage))
-const collectMax = computed(() => Math.min(50, Math.max(props.remainingCollect, 1)))
 
 const emptyAct = computed(() => {
   if (blocked.value) {
@@ -67,18 +56,18 @@ const emptyAct = computed(() => {
   }
   return {
     claim: t('stage.empty.claim'),
-    detail: t(isBenchmark.value ? 'stage.empty.detailBenchmark' : 'stage.empty.detail', {
+    detail: t('focus.readyHint', {
       target: summary.value.target_games,
       players: props.experiment.player_ids.length,
     }),
-    actionLabel: t('experiment.confirmStart'),
+    actionLabel: t('stage.empty.action'),
     action: 'collect' as ExperimentStageAction,
   }
 })
 
 const harvestAct = computed(() => ({
-  claim: t('stage.harvest.readyClaim'),
-  detail: t('stage.harvest.reviewDetail', { n: notUsable.value }),
+  claim: t('focus.finished'),
+  detail: t('focus.finishedHint'),
   actionLabel: t('stage.harvest.reviewAction'),
   action: 'review-decisions' as ExperimentStageAction,
 }))
@@ -87,11 +76,9 @@ const verdictAct = computed(() => {
   const delta = props.experiment.delta
   if (!delta || delta.can_conclude) return { actionLabel: undefined, action: undefined }
   if (delta.inconclusive_reason === 'protocol_mismatch')
-    return {
-      actionLabel: t('experiment.research.compare'),
-      action: 'compare' as ExperimentStageAction,
-    }
+    return { actionLabel: undefined, action: undefined }
   const isThisRunShort = delta.relation === 'vs_source'
+  if (isThisRunShort && remaining.value <= 0) return { actionLabel: undefined, action: undefined }
   if (blocked.value && isThisRunShort) {
     return {
       actionLabel: t('stage.empty.blockedAction'),
@@ -124,11 +111,6 @@ const harvestCollectMore = computed(() => {
     disabled: false,
   }
 })
-
-function onCollectCount(value: number | null): void {
-  if (value == null) return
-  emit('update:collectCount', value)
-}
 </script>
 
 <template>
@@ -141,19 +123,7 @@ function onCollectCount(value: number | null): void {
     :action-disabled="emptyAct.action === 'collect' && blocked"
     weak
     @action="emit('action', emptyAct.action)"
-  >
-    <template v-if="emptyAct.action === 'collect'" #before-action>
-      <label class="flex items-center gap-ink-2 text-caption text-ink-text-muted">
-        <span>{{ t('experiment.batchCount') }}</span>
-        <UiInputNumber
-          :model-value="collectCount"
-          :min="1"
-          :max="collectMax"
-          @update:model-value="onCollectCount"
-        />
-      </label>
-    </template>
-  </StageAction>
+  />
 
   <StageAction
     v-else-if="stage === 'collecting'"
@@ -180,8 +150,8 @@ function onCollectCount(value: number | null): void {
 
   <StageAction
     v-else-if="stage === 'harvest'"
-    :metric-value="usable"
-    :metric-label="t('stage.harvest.metricLabel')"
+    :metric-value="summary.finished_games"
+    :metric-label="t('stage.collecting.metricLabel')"
     :claim="harvestAct.claim"
     :detail="harvestAct.detail"
     :action-label="harvestAct.actionLabel"
@@ -189,18 +159,6 @@ function onCollectCount(value: number | null): void {
     @action="emit('action', harvestAct.action)"
   >
     <template v-if="harvestCollectMore" #secondary>
-      <label
-        v-if="harvestCollectMore.action === 'collect'"
-        class="flex items-center gap-ink-2 text-caption text-ink-text-muted"
-      >
-        <span>{{ t('experiment.batchCount') }}</span>
-        <UiInputNumber
-          :model-value="collectCount"
-          :min="1"
-          :max="collectMax"
-          @update:model-value="onCollectCount"
-        />
-      </label>
       <UiButton
         variant="secondary"
         :loading="busy"
@@ -213,15 +171,13 @@ function onCollectCount(value: number | null): void {
 
   <StageVerdict
     v-else-if="experiment.delta"
-    :experiment-id="experiment.id"
-    :existing-conclusion="experiment.conclusion"
     :delta="experiment.delta"
+    :players="experiment.protocol?.solver.players"
     :verdict-key="verdictKeyOf(experiment)"
-    :games-needed="gamesNeededForPower(experiment)"
+    :run-name="experiment.name"
     :action-label="verdictAct.actionLabel"
     @action="verdictAct.action && emit('action', verdictAct.action)"
     @compare="emit('compare')"
     @open-peer="emit('openExperiment', experiment.delta.peer_id)"
-    @conclusion-saved="emit('conclusionSaved')"
   />
 </template>

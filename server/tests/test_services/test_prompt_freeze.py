@@ -26,7 +26,7 @@ async def test_engine_prompt_source_prefers_frozen_body() -> None:
                 "content_hash": prompt_content_hash(frozen),
             }
         },
-        frozen_prompt_version="v3_ab",
+        frozen_prompt_version="v3",
     )
     text = await source.system_message(
         phase="playing",
@@ -35,7 +35,8 @@ async def test_engine_prompt_source_prefers_frozen_body() -> None:
     )
     assert text.startswith("FROZEN")
     assert "PICK" in text
-    assert source.prompt_version_label == "v3_ab"
+    assert source.version_for_phase("playing") == "v3_ab"
+    assert source.version_for_phase("bidding") == "v3"
 
 
 def test_protocol_prompts_accessor() -> None:

@@ -14,13 +14,9 @@ import httpx
 import structlog
 
 from app.core.ai.base import ChatResponse, LLMClient
+from app.core.ai.errors import provider_http_error
 from app.core.ai.stream_chunk import StreamChunk
-from app.utils.exceptions import (
-    AIProviderError,
-    AIProviderUnavailableError,
-    AIRateLimitExceededError,
-    AppError,
-)
+from app.utils.exceptions import AIProviderError
 
 logger = structlog.get_logger()
 
@@ -44,15 +40,6 @@ def _unsupported_field(response: httpx.Response, field: str) -> bool:
         "extra inputs are not permitted",
     )
     return field in detail and any(marker in detail for marker in markers)
-
-
-def _http_error(provider: str, response: httpx.Response) -> AppError:
-    detail = f"HTTP {response.status_code}: {response.text[:500]}"
-    if response.status_code == 429:
-        return AIRateLimitExceededError(provider, detail)
-    if response.status_code in (502, 503, 504):
-        return AIProviderUnavailableError(provider, detail)
-    return AIProviderError(provider, detail, retryable=not 400 <= response.status_code < 500)
 
 
 class OpenAICompatibleClient(LLMClient):
@@ -134,7 +121,7 @@ class OpenAICompatibleClient(LLMClient):
         except httpx.TimeoutException as e:
             raise AIProviderError(self._provider_name, f"Request timed out: {e}") from e
         except httpx.HTTPStatusError as e:
-            raise _http_error(self._provider_name, e.response) from e
+            raise provider_http_error(self._provider_name, e.response) from e
         except Exception as e:
             raise AIProviderError(self._provider_name, str(e)) from e
 
@@ -308,7 +295,7 @@ class OpenAICompatibleClient(LLMClient):
         except httpx.TimeoutException as e:
             raise AIProviderError(self._provider_name, f"Stream request timed out: {e}") from e
         except httpx.HTTPStatusError as e:
-            raise _http_error(self._provider_name, e.response) from e
+            raise provider_http_error(self._provider_name, e.response) from e
         except Exception as e:
             raise AIProviderError(self._provider_name, str(e)) from e
 

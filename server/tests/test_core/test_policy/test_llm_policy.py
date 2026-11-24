@@ -12,9 +12,11 @@ import random
 from collections.abc import AsyncGenerator, Iterable
 from typing import Any
 
+import httpx
 import pytest
 
 from app.core.ai.base import ChatResponse, LLMClient
+from app.core.ai.providers.ollama_client import OllamaClient
 from app.core.ai.stream_chunk import StreamChunk
 from app.core.engine.base import GameEngine
 from app.core.engine.doudizhu.engine import DoudizhuEngine
@@ -204,6 +206,30 @@ async def test_a_failed_call_is_retried_within_the_budget(engine: DoudizhuEngine
     assert len(client.chat_calls) == 2
 
 
+@pytest.mark.parametrize("stream", [True, False])
+async def test_ollama_missing_model_stops_on_first_request(
+    engine: DoudizhuEngine, stream: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    observation, legal, ctx = _setup(engine)
+    requests: list[httpx.Request] = []
+
+    def missing_model(request: httpx.Request) -> httpx.Response:
+        requests.append(request)
+        return httpx.Response(404, stream=httpx.ByteStream(b'{"error":"model not found"}'))
+
+    client_factory = httpx.AsyncClient
+    transport = httpx.MockTransport(missing_model)
+    monkeypatch.setattr(
+        httpx, "AsyncClient", lambda **kw: client_factory(transport=transport, **kw)
+    )
+    policy = LLMPolicy(OllamaClient(base_url="http://ollama.test"), stream=stream)
+    with pytest.raises(AIProviderError, match="model not found") as caught:
+        await _run(policy, observation, legal, ctx, Budget(max_llm_calls=3))
+
+    assert caught.value.retryable is False
+    assert [req.url.path for req in requests] == ["/api/chat"]
+
+
 async def test_an_unparseable_reply_is_retried(engine: DoudizhuEngine) -> None:
     observation, legal, ctx = _setup(engine)
     client = ScriptedClient(["我再想想", _reply(legal[0].id)])
@@ -273,7 +299,7 @@ async def test_tools_run_within_budget_and_reach_the_prompt(engine: DoudizhuEngi
 
     calls = [e for e in events if isinstance(e, ToolCall)]
     results = [e for e in events if isinstance(e, ToolResult)]
-    assert [call.name for call in calls] == ["analyze_hand"], "bidding has no win rate yet"
+    assert [call.name for call in calls] == ["analyze_hand"]
     assert results[0].result["text"]
     user_message = client.chat_calls[0]["messages"][1]["content"]
     assert "## AI分析" in user_message

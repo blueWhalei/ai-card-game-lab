@@ -9,7 +9,7 @@ import pytest
 
 from app.core.engine.doudizhu.engine import DoudizhuEngine
 from app.core.engine.registry import GameEngineRegistry
-from app.core.eval.puzzle import Puzzle, PuzzlePackManifest, save_pack
+from app.core.eval.puzzle import Puzzle, PuzzlePackManifest, load_pack, save_pack
 from app.services.puzzle_service import PuzzleService
 
 
@@ -142,8 +142,10 @@ async def test_run_empty_pack(run_service: PuzzleService, tmp_path: Path) -> Non
     report = await run_service.run(manifest.pack_id, baseline_kind="random")
     assert report["summary"] == {
         "n": 0,
-        "accuracy": 0.0,
-        "mean_ev_loss": 0.0,
+        "accuracy": None,
+        "mean_ev_loss": None,
+        "evaluated_n": 0,
+        "unevaluated_n": 0,
         "truncated_n": 0,
     }
 
@@ -154,3 +156,20 @@ def test_list_packs(run_service: PuzzleService, tmp_path: Path) -> None:
     packs = run_service.list_packs()
     assert len(packs) == 1
     assert packs[0].pack_id == "pack-tiny"
+
+
+async def test_unscored_choices_stay_null_in_saved_report(
+    run_service: PuzzleService, tmp_path: Path
+) -> None:
+    root = tmp_path / "puzzles"
+    manifest = _tiny_pack(root)
+    manifest, puzzles = load_pack(root / manifest.pack_id)
+    for puzzle in puzzles:
+        puzzle.action_values = {puzzle.best_action_id: 0.9}
+        puzzle.truncated = True
+    save_pack(root / manifest.pack_id, manifest, puzzles)
+    report = await run_service.run(manifest.pack_id, baseline_kind="first")
+    assert report["summary"]["evaluated_n"] == 0
+    assert report["summary"]["unevaluated_n"] == 2
+    assert report["summary"]["mean_ev_loss"] is None
+    assert all(row["hit"] is None and row["ev_loss"] is None for row in report["puzzles"])

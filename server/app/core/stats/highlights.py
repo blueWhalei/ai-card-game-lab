@@ -12,7 +12,7 @@ from app.core.stats.scenarios import classify_scenario
 
 HIGHLIGHT_LIMIT = 5
 BRANCH_MIN_LEGAL = 8
-# Terminal rewards are on a ±1 scale, so giving up half a game is a real mistake.
+# A descriptive review threshold on simulated payoff gaps, not a validated error label.
 BLUNDER_EV_LOSS = 0.5
 _BOMB_ACTIONS = frozenset({"BOMB", "ROCKET"})
 REASON_IDS: tuple[str, ...] = (
@@ -135,6 +135,23 @@ def _as_highlight(point: dict[str, Any], reason: str) -> dict[str, Any]:
         "ev_loss": _ev_loss(point),
         "action_id": action_id or None,
         "best_action_id": best_action_id or None,
+        "evaluation_scope": (
+            {
+                key: raw_params[key]
+                for key in (
+                    "candidates_evaluated",
+                    "legal_action_count",
+                    "determinizations",
+                    "rollouts_per_world",
+                    "opponent_kind_effective",
+                    "max_steps",
+                    "seed",
+                )
+                if key in raw_params
+            }
+            if isinstance(raw_params, dict) and point.get("ev_loss") is not None
+            else None
+        ),
     }
 
 

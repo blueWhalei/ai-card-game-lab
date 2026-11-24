@@ -52,6 +52,9 @@ async def _seed_pair(db_path: str) -> tuple[str, str]:
             (players, now, players, now),
         )
         await db.execute(
+            """UPDATE games SET winner_role = 'landlord', metadata = json_object('landlord_id', winner_id)"""
+        )
+        await db.execute(
             """
             INSERT INTO rounds (
                 game_id, round_num, player_id, action_type, prompt_tokens,
@@ -107,6 +110,29 @@ async def _seed_pair(db_path: str) -> tuple[str, str]:
 class _FakeGameService:
     def player_slots(self, game_type: str) -> tuple[int, int]:
         return (3, 3)
+
+
+async def test_report_keeps_snapshot_hypothesis_after_run_notes_change(db_path: str) -> None:
+    await _seed_pair(db_path)
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("UPDATE experiments SET hypothesis='Frozen hypothesis'")
+        await db.commit()
+    service = ExperimentService(sqlite_path=db_path, game_service=_FakeGameService())  # type: ignore[arg-type]
+    snapshot = await service.save_comparison(["exp-base", "exp-lora"], "Readable report", [])
+    version = await service.save_research(
+        snapshot["id"], 0, "Observed", "Possible interpretation", "No valid pairs", []
+    )
+    async with aiosqlite.connect(db_path) as db:
+        await db.execute("UPDATE experiments SET hypothesis='Changed later'")
+        await db.commit()
+    report = await service.get_research(version["record"]["id"], export=True)
+    assert report["comparison"] == snapshot
+    assert all(
+        row["hypothesis"] == "Frozen hypothesis"
+        for row in report["comparison"]["result"]["experiments"]
+    )
+    assert report["record"]["limitations"] == "No valid pairs"
+    assert report["record"]["evidence"] == []
 
 
 async def test_compare_aggregates_rates_and_ci(db_path: str) -> None:

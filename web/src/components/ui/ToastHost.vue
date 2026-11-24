@@ -2,7 +2,8 @@
 import { Icon } from '@iconify/vue'
 import { useI18n } from 'vue-i18n'
 import { cn } from '@/lib/cn'
-import { dismissToast, useToast, type ToastKind } from './toast'
+import { dismissToast, runToastAction, useToast, type ToastKind } from './toast'
+import UiButton from './Button.vue'
 
 const { t } = useI18n()
 const { items } = useToast()
@@ -40,7 +41,19 @@ const kindIcon: Record<ToastKind, string> = {
       "
     >
       <Icon :icon="kindIcon[item.kind]" class="mt-0.5 h-4 w-4 shrink-0" />
-      <p class="min-w-0 flex-1 break-words text-ink-text">{{ item.message }}</p>
+      <div class="min-w-0 flex-1">
+        <p class="break-words text-ink-text">{{ item.message }}</p>
+        <UiButton
+          v-if="item.action"
+          variant="ghost"
+          size="sm"
+          class="mt-1"
+          :loading="item.busy"
+          @click="runToastAction(item.id)"
+        >
+          {{ item.action.label }}
+        </UiButton>
+      </div>
       <button
         type="button"
         class="rounded p-0.5 text-ink-text-muted hover:text-ink-text"

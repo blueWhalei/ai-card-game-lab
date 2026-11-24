@@ -2,7 +2,12 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { RouterLink } from 'vue-router'
-import { systemApi, type PreflightResult, type ProviderInfo, type SystemConfig } from '@/api/systemApi'
+import {
+  systemApi,
+  type PreflightResult,
+  type ProviderInfo,
+  type SystemConfig,
+} from '@/api/systemApi'
 import { apiClient } from '@/api/client'
 import type { ApiResponse } from '@/api/types'
 import { showApiError } from '@/utils/error'
@@ -81,14 +86,18 @@ onMounted(fetchAll)
     <section v-if="config" class="ink-section">
       <h2 class="ink-section-title">{{ t('settings.runtime') }}</h2>
       <p class="mt-ink-2 max-w-2xl text-body text-ink-text-secondary">
-        {{ t('settings.runtimeHint', { env: '.env' }) }}
+        {{ t('settings.runtimeHint', { env: config?.config_file ?? '—' }) }}
         <RouterLink to="/experiment-configs" class="text-ink-primary hover:underline">{{
           t('nav.playerConfigs')
         }}</RouterLink>
         {{ t('settings.runtimeHintMid') }}
-        <RouterLink to="/prompt" class="text-ink-primary hover:underline">{{ t('nav.prompts') }}</RouterLink>
+        <RouterLink to="/prompt" class="text-ink-primary hover:underline">{{
+          t('nav.prompts')
+        }}</RouterLink>
         ·
-        <RouterLink to="/guide" class="text-ink-primary hover:underline">{{ t('guide.button') }}</RouterLink>
+        <RouterLink to="/guide" class="text-ink-primary hover:underline">{{
+          t('guide.button')
+        }}</RouterLink>
       </p>
       <div class="mt-ink-4 grid grid-cols-2 gap-ink-4 md:grid-cols-4">
         <div>
@@ -145,10 +154,10 @@ onMounted(fetchAll)
         </div>
       </div>
       <p class="mt-ink-3 max-w-2xl text-caption text-ink-text-muted">
-        {{ t('settings.thinkingBudgetHint', { env: '.env' }) }}
+        {{ t('settings.thinkingBudgetHint', { env: config?.config_file ?? '—' }) }}
       </p>
       <p class="mt-ink-1 max-w-2xl text-caption text-ink-text-muted">
-        {{ t('settings.evalMemoryHint', { env: '.env' }) }}
+        {{ t('settings.evalMemoryHint', { env: config?.config_file ?? '—' }) }}
       </p>
       <div
         v-if="startup && startup.checks?.some((c) => !c.ok)"
@@ -187,7 +196,11 @@ onMounted(fetchAll)
           class="text-body text-ink-text-secondary hover:text-ink-text"
           @click="showIdleProviders = !showIdleProviders"
         >
-          {{ showIdleProviders ? t('settings.hideIdle') : t('settings.showIdle', { n: idleProviders.length }) }}
+          {{
+            showIdleProviders
+              ? t('settings.hideIdle')
+              : t('settings.showIdle', { n: idleProviders.length })
+          }}
         </button>
         <ul v-if="showIdleProviders" class="mt-ink-2 divide-y divide-ink-border">
           <li
@@ -205,7 +218,10 @@ onMounted(fetchAll)
     <section v-if="storage" class="ink-section">
       <div class="flex items-baseline justify-between gap-ink-2">
         <h2 class="ink-section-title">{{ t('settings.disk') }}</h2>
-        <RouterLink to="/pipeline/data?tab=storage" class="text-caption text-ink-primary hover:underline">
+        <RouterLink
+          to="/pipeline/data?tab=storage"
+          class="text-caption text-ink-primary hover:underline"
+        >
           {{ t('settings.storageLink') }}
         </RouterLink>
       </div>
@@ -238,7 +254,9 @@ onMounted(fetchAll)
         @click="showPaths = !showPaths"
       >
         <h2 class="ink-section-title">{{ t('settings.paths') }}</h2>
-        <span class="text-caption text-ink-text-muted">{{ showPaths ? t('common.collapse') : t('common.expand') }}</span>
+        <span class="text-caption text-ink-text-muted">{{
+          showPaths ? t('common.collapse') : t('common.expand')
+        }}</span>
       </button>
       <div v-if="showPaths" class="mt-ink-4 space-y-ink-3">
         <div v-for="item in pathItems" :key="item.label">

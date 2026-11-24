@@ -61,6 +61,10 @@ export function formatWinRateCi(ci: [number, number] | undefined): string {
   return `${(ci[0] * 100).toFixed(0)}–${(ci[1] * 100).toFixed(0)}%`
 }
 
+export function formatPValue(value: number): string {
+  return value < 0.001 ? 'p < 0.001' : `p = ${value.toFixed(3)}`
+}
+
 /** Signed percentage-point delta, e.g. 0.04 → "+4.0pp". */
 export function formatDeltaPp(diff: number | null | undefined): string {
   if (diff == null || Number.isNaN(diff)) return '—'

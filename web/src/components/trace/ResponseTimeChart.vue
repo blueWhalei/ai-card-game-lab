@@ -1,21 +1,33 @@
 <script setup lang="ts">
-import { ref, onMounted, watch, computed } from 'vue'
+import { ref, onBeforeUnmount, watch, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { use } from 'echarts/core'
 import { CanvasRenderer } from 'echarts/renderers'
-import { LineChart } from 'echarts/charts'
-import { GridComponent, TooltipComponent, LegendComponent } from 'echarts/components'
+import { ScatterChart } from 'echarts/charts'
+import { GridComponent, TooltipComponent } from 'echarts/components'
 import VChart from 'vue-echarts'
-import { tracesApi, type Trace, type AggregatedMetrics } from '@/api/traces'
+import { tracesApi, type Trace, type AggregatedMetrics, type TraceFilters } from '@/api/traces'
 import { formatDateTime } from '@/utils/format'
-import { showApiError } from '@/utils/error'
+import { traceLatency } from '@/utils/traceMetrics'
+import { useTheme } from '@/composables/useTheme'
 import UiSpinner from '@/components/ui/Spinner.vue'
 import UiButton from '@/components/ui/Button.vue'
+import TraceMetrics from './TraceMetrics.vue'
 
-use([CanvasRenderer, LineChart, GridComponent, TooltipComponent, LegendComponent])
-
+use([CanvasRenderer, ScatterChart, GridComponent, TooltipComponent])
 const { t } = useI18n()
-
+const { theme } = useTheme()
+const chartColors = computed(() => {
+  // Theme changes invalidate canvas colors after CSS tokens have been applied.
+  const mode = theme.value
+  const style = getComputedStyle(document.documentElement)
+  return {
+    mode,
+    point: style.getPropertyValue('--ink-primary').trim(),
+    text: style.getPropertyValue('--ink-text-secondary').trim(),
+    border: style.getPropertyValue('--ink-border').trim(),
+  }
+})
 const props = defineProps<{
   gameId?: string
   experimentId?: string
@@ -23,238 +35,177 @@ const props = defineProps<{
   model?: string
   parserOk?: boolean
 }>()
-
 const traces = ref<Trace[]>([])
+const total = ref(0)
 const metrics = ref<AggregatedMetrics | null>(null)
 const loading = ref(false)
+const failed = ref(false)
+const window = ref<{ start: string; end: string } | null>(null)
 const timeRange = ref<'1h' | '24h' | '7d'>('24h')
-
+let requestId = 0
 const rangeOptions = computed(() => [
   { value: '1h' as const, label: t('trace.range1h') },
   { value: '24h' as const, label: t('trace.range24h') },
   { value: '7d' as const, label: t('trace.range7d') },
 ])
-
-const listParams = computed(() => {
-  const params: {
-    game_id?: string
-    experiment_id?: string
-    player_id?: string
-    model?: string
-    parser_ok?: boolean
-    page: number
-    page_size: number
-  } = { page: 1, page_size: 100 }
-  if (props.gameId) params.game_id = props.gameId
-  else if (props.experimentId) params.experiment_id = props.experimentId
-  if (props.playerId) params.player_id = props.playerId
-  if (props.model) params.model = props.model
-  if (props.parserOk !== undefined) params.parser_ok = props.parserOk
-  return params
-})
-
-const chartData = computed(() => {
-  const now = Date.now()
-  let cutoff = now
-
-  switch (timeRange.value) {
-    case '1h':
-      cutoff = now - 60 * 60 * 1000
-      break
-    case '24h':
-      cutoff = now - 24 * 60 * 60 * 1000
-      break
-    case '7d':
-      cutoff = now - 7 * 24 * 60 * 60 * 1000
-      break
-  }
-
-  const filtered = traces.value.filter((t) => new Date(t.created_at).getTime() > cutoff)
-
-  return filtered
-    .filter((t) => Number.isFinite(t.metrics?.response_time_ms))
-    .map((t) => ({
-      time: formatDateTime(t.created_at),
-      responseTime: t.metrics.response_time_ms,
-      round: t.round_number,
-      player: t.player_id,
-    }))
-    .reverse()
-})
-
-type ChartPoint = {
-  value: number
-  time: string
-  round: number
-  player: string
-}
-
-const chartOption = computed(() => {
-  const points: ChartPoint[] = chartData.value.map((d) => ({
-    value: d.responseTime,
-    time: d.time,
-    round: d.round,
-    player: d.player,
-  }))
-
-  return {
-    tooltip: {
-      trigger: 'axis' as const,
-      formatter: (params: Array<{ data: ChartPoint }>) => {
-        const data = params[0]?.data
-        if (!data) return ''
-        return `
-        <div style="padding: 8px;">
-          <div style="font-weight: 600; margin-bottom: 4px;">${data.time}</div>
-          <div>${t('trace.tooltipMs')} <span style="color: #1a6b5c; font-weight: 600;">${data.value.toFixed(0)}ms</span></div>
-          <div>${t('trace.tooltipRound', { n: data.round })}</div>
-          <div>${t('trace.tooltipPlayer', { id: data.player })}</div>
-        </div>
-      `
-      },
+const filters = computed<TraceFilters>(() => ({
+  game_id: props.gameId,
+  experiment_id: props.experimentId,
+  player_id: props.playerId,
+  model: props.model,
+  parser_ok: props.parserOk,
+}))
+type ChartPoint = { value: [number, number]; round: number; player: string }
+const chartData = computed<ChartPoint[]>(() =>
+  traces.value
+    .flatMap((trace) => {
+      const ms = traceLatency(trace.metrics.response_time_ms)
+      const time = Date.parse(trace.created_at)
+      return ms === null || !Number.isFinite(time)
+        ? []
+        : [
+            {
+              value: [time, ms] as [number, number],
+              round: trace.round_number,
+              player: trace.player_id,
+            },
+          ]
+    })
+    .sort((a, b) => a.value[0] - b.value[0]),
+)
+const chartOption = computed(() => ({
+  textStyle: { color: chartColors.value.text },
+  tooltip: {
+    trigger: 'item' as const,
+    renderMode: 'richText' as const,
+    formatter: (params: { data: ChartPoint }) => {
+      const point = params.data
+      return [
+        formatDateTime(new Date(point.value[0]).toISOString()),
+        `${t('trace.tooltipMs')} ${point.value[1]} ms`,
+        t('trace.tooltipRound', { n: point.round }),
+        t('trace.tooltipPlayer', { id: point.player }),
+      ].join('\n')
     },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true,
+  },
+  grid: { left: 16, right: 24, bottom: 24, containLabel: true },
+  xAxis: {
+    type: 'time' as const,
+    axisLabel: { color: chartColors.value.text },
+    axisLine: { lineStyle: { color: chartColors.value.border } },
+    min: window.value ? Date.parse(window.value.start) : undefined,
+    max: window.value ? Date.parse(window.value.end) : undefined,
+  },
+  yAxis: {
+    type: 'value' as const,
+    name: t('trace.seriesMs'),
+    min: 0,
+    axisLabel: { color: chartColors.value.text },
+    splitLine: { lineStyle: { color: chartColors.value.border } },
+  },
+  series: [
+    {
+      name: t('trace.series'),
+      type: 'scatter' as const,
+      symbolSize: 6,
+      data: chartData.value,
+      itemStyle: { color: chartColors.value.point },
     },
-    xAxis: {
-      type: 'category' as const,
-      data: points.map((d) => d.time),
-      axisLabel: {
-        rotate: 45,
-        fontSize: 10,
-        color: '#86868b',
-      },
-      axisLine: {
-        lineStyle: { color: '#d2d2d7' },
-      },
-    },
-    yAxis: {
-      type: 'value' as const,
-      name: t('trace.seriesMs'),
-      nameTextStyle: {
-        color: '#86868b',
-        fontSize: 11,
-      },
-      axisLabel: {
-        color: '#86868b',
-        fontSize: 11,
-      },
-      splitLine: {
-        lineStyle: { color: '#f5f5f7' },
-      },
-    },
-    series: [
-      {
-        name: t('trace.series'),
-        type: 'line' as const,
-        smooth: true,
-        symbol: 'circle',
-        symbolSize: 6,
-        data: points,
-        lineStyle: {
-          color: '#1a6b5c',
-          width: 2,
-        },
-        itemStyle: {
-          color: '#1a6b5c',
-        },
-        areaStyle: {
-          color: {
-            type: 'linear' as const,
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: [
-              { offset: 0, color: 'rgba(26, 107, 92, 0.28)' },
-              { offset: 1, color: 'rgba(26, 107, 92, 0.04)' },
-            ],
-          },
-        },
-      },
-    ],
-  }
-})
-
+  ],
+}))
 async function fetchData() {
+  const id = ++requestId
   loading.value = true
+  failed.value = false
+  traces.value = []
+  total.value = 0
+  metrics.value = null
+  const end = Date.now()
+  const hours = { '1h': 1, '24h': 24, '7d': 168 }[timeRange.value]
+  window.value = {
+    start: new Date(end - hours * 3600000).toISOString(),
+    end: new Date(end).toISOString(),
+  }
+  const params = { ...filters.value, start_time: window.value.start, end_time: window.value.end }
   try {
-    const params = listParams.value
-    const metricsOnly = {
-      game_id: params.game_id,
-      experiment_id: params.experiment_id,
-      player_id: params.player_id,
-      model: params.model,
-      parser_ok: params.parser_ok,
-    }
-    const [tracesRes, metricsRes] = await Promise.all([
-      tracesApi.list(params),
-      tracesApi.metrics(metricsOnly),
+    const [records, aggregate] = await Promise.all([
+      tracesApi.list({ ...params, page: 1, page_size: 200 }),
+      tracesApi.metrics(params),
     ])
-
-    traces.value = tracesRes.data.items
-    metrics.value = metricsRes.data
-  } catch (e: unknown) {
-    showApiError(e, t('trace.trendFailed'))
+    if (id !== requestId) return
+    traces.value = records.data.items
+    total.value = records.data.total
+    metrics.value = aggregate.data
+  } catch {
+    if (id === requestId) failed.value = true
   } finally {
-    loading.value = false
+    if (id === requestId) loading.value = false
   }
 }
-
-watch(listParams, fetchData, { deep: true })
-onMounted(fetchData)
+watch([filters, timeRange], fetchData, { deep: true, immediate: true })
+onBeforeUnmount(() => {
+  requestId++
+})
 </script>
 
 <template>
-  <div class="relative rounded-ink-md border border-ink-border bg-ink-surface p-5">
-    <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
-    <div class="mb-4 flex items-center justify-between">
-      <h3 class="text-xs font-semibold uppercase tracking-wider text-ink-text-muted">
-        {{ t('trace.trendTitle') }}
-      </h3>
-      <div class="flex gap-2">
-        <UiButton
-          v-for="range in rangeOptions"
-          :key="range.value"
-          size="sm"
-          :variant="timeRange === range.value ? 'primary' : 'secondary'"
-          @click="timeRange = range.value"
+  <section class="space-y-ink-4">
+    <div class="ink-card relative">
+      <UiSpinner v-if="loading" overlay :label="t('common.loading')" />
+      <div class="mb-ink-4 flex flex-wrap items-center justify-between gap-ink-3">
+        <h3 class="text-body font-semibold text-ink-text">{{ t('trace.trendTitle') }}</h3>
+        <div class="flex flex-wrap gap-ink-2">
+          <UiButton
+            v-for="range in rangeOptions"
+            :key="range.value"
+            size="sm"
+            :aria-pressed="timeRange === range.value"
+            :variant="timeRange === range.value ? 'primary' : 'secondary'"
+            @click="timeRange = range.value"
+            >{{ range.label }}</UiButton
+          >
+          <UiButton size="sm" variant="ghost" :disabled="loading" @click="fetchData">{{
+            t('trace.refresh')
+          }}</UiButton>
+        </div>
+      </div>
+      <p v-if="window" class="text-caption text-ink-text-secondary">
+        {{
+          t('trace.timeWindow', {
+            start: formatDateTime(window.start),
+            end: formatDateTime(window.end),
+          })
+        }}
+      </p>
+      <div v-if="failed" role="alert" class="my-ink-4 space-y-ink-3">
+        <p class="text-body text-ink-danger">{{ t('trace.trendFailed') }}</p>
+        <UiButton size="sm" @click="fetchData">{{ t('common.retry') }}</UiButton>
+      </div>
+      <template v-else-if="!loading">
+        <p class="mt-ink-2 text-caption text-ink-text-secondary">
+          {{
+            t('trace.chartScope', {
+              points: chartData.length,
+              loaded: traces.length,
+              total,
+              excluded: traces.length - chartData.length,
+            })
+          }}
+        </p>
+        <p v-if="total > traces.length" class="mt-ink-2 text-caption text-ink-text-secondary">
+          {{ t('trace.truncated') }}
+        </p>
+        <div
+          v-if="chartData.length"
+          class="h-[300px]"
+          role="img"
+          :aria-label="t('trace.trendTitle')"
         >
-          {{ range.label }}
-        </UiButton>
-      </div>
-    </div>
-
-    <div v-if="chartData.length > 0" class="h-[300px]">
-      <VChart :option="chartOption" autoresize />
-    </div>
-    <div v-else class="flex h-[300px] items-center justify-center text-ink-text-muted">
-      {{ t('common.noData') }}
-    </div>
-
-    <!-- Quick Stats -->
-    <div v-if="metrics" class="mt-4 grid grid-cols-3 gap-4 border-t border-ink-border pt-4">
-      <div class="text-center">
-        <div class="text-lg font-semibold text-ink-text">
-          {{ metrics.avg_response_time_ms.toFixed(0) }}ms
+          <VChart :option="chartOption" autoresize />
         </div>
-        <div class="text-xs text-ink-text-muted">{{ t('trace.avgResponse') }}</div>
-      </div>
-      <div class="text-center">
-        <div class="text-lg font-semibold text-ink-success">
-          {{ metrics.min_response_time_ms.toFixed(0) }}ms
-        </div>
-        <div class="text-xs text-ink-text-muted">{{ t('trace.minResponse') }}</div>
-      </div>
-      <div class="text-center">
-        <div class="text-lg font-semibold text-ink-danger">
-          {{ metrics.max_response_time_ms.toFixed(0) }}ms
-        </div>
-        <div class="text-xs text-ink-text-muted">{{ t('trace.maxResponse') }}</div>
-      </div>
+        <p v-else class="py-ink-6 text-body text-ink-text-muted">{{ t('trace.noTimedValues') }}</p>
+      </template>
     </div>
-  </div>
+    <TraceMetrics v-if="metrics && !loading && !failed" :metrics="metrics" />
+  </section>
 </template>
