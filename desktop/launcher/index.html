@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CardLab</title>
+    <style>
+      :root { color-scheme: light dark; font-family: "Segoe UI", "Microsoft YaHei", sans-serif; }
+      body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: light-dark(#f5f5f7, #191b1e); color: light-dark(#202428, #f4f5f6); }
+      main { max-width: 32rem; padding: 2rem; }
+      h1 { font-size: 1.6rem; font-weight: 600; }
+      p { line-height: 1.7; overflow-wrap: anywhere; }
+      #detail { opacity: .7; font-size: .9rem; }
+    </style>
+  </head>
+  <body>
+    <main aria-live="polite">
+      <h1>CardLab</h1>
+      <p id="status">正在启动本地研究服务…</p>
+      <p id="detail">首次启动将创建独立的数据目录。完成后自动打开工作台。</p>
+    </main>
+  </body>
+</html>

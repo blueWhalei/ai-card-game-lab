@@ -1,0 +1,5 @@
+# Packaging tool only; application dependencies are locked by server/poetry.lock.
+pyinstaller==6.22.0
+pyinstaller-hooks-contrib==2026.9
+altgraph==0.17.5
+pefile==2024.8.26
