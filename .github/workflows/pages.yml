@@ -11,32 +11,75 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: read
+    outputs:
+      artifact_id: ${{ steps.upload.outputs.artifact_id }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/configure-pages@v5
       - name: Assemble
         run: |
           mkdir -p _pages
           cp -R site/. _pages/
           rm -rf _pages/screenshots
           cp -R screenshots _pages/screenshots
-      - uses: actions/configure-pages@v5
+          test -s _pages/index.html
+      - uses: actions/upload-pages-artifact@v5
+        id: upload
         with:
-          enablement: true
-      - uses: actions/upload-pages-artifact@v3
-        with:
+          name: github-pages
           path: _pages
+          include-hidden-files: true
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Wait for Pages artifact metadata
+        timeout-minutes: 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ needs.build.outputs.artifact_id }}
+        shell: bash
+        run: |
+          if [[ ! "$ARTIFACT_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::The build did not return a Pages artifact ID."
+            exit 1
+          fi
+
+          # Upload can complete before the artifact appears in the run's REST listing.
+          endpoint="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages"
+          for attempt in {1..8}; do
+            if ids=$(gh api "$endpoint" --jq '.artifacts[] | select(.name == "github-pages" and .expired == false) | .id') &&
+              grep -Fxq -- "$ARTIFACT_ID" <<< "$ids"; then
+              echo "Pages artifact $ARTIFACT_ID is visible."
+              exit 0
+            fi
+            if (( attempt < 8 )); then sleep 4; fi
+          done
+          echo "::error::Pages artifact $ARTIFACT_ID did not appear for this workflow run."
+          exit 1
       - uses: actions/deploy-pages@v4
         id: deployment
+        with:
+          artifact_name: github-pages
